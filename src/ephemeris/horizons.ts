@@ -162,6 +162,43 @@ function seriesEndClipped(series: EphemerisSeries, startUtc: string, durationHou
   return end > t1 + 3600_000;
 }
 
+/** Sync analytic-only provider for dense regional search (no bundled/live lookup). */
+export function createAnalyticProvider(options: {
+  siteId: string;
+  latDeg: number;
+  lonEastDeg: number;
+  altitudeKm: number;
+  startUtc: string;
+  durationHours: number;
+  stepHours?: number;
+}): EphemerisProvider {
+  const step = options.stepHours ?? 2;
+  const series: Partial<Record<BodyId, EphemerisSeries>> = {
+    sun: sampleAnalyticSeries(
+      'sun', options.siteId, options.latDeg, options.lonEastDeg, options.altitudeKm,
+      options.startUtc, options.durationHours, step,
+    ),
+    earth: sampleAnalyticSeries(
+      'earth', options.siteId, options.latDeg, options.lonEastDeg, options.altitudeKm,
+      options.startUtc, options.durationHours, step,
+    ),
+  };
+  return {
+    series,
+    sourceLabel: 'analytic fallback (search)',
+    get(body, utcIso) {
+      const s = series[body];
+      if (s) {
+        const sample = interpolateSeries(s, utcIso);
+        if (sample) return sample;
+      }
+      return sampleAnalyticSeries(
+        body, options.siteId, options.latDeg, options.lonEastDeg, options.altitudeKm, utcIso, 0, 1,
+      ).samples[0];
+    },
+  };
+}
+
 /**
  * Resolve ephemeris for a site: bundled (if start in coverage) → live Horizons (optional) → analytic.
  * Avoids silently clamping CR1/SR1 to Jan 2027 when the mission start is outside the bundle.

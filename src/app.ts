@@ -1,6 +1,6 @@
 import './style.css';
-import { startTerrain, type TerrainApi } from './main';
-import { CATALOG_GROUP_LABELS, SITE_CATALOG, findSite, resolveSiteCoords } from './scenario/catalog';
+import { startTerrain, type TerrainApi, type TerrainMarkerSpec } from './main';
+import { CATALOG_GROUP_LABELS, SITE_CATALOG, resolveSiteCoords } from './scenario/catalog';
 import {
   applyUrlParams,
   getScenario,
@@ -36,6 +36,12 @@ import {
   type DateSuggestion,
   type RankedSite,
 } from './assess/decision';
+import {
+  loadSearchCatalog,
+  rankSearchCandidates,
+  type SearchCatalog,
+  type SearchHit,
+} from './assess/search';
 import { renderSkyline } from './viz/skyline';
 import { renderTimeline } from './viz/timeline';
 import {
@@ -58,6 +64,7 @@ let assessB: MissionAssessment | undefined;
 let cachedHorizon: HorizonProfile | undefined;
 let lastKey = '';
 let lastUiState: ScenarioState | undefined;
+let lastFocusKey = '';
 let recomputeTimer = 0;
 let scrubPaintRaf = 0;
 let urlSyncTimer = 0;
@@ -65,6 +72,8 @@ let playTimer = 0;
 let playing = false;
 let lastRanked: RankedSite[] = [];
 let lastDateSuggestions: DateSuggestion[] = [];
+let lastSearchHits: SearchHit[] = [];
+let searchCatalog: SearchCatalog | undefined;
 
 function fillSiteSelect(select: HTMLSelectElement, selected: string) {
   select.replaceChildren();
@@ -318,6 +327,99 @@ function isScrubOnlyChange(prev: ScenarioState | undefined, next: ScenarioState)
   );
 }
 
+function siteFocusKey(state: ScenarioState): string {
+  const a = state.primary;
+  const b = state.secondary;
+  return JSON.stringify({
+    a: a.siteId,
+    alat: a.customLatDeg,
+    alon: a.customLonEastDeg,
+    b: b.siteId,
+    blat: b.customLatDeg,
+    blon: b.customLonEastDeg,
+    compare: state.compareEnabled,
+  });
+}
+
+/** Keep 3D focus + multi-category markers aligned with Site A / B / search. */
+function syncTerrainToScenario(state: ScenarioState, opts: { fly?: boolean } = {}) {
+  if (!terrain) return;
+  const a = resolveSiteCoords(state.primary.siteId, state.primary.customLatDeg, state.primary.customLonEastDeg);
+  const focusKey = siteFocusKey(state);
+  const shouldFly = opts.fly !== false && focusKey !== lastFocusKey;
+  if (shouldFly) {
+    lastFocusKey = focusKey;
+    terrain.focusLatLon(a.latitudeDeg, a.longitudeEastDeg);
+  }
+
+  const markers: TerrainMarkerSpec[] = [];
+  const chosenId =
+    state.primary.siteId === 'custom'
+      ? 'chosen-custom'
+      : `chosen-${state.primary.siteId}`;
+
+  for (const site of SITE_CATALOG) {
+    // Skip if this catalog pin is the active chosen site (chosen marker wins).
+    if (site.siteId === state.primary.siteId) continue;
+    if (state.compareEnabled && site.siteId === state.secondary.siteId) continue;
+    markers.push({
+      id: `catalog-${site.siteId}`,
+      category: 'catalog',
+      latitudeDeg: site.latitudeDeg,
+      longitudeEastDeg: site.longitudeEastDeg,
+      label: site.publishedLabel,
+    });
+  }
+
+  for (const hit of lastSearchHits) {
+    // Don't double-draw a search hit that was just adopted as custom at same coords.
+    const sameAsChosen =
+      state.primary.siteId === 'custom'
+      && Math.abs((state.primary.customLatDeg ?? 999) - hit.latitudeDeg) < 1e-4
+      && Math.abs((state.primary.customLonEastDeg ?? 999) - hit.longitudeEastDeg) < 1e-4;
+    if (sameAsChosen) continue;
+    markers.push({
+      id: hit.siteId,
+      category: 'search',
+      latitudeDeg: hit.latitudeDeg,
+      longitudeEastDeg: hit.longitudeEastDeg,
+      label: hit.publishedLabel,
+    });
+  }
+
+  markers.push({
+    id: chosenId,
+    category: 'chosen',
+    latitudeDeg: a.latitudeDeg,
+    longitudeEastDeg: a.longitudeEastDeg,
+    label: 'Site A',
+  });
+
+  if (state.compareEnabled) {
+    const b = resolveSiteCoords(
+      state.secondary.siteId,
+      state.secondary.customLatDeg,
+      state.secondary.customLonEastDeg,
+    );
+    markers.push({
+      id: `compare-${state.secondary.siteId}`,
+      category: 'compare',
+      latitudeDeg: b.latitudeDeg,
+      longitudeEastDeg: b.longitudeEastDeg,
+      label: 'Site B',
+    });
+  }
+
+  terrain.setMarkers(markers);
+}
+
+function adoptSearchHit(hit: SearchHit) {
+  // Clear before setCustomCoords so subscribeScenario always re-flies the camera.
+  lastFocusKey = '';
+  setCustomCoords('A', hit.latitudeDeg, hit.longitudeEastDeg);
+  el('search-status').textContent = `Adopted ${hit.publishedLabel} → Site A (chosen)`;
+}
+
 async function recompute(state: ScenarioState) {
   const key = JSON.stringify({
     a: state.primary, b: state.secondary, start: state.startUtc,
@@ -351,6 +453,9 @@ function syncControlsFromState(state: ScenarioState) {
     scheduleScrubPaint(state);
     return;
   }
+
+  // Site / compare changes → 3D focus + marker categories follow Site A (and B).
+  syncTerrainToScenario(state);
 
   document.body.classList.toggle('mode-learn', state.mode === 'learn');
   document.body.classList.toggle('mode-planner', state.mode === 'planner');
@@ -412,18 +517,87 @@ function renderRankList(rows: RankedSite[]) {
       </span>
       <span class="rank-adopt">Adopt</span>`;
     item.onclick = () => {
+      lastFocusKey = '';
       if (row.siteId === 'custom') {
         const s = getScenario();
         setCustomCoords('A', s.primary.customLatDeg ?? -89.5, s.primary.customLonEastDeg ?? 0);
       } else {
         setPrimarySite(row.siteId);
-        const site = findSite(row.siteId);
-        if (site) terrain?.focusLatLon(site.latitudeDeg, site.longitudeEastDeg);
       }
-      el('rank-status').textContent = `Adopted ${row.publishedLabel}`;
+      // subscribeScenario → syncTerrainToScenario flies camera + updates chosen marker.
+      el('rank-status').textContent = `Adopted ${row.publishedLabel} → Site A`;
     };
     list.append(item);
   });
+}
+
+function renderSearchList(rows: SearchHit[]) {
+  const list = el('search-list');
+  list.replaceChildren();
+  if (!rows.length) {
+    list.innerHTML = '<p class="empty-hint">Click “Find best location” to score the polar overview grid for this mission window.</p>';
+    return;
+  }
+  rows.forEach((row, i) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = `rank-item viability-${viabilityClass(row.viability)}`;
+    item.setAttribute('role', 'listitem');
+    item.innerHTML = `
+      <span class="rank-pos">#${i + 1}</span>
+      <span class="rank-body">
+        <strong>${row.publishedLabel} · ${Math.abs(row.latitudeDeg).toFixed(3)}°S ${row.longitudeEastDeg.toFixed(2)}°E</strong>
+        <span class="rank-metrics">${row.viability} · ∩ ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)} · overview LOLA</span>
+      </span>
+      <span class="rank-adopt">Adopt</span>`;
+    item.onclick = () => adoptSearchHit(row);
+    list.append(item);
+  });
+}
+
+async function runFindBestLocation() {
+  const state = getScenario();
+  el('search-status').textContent = 'Loading grid…';
+  el('search-list').innerHTML = '<p class="empty-hint">Scoring overview candidates…</p>';
+  try {
+    if (!searchCatalog) searchCatalog = await loadSearchCatalog(base);
+    const regionSel = el<HTMLSelectElement>('search-region').value;
+    const topN = Math.max(3, Math.min(25, Number(el<HTMLInputElement>('search-topn').value) || 8));
+    const a = resolveSiteCoords(state.primary.siteId, state.primary.customLatDeg, state.primary.customLonEastDeg);
+    const region =
+      regionSel === 'around'
+        ? {
+            kind: 'around' as const,
+            latitudeDeg: a.latitudeDeg,
+            longitudeEastDeg: a.longitudeEastDeg,
+            radiusKm: Math.max(10, Number(el<HTMLInputElement>('search-radius').value) || 80),
+          }
+        : { kind: 'cap' as const };
+
+    el('search-status').textContent = 'Scoring…';
+    const { hits, assessed, limitations } = await rankSearchCandidates({
+      catalog: searchCatalog,
+      state,
+      region,
+      topN,
+      stepHours: 2,
+    });
+    lastSearchHits = hits;
+    renderSearchList(hits);
+    syncTerrainToScenario(state, { fly: false });
+    const note = el('neighborhood-note');
+    note.innerHTML = `<strong>Find best location</strong> scored <strong>${assessed}</strong> coarse candidates
+      (${searchCatalog.region.label}${region.kind === 'around' ? `, ≤${region.radiusKm} km of Site A` : ''})
+      with <strong>LOLA 320 m overview</strong> horizons + analytic ephemeris. Top ${hits.length} shown as amber ◆ markers.
+      ${limitations}`;
+    el('search-status').textContent = hits.length
+      ? `Top ${hits.length} of ${assessed} · overview LOLA`
+      : `No candidates in region (${assessed} scored)`;
+  } catch (error) {
+    console.error(error);
+    el('search-status').textContent = 'Search failed';
+    el('search-list').innerHTML = '<p class="empty-hint">Could not run regional search — see console.</p>';
+  }
 }
 
 function renderDateList(rows: DateSuggestion[]) {
@@ -580,6 +754,7 @@ function setPickMode(enabled: boolean) {
   terrain.setPickMode(true, (lat, lon) => {
     el<HTMLInputElement>('lat-a').value = lat.toFixed(4);
     el<HTMLInputElement>('lon-a').value = lon.toFixed(4);
+    lastFocusKey = '';
     setCustomCoords('A', lat, lon);
     el('status').textContent = `Custom Site A set to ${lat.toFixed(3)}°, ${lon.toFixed(3)}°E (optimistic sphere horizon).`;
     setPickMode(false);
@@ -590,20 +765,25 @@ function wireUi() {
   el('mode-planner').onclick = () => setMode('planner');
   el('mode-learn').onclick = () => setMode('learn');
   el<HTMLSelectElement>('site').onchange = e => {
-    const siteId = (e.target as HTMLSelectElement).value;
-    setPrimarySite(siteId);
-    const coords = resolveSiteCoords(siteId, getScenario().primary.customLatDeg, getScenario().primary.customLonEastDeg);
-    terrain?.focusLatLon(coords.latitudeDeg, coords.longitudeEastDeg);
+    lastFocusKey = '';
+    setPrimarySite((e.target as HTMLSelectElement).value);
   };
-  el<HTMLSelectElement>('site-b').onchange = e => setSecondarySite((e.target as HTMLSelectElement).value);
-  el<HTMLInputElement>('compare-toggle').onchange = e => toggleCompare((e.target as HTMLInputElement).checked);
+  el<HTMLSelectElement>('site-b').onchange = e => {
+    lastFocusKey = '';
+    setSecondarySite((e.target as HTMLSelectElement).value);
+  };
+  el<HTMLInputElement>('compare-toggle').onchange = e => {
+    lastFocusKey = '';
+    toggleCompare((e.target as HTMLInputElement).checked);
+  };
   el('apply-custom-a').onclick = () => {
+    lastFocusKey = '';
     const lat = Number(el<HTMLInputElement>('lat-a').value);
     const lon = Number(el<HTMLInputElement>('lon-a').value);
     setCustomCoords('A', lat, lon);
-    terrain?.focusLatLon(lat, lon);
   };
   el('apply-custom-b').onclick = () => {
+    lastFocusKey = '';
     setCustomCoords('B', Number(el<HTMLInputElement>('lat-b').value), Number(el<HTMLInputElement>('lon-b').value));
   };
   el('pick-map-a').onclick = () => setPickMode(true);
@@ -611,6 +791,12 @@ function wireUi() {
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape' && terrain?.isPickMode()) setPickMode(false);
   });
+  el<HTMLInputElement>('toggle-catalog-markers').onchange = e => {
+    terrain?.setCatalogMarkersVisible((e.target as HTMLInputElement).checked);
+  };
+  el<HTMLInputElement>('toggle-search-markers').onchange = e => {
+    terrain?.setSearchMarkersVisible((e.target as HTMLInputElement).checked);
+  };
 
   el<HTMLInputElement>('start-utc').onchange = e => {
     setMissionWindow(dateInputToUtcIso((e.target as HTMLInputElement).value), getScenario().durationHours);
@@ -631,11 +817,11 @@ function wireUi() {
   for (const id of ['min-earth-el', 'panel-area', 'panel-eff', 'panel-tilt', 'battery-floor']) el(id).onchange = th;
   el<HTMLInputElement>('tech-details').onchange = e => toggleTechnicalDetails((e.target as HTMLInputElement).checked);
   el('focus').onclick = () => {
-    const s = getScenario();
-    const coords = resolveSiteCoords(s.primary.siteId, s.primary.customLatDeg, s.primary.customLonEastDeg);
-    terrain?.focusLatLon(coords.latitudeDeg, coords.longitudeEastDeg);
+    lastFocusKey = '';
+    syncTerrainToScenario(getScenario(), { fly: true });
   };
 
+  el('find-best-location').onclick = () => void runFindBestLocation();
   el('rank-sites').onclick = () => void runRankSites();
   el('suggest-dates').onclick = () => void runSuggestDates();
   el('jump-best-window').onclick = () => jumpToBestWindow();
@@ -663,20 +849,19 @@ function wireUi() {
   document.querySelectorAll<HTMLButtonElement>('[data-guide]').forEach(btn => {
     btn.onclick = () => {
       const guide = btn.dataset.guide;
+      lastFocusKey = '';
       if (guide === 'cr1-jan') {
         setScenario({
           primary: { id: 'A', siteId: 'connecting-ridge-cr1' },
           startUtc: '2027-01-15T00:00:00.000Z', scrubUtc: '2027-01-15T00:00:00.000Z',
           durationHours: 168, compareEnabled: false,
         });
-        terrain?.focusLatLon(-89.4555, 222.6192);
       } else if (guide === 'sr1-jan') {
         setScenario({
           primary: { id: 'A', siteId: 'shackleton-rim-sr1' },
           startUtc: '2027-01-15T00:00:00.000Z', scrubUtc: '2027-01-15T00:00:00.000Z',
           durationHours: 168, compareEnabled: false,
         });
-        terrain?.focusLatLon(-89.7742, 203.4952);
       } else if (guide === 'compare') {
         setScenario({
           primary: { id: 'A', siteId: 'connecting-ridge-cr1' },
@@ -684,7 +869,6 @@ function wireUi() {
           startUtc: '2027-01-15T00:00:00.000Z', scrubUtc: '2027-01-15T00:00:00.000Z',
           durationHours: 168, compareEnabled: true,
         });
-        terrain?.focusLatLon(-89.4555, 222.6192);
       } else if (guide === 'slip') {
         setScenario({
           primary: { id: 'A', siteId: 'connecting-ridge-cr1' },
@@ -700,9 +884,12 @@ function wireUi() {
           startUtc: '2027-01-15T00:00:00.000Z', scrubUtc: '2027-01-15T00:00:00.000Z',
           durationHours: 168, compareEnabled: true,
         });
-        terrain?.showGlobe(true);
+        // Equatorial: syncTerrain will globe-focus via focusLatLon outside cap.
       } else if (guide === 'rank') {
         void runRankSites();
+        el('decision-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else if (guide === 'search') {
+        void runFindBestLocation();
         el('decision-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     };
@@ -727,10 +914,19 @@ function wireUi() {
       ranking: lastRanked.map(r => ({
         siteId: r.siteId, viability: r.viability, simultaneousPct: r.simultaneousPct, score: r.score,
       })),
+      regionalSearch: lastSearchHits.map(r => ({
+        siteId: r.siteId,
+        latitudeDeg: r.latitudeDeg,
+        longitudeEastDeg: r.longitudeEastDeg,
+        viability: r.viability,
+        simultaneousPct: r.simultaneousPct,
+        score: r.score,
+      })),
       dateSuggestions: lastDateSuggestions,
       notes: [
         'Quest/VR export shape: time-series samples with sun/earth flags and power proxy.',
         'No Quest VR runtime is bundled — consume this JSON in an external viewer.',
+        'Regional search uses LOLA 320 m overview horizons — not meter-perfect.',
       ],
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -747,6 +943,7 @@ function wireUi() {
 
   renderRankList([]);
   renderDateList([]);
+  renderSearchList([]);
 }
 
 async function boot() {
@@ -760,9 +957,28 @@ async function boot() {
 
   try {
     terrain = await startTerrain();
-    const s = getScenario();
-    const coords = resolveSiteCoords(s.primary.siteId, s.primary.customLatDeg, s.primary.customLonEastDeg);
-    terrain.focusLatLon(coords.latitudeDeg, coords.longitudeEastDeg);
+    terrain.onMarkerClick(marker => {
+      if (marker.category === 'chosen') return;
+      lastFocusKey = '';
+      if (marker.category === 'catalog') {
+        const siteId = marker.id.replace(/^catalog-/, '');
+        setPrimarySite(siteId);
+        el('status').textContent = `Adopted catalog ${marker.label ?? siteId} as Site A.`;
+        return;
+      }
+      if (marker.category === 'search') {
+        const hit = lastSearchHits.find(h => h.siteId === marker.id);
+        if (hit) adoptSearchHit(hit);
+        else setCustomCoords('A', marker.latitudeDeg, marker.longitudeEastDeg);
+        return;
+      }
+      if (marker.category === 'compare') {
+        // Focus Site B without changing Site A.
+        terrain?.focusLatLon(marker.latitudeDeg, marker.longitudeEastDeg);
+      }
+    });
+    lastFocusKey = '';
+    syncTerrainToScenario(getScenario(), { fly: true });
   } catch (error) {
     el('status').textContent = 'Could not open the polar terrain viewer.';
     console.error(error);

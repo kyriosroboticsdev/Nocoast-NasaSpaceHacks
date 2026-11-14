@@ -12,9 +12,18 @@ const reset = element<HTMLButtonElement>('reset');
 const size = 257;
 const moonCenter = new T.Vector3(0,-radius,0);
 
-type Site = {name: string; siteId?: string; latitudeDeg: number; longitudeEastDeg: number; surfaceElevationM: number};
+export type MarkerCategory = 'catalog' | 'search' | 'chosen' | 'compare';
+
+export type TerrainMarkerSpec = {
+  id: string;
+  category: MarkerCategory;
+  latitudeDeg: number;
+  longitudeEastDeg: number;
+  label?: string;
+};
 
 export type TerrainPickCallback = (latitudeDeg: number, longitudeEastDeg: number) => void;
+export type TerrainMarkerClickCallback = (marker: TerrainMarkerSpec) => void;
 
 export type TerrainApi = {
   focusLatLon: (latitudeDeg: number, longitudeEastDeg: number) => void;
@@ -23,6 +32,11 @@ export type TerrainApi = {
   /** When enabled, next terrain click reports lat/lon instead of only flying. */
   setPickMode: (enabled: boolean, onPick?: TerrainPickCallback) => void;
   isPickMode: () => boolean;
+  /** Replace dynamic location markers (catalog / search / chosen / compare). */
+  setMarkers: (markers: TerrainMarkerSpec[]) => void;
+  setCatalogMarkersVisible: (visible: boolean) => void;
+  setSearchMarkersVisible: (visible: boolean) => void;
+  onMarkerClick: (cb: TerrainMarkerClickCallback | undefined) => void;
 };
 type Grid = {x: number; y: number; width: number; spacing: number; values: Float32Array};
 
@@ -146,10 +160,7 @@ export async function startTerrain(): Promise<TerrainApi> {
   globe.position.copy(moonCenter);
   scene.add(globe);
 
-  const [overviewBody, siteBody] = await Promise.all([
-    fetchAsset('terrain/polar-overview.bin').then(r=>r.arrayBuffer()),
-    fetchAsset('terrain/sites.json').then(r=>r.json() as Promise<{sites:Site[]}>),
-  ]);
+  const overviewBody = await fetchAsset('terrain/polar-overview.bin').then(r => r.arrayBuffer());
   const header = new DataView(overviewBody);
   const overview: Grid = {
     x:header.getInt32(0,true), y:header.getInt32(4,true),
@@ -311,17 +322,81 @@ export async function startTerrain(): Promise<TerrainApi> {
         status.textContent = 'Detailed terrain is temporarily unavailable. Retrying…';
       }).finally(() => {if (request === controller) pendingKey = '';});
   }
-  const sites = siteBody.sites.map(site => {
-    const rho = 2*radius*Math.tan(T.MathUtils.degToRad((site.latitudeDeg+90)/2));
-    const lon = T.MathUtils.degToRad(site.longitudeEastDeg);
-    return {...site,x:rho*Math.sin(lon),y:rho*Math.cos(lon)};
-  });
-  const markers = sites.map(() => {
-    const sprite = new T.Sprite(new T.SpriteMaterial({color:0x7de4d4}));
-    sprite.renderOrder = 4;
-    scene.add(sprite);
-    return sprite;
-  });
+  type LiveMarker = {
+    spec: TerrainMarkerSpec;
+    x: number;
+    y: number;
+    mesh: T.Mesh;
+  };
+  const markerRoot = new T.Group();
+  scene.add(markerRoot);
+  let liveMarkers: LiveMarker[] = [];
+  let catalogVisible = true;
+  let searchVisible = true;
+  let markerClickCb: TerrainMarkerClickCallback | undefined;
+
+  function markerColor(category: MarkerCategory): number {
+    switch (category) {
+      case 'catalog': return 0x5ec8c0; // teal circle — pre-chosen
+      case 'search': return 0xe6b84d;  // amber diamond — search hit
+      case 'chosen': return 0xff6b4a;  // coral square — adopted Site A
+      case 'compare': return 0xb07dff; // violet ring — Site B
+    }
+  }
+
+  function markerGeometry(category: MarkerCategory): T.BufferGeometry {
+    switch (category) {
+      case 'catalog': return new T.SphereGeometry(1, 10, 8);
+      case 'search': return new T.OctahedronGeometry(1.15, 0);
+      case 'chosen': return new T.BoxGeometry(1.6, 1.6, 1.6);
+      case 'compare': return new T.TorusGeometry(0.95, 0.28, 8, 16);
+    }
+  }
+
+  function markerRenderOrder(category: MarkerCategory): number {
+    switch (category) {
+      case 'catalog': return 3;
+      case 'search': return 4;
+      case 'compare': return 5;
+      case 'chosen': return 6;
+    }
+  }
+
+  function clearLiveMarkers() {
+    for (const m of liveMarkers) {
+      markerRoot.remove(m.mesh);
+      m.mesh.geometry.dispose();
+      (m.mesh.material as T.Material).dispose();
+    }
+    liveMarkers = [];
+  }
+
+  function setMarkers(markers: TerrainMarkerSpec[]) {
+    clearLiveMarkers();
+    for (const spec of markers) {
+      const rho = 2 * radius * Math.tan(T.MathUtils.degToRad((spec.latitudeDeg + 90) / 2));
+      const lon = T.MathUtils.degToRad(spec.longitudeEastDeg);
+      const x = rho * Math.sin(lon);
+      const y = rho * Math.cos(lon);
+      const mesh = new T.Mesh(
+        markerGeometry(spec.category),
+        new T.MeshBasicMaterial({
+          color: markerColor(spec.category),
+          depthTest: false,
+          transparent: true,
+          opacity: 0.95,
+        }),
+      );
+      mesh.renderOrder = markerRenderOrder(spec.category);
+      mesh.userData.markerId = spec.id;
+      mesh.visible =
+        (spec.category !== 'catalog' || catalogVisible) &&
+        (spec.category !== 'search' || searchVisible);
+      markerRoot.add(mesh);
+      liveMarkers.push({ spec, x, y, mesh });
+    }
+  }
+
   const resize = () => {
     const {clientWidth:w,clientHeight:h} = viewport;
     renderer.setSize(w,h,false);
@@ -428,10 +503,7 @@ export async function startTerrain(): Promise<TerrainApi> {
     }
     focusTerrain(x, y);
   }
-  focus.onclick = () => {
-    const selected = sites[0];
-    if (selected) focusLatLon(selected.latitudeDeg, selected.longitudeEastDeg);
-  };
+  // Zoom-to-site-A is owned by app.ts (must not overwrite its handler here).
   const ray = new T.Raycaster();
   let pressed: {id:number; x:number; y:number} | undefined;
   let pickMode = false;
@@ -468,6 +540,16 @@ export async function startTerrain(): Promise<TerrainApi> {
     if (!click || click.id !== event.pointerId || Math.hypot(event.clientX-click.x,event.clientY-click.y)>5) return;
     const rect = renderer.domElement.getBoundingClientRect();
     ray.setFromCamera(new T.Vector2(2*(event.clientX-rect.left)/rect.width-1,1-2*(event.clientY-rect.top)/rect.height),camera);
+    const markerHits = ray.intersectObjects(liveMarkers.map(m => m.mesh).filter(m => m.visible), false);
+    if (markerHits.length && markerClickCb) {
+      const id = markerHits[0].object.userData.markerId as string;
+      const live = liveMarkers.find(m => m.spec.id === id);
+      if (live) {
+        markerClickCb(live.spec);
+        focusTerrain(live.x, live.y);
+        return;
+      }
+    }
     const bounds = cutout.value;
     const candidates = detail ? [detail,backdrop,globe] : [backdrop,globe];
     for (const hit of ray.intersectObjects(candidates,false)) {
@@ -518,15 +600,25 @@ export async function startTerrain(): Promise<TerrainApi> {
       nextUpdate = now+200;
       updateDetail();
     }
-    for (let i=0; i<sites.length; i++) {
-      const site = sites[i];
-      const local = currentGrid ? heightAt(currentGrid,site.x,site.y) : NaN;
-      const h = Number.isFinite(local) ? local : heightAt(overview,site.x,site.y);
-      markers[i].position.copy(world(site.x,site.y,h+8));
-      markers[i].scale.setScalar(T.MathUtils.clamp(camera.position.distanceTo(markers[i].position)*.013,3,12000));
+    for (const m of liveMarkers) {
+      const local = currentGrid ? heightAt(currentGrid, m.x, m.y) : NaN;
+      const h = Number.isFinite(local) ? local : heightAt(overview, m.x, m.y);
+      const lift = m.spec.category === 'chosen' ? 18 : m.spec.category === 'compare' ? 14 : 10;
+      const base = Number.isFinite(h) ? h : 0;
+      m.mesh.position.copy(world(m.x, m.y, base + lift));
+      const dist = camera.position.distanceTo(m.mesh.position);
+      const scale = T.MathUtils.clamp(dist * (m.spec.category === 'chosen' ? 0.018 : 0.012), 4, 14000);
+      m.mesh.scale.setScalar(scale);
+      m.mesh.lookAt(camera.position);
     }
     renderer.render(scene,camera);
   });
+
+  // Prefer mesh/wireframe on load — geometry first; relief/elevation remain available.
+  if (layer.querySelector('option[value="mesh"]')) {
+    layer.value = 'mesh';
+    setLayer();
+  }
 
   return {
     focusLatLon,
@@ -540,9 +632,25 @@ export async function startTerrain(): Promise<TerrainApi> {
       if (enabled) {
         hint.textContent = 'Pick mode · click terrain to set custom Site A (sphere horizon) · Esc or button to cancel';
       } else {
-        hint.textContent = 'Click to fly · Drag to orbit · Middle-drag to pan · Scroll or pinch to zoom';
+        hint.textContent = 'Click marker to select · Click terrain to fly · Drag to orbit · Scroll to zoom';
       }
     },
     isPickMode: () => pickMode,
+    setMarkers,
+    setCatalogMarkersVisible(visible) {
+      catalogVisible = visible;
+      for (const m of liveMarkers) {
+        if (m.spec.category === 'catalog') m.mesh.visible = visible;
+      }
+    },
+    setSearchMarkersVisible(visible) {
+      searchVisible = visible;
+      for (const m of liveMarkers) {
+        if (m.spec.category === 'search') m.mesh.visible = visible;
+      }
+    },
+    onMarkerClick(cb) {
+      markerClickCb = cb;
+    },
   };
 }

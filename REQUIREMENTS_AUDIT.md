@@ -7,7 +7,7 @@
 
 ## Executive verdict
 
-The app now supports an interactive **find / compare / decide** loop: rank catalog sites for the selected UTC window, suggest nearby launch-slip dates, highlight the best sun ∩ Earth stretch on the timeline, and keep **mission window grade** separate from **at-scrub-time** ops status. Core science (LOLA horizons for CR1/SR1, bundled Horizons, assessMission) is unchanged. Stretch items that still need denser data (on-demand LOLA for every point, neighborhood grid, Quest VR runtime) are honestly deferred with UI labels/stubs.
+The app now supports an interactive **find / compare / decide** loop: **Find best location** on a coarse LOLA-overview polar grid, rank catalog sites for the selected UTC window, suggest nearby launch-slip dates, highlight the best sun ∩ Earth stretch on the timeline, and keep **mission window grade** separate from **at-scrub-time** ops status. Adopt/Site A changes sync the 3D chosen marker + camera. Default terrain layer is mesh/wireframe. Core science (LOLA horizons for CR1/SR1, bundled Horizons, assessMission) is unchanged. Meter-perfect on-demand 5 m LOLA for every point and Quest VR runtime remain deferred with honest UI labels.
 
 **Coverage counts (matrix below):** **Implemented 27 · Partial 6 · Missing / deferred 2** (35 rows). Challenge “may include” language means Partial/deferred is expected for true stretch science.
 
@@ -53,10 +53,10 @@ Status key: **Implemented** = usable in UI/engine today · **Partial** = present
 
 | Consideration | Status | Evidence |
 | --- | --- | --- |
-| Rapid scenario comparison (many site-date combos) | **Implemented** | Rank catalog for window; date-slip search; A/B; shareable URL; guided presets. |
+| Rapid scenario comparison (many site-date combos) | **Implemented** | Regional find-best + rank catalog; date-slip search; A/B; shareable URL; guided presets. |
 | Clearly communicate time-to-sunset / Earthset | **Implemented** | Metric rows; scrub updates; dual verdict caption. |
 | Make lunar vs terrestrial extremes apparent | **Implemented** | Learn Earth-analog copy; Apollo 11 vs CR1 guided compare. |
-| Show why small location/date changes have large impact | **Partial** | Rank + date helper + guided CR1↔SR1/slip + dynamic explainVerdict. **Neighborhood lat-lon grid deferred** (LOLA only at CR1/SR1; sphere grid would fake precision — UI note in decision panel). |
+| Show why small location/date changes have large impact | **Partial** | Rank + regional overview search + date helper + guided CR1↔SR1/slip + dynamic explainVerdict. Dense 5 m neighborhood optimizer still deferred; search uses ~10 km / 320 m overview with honesty labels. |
 
 ### Potential considerations — data & accuracy
 
@@ -91,7 +91,8 @@ Status key: **Implemented** = usable in UI/engine today · **Partial** = present
 
 | Action | Effect |
 | --- | --- |
-| Rank sites for this window | Scores study + curated + CLPS + Apollo + international (+ custom A) with assessMission; sorted list with GO/RISKY/NO-GO and % metrics; Adopt sets Site A |
+| Find best location | Scores ~262 polar-cap candidates (LOLA 320 m overview horizons) for the mission window; top-N as search markers; Adopt → custom Site A |
+| Rank catalog sites | Scores study + curated + CLPS + Apollo + international (+ custom A) with assessMission; sorted list with GO/RISKY/NO-GO and % metrics; Adopt sets Site A |
 | Suggest better dates | Scores start slips ±3…±21 d for current Site A; Apply sets mission start |
 | Jump scrub to best ∩ | Moves scrubber to longest simultaneous (else sun / Earth) window |
 | Play | Animates scrub for education; instant chip updates; window grade stays put |
@@ -114,7 +115,7 @@ Status key: **Implemented** = usable in UI/engine today · **Partial** = present
 | Item | Why deferred | Best available stub |
 | --- | --- | --- |
 | On-demand LOLA horizons for every lat/lon | Requires denser mosaic + offline compute; only CR1/SR1 profiles shipped | Sphere horizon + explicit optimistic flag; Pick on map / custom coords |
-| Neighborhood “better spot 500 m away” optimizer | Without LOLA at neighbors, sphere ranking invents false precision | Decision-panel note; Rank catalog + custom pick instead |
+| Meter-perfect “better spot 500 m away” optimizer | Needs dense 5 m LOLA at every neighbor | Coarse ~10 km overview search shipped with honesty labels; CR1/SR1 remain study-grade |
 | Live Horizons for arbitrary dates in demo | Offline/demo path; network + rate limits | Analytic fallback labeled; `allowLive` exists but false |
 | Quest / VR runtime | Out of scope for this web demo | JSON export notes Quest-shaped time series for external viewers |
 | 2D illumination / Earth-visibility globe overlay | Stretch viz | Timeline ∩ bars + skyline remain primary |
@@ -132,7 +133,7 @@ Always-visible window vs scrub caption; tour step; metric grouping; NO-GO prompt
 Best-window highlighter; date slip helper; rank sites; instant status chip; play animation.
 
 ### Larger / stretch — **partial or deferred**
-On-demand LOLA; live Horizons toggle; neighborhood search; multi-scenario matrix; full season optimizer beyond slip search; 2D map overlay.
+On-demand 5 m LOLA for arbitrary points; live Horizons toggle; dense sub-km neighborhood optimizer; multi-scenario matrix; full season optimizer beyond slip search; 2D map overlay.
 
 ---
 

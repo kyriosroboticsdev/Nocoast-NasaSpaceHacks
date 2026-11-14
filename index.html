@@ -40,6 +40,7 @@
           <button type="button" data-guide="slip" title="Same sites, start slipped two weeks">Launch slip +14 days</button>
           <button type="button" data-guide="apollo" title="Equatorial Apollo vs polar study">Apollo 11 vs CR1</button>
           <button type="button" data-guide="rank" title="Open ranked catalog for this window">Rank this window</button>
+          <button type="button" data-guide="search" title="Run regional best-location search">Find best location</button>
         </div>
       </div>
     </section>
@@ -89,10 +90,24 @@
 
           <label for="layer">Terrain layer</label>
           <select id="layer">
-            <option value="relief">Lunar surface</option>
+            <option value="mesh" selected>Mesh wireframe</option>
             <option value="elevation">Elevation</option>
-            <option value="mesh">Mesh wireframe</option>
+            <option value="relief">Lunar surface</option>
           </select>
+          <div class="marker-legend" id="marker-legend" aria-label="Map marker categories">
+            <span class="mk mk-chosen" title="Adopted Site A">■ Chosen</span>
+            <span class="mk mk-search" title="Regional search hits">◆ Search</span>
+            <span class="mk mk-catalog" title="Catalog / pre-chosen">● Catalog</span>
+            <span class="mk mk-compare" title="Site B compare">◎ Compare</span>
+          </div>
+          <label class="check">
+            <input type="checkbox" id="toggle-catalog-markers" checked>
+            Show catalog markers
+          </label>
+          <label class="check">
+            <input type="checkbox" id="toggle-search-markers" checked>
+            Show search markers
+          </label>
           <div id="legend" hidden>
             <div class="ramp"></div>
             <div class="range"><span>−8,000 m</span><span>7,000 m</span></div>
@@ -123,14 +138,35 @@
             <p class="decision-lead">Grade the current mission window, then rank other sites or slip the start date. Adopt a row to jump the scenario.</p>
           </div>
           <div class="decision-actions">
-            <button type="button" id="rank-sites">Rank sites for this window</button>
+            <button type="button" id="find-best-location">Find best location</button>
+            <button type="button" id="rank-sites">Rank catalog sites</button>
             <button type="button" id="suggest-dates">Suggest better dates</button>
             <button type="button" id="jump-best-window">Jump scrub to best ∩</button>
           </div>
-          <p class="neighborhood-note" id="neighborhood-note">Neighborhood “better spot nearby” search is deferred: LOLA 360° horizons exist only for CR1/SR1. A sphere grid would look precise but understate terrain obstruction — use Rank + custom pick for exploration, then treat non-study grades as optimistic.</p>
-          <div class="decision-columns">
+          <div class="search-controls" id="search-controls">
+            <label for="search-region">Search region</label>
+            <select id="search-region">
+              <option value="cap" selected>South pole cap (87°S–90°S)</option>
+              <option value="around">Around Site A (radius)</option>
+            </select>
+            <label for="search-radius">Radius km (around Site A)</label>
+            <input id="search-radius" type="number" min="10" max="400" step="10" value="80">
+            <label for="search-topn">Top N results</label>
+            <input id="search-topn" type="number" min="3" max="25" step="1" value="8">
+          </div>
+          <p class="neighborhood-note" id="neighborhood-note">
+            <strong>Find best location</strong> ranks a coarse ~10 km grid inside the polar cap using
+            <strong>LOLA 320 m overview</strong> horizons (2° bins) + analytic ephemeris for the current mission window.
+            It is <em>not</em> a meter-perfect global optimum — CR1/SR1 still use 5 m near-field LOLA for study-grade grades.
+            Search hits appear as amber ◆ markers; Adopt makes one the coral ■ chosen site.
+          </p>
+          <div class="decision-columns decision-columns-3">
             <div class="decision-col">
-              <h3>Site ranking <span id="rank-status" class="muted-inline"></span></h3>
+              <h3>Regional search <span id="search-status" class="muted-inline"></span></h3>
+              <div id="search-list" class="rank-list" role="list"></div>
+            </div>
+            <div class="decision-col">
+              <h3>Catalog ranking <span id="rank-status" class="muted-inline"></span></h3>
               <div id="rank-list" class="rank-list" role="list"></div>
             </div>
             <div class="decision-col">
@@ -258,8 +294,10 @@
         <ul>
           <li>Horizons: bundled JPL observer az/el for CR1/SR1 (Jan 2027); live API or analytic fallback otherwise — source labeled on scrub readout.</li>
           <li>Horizons (terrain): LOLA 5 m near-field + 320 m overview for CR1/SR1 only; gaps never invented.</li>
+          <li>Regional “Find best location” uses a ~10 km polar-cap grid with LOLA 320 m overview horizons (2° bins) — coarse ranking, not a meter-perfect global optimum.</li>
           <li>Custom / curated / Apollo / CLPS catalog entries use an optimistic sphere horizon — labeled explicitly; do not treat as LOLA-grade.</li>
-          <li>Rank / date helper scores use the same assessMission engine as the badges; non-study sites remain sphere-optimistic.</li>
+          <li>Rank / date / search scores use the same assessMission engine as the badges; non-study catalog sites remain sphere-optimistic.</li>
+          <li>3D markers: coral ■ chosen (Site A), amber ◆ search hits, teal ● catalog, violet ◎ Site B. Default terrain layer is mesh/wireframe.</li>
           <li>3D display lighting ≠ authoritative observer Sun/Earth status. Quest VR runtime is not shipped — export JSON for external viz.</li>
         </ul>
         <div class="share-row">

@@ -160,29 +160,6 @@ export async function startTerrain(): Promise<TerrainApi> {
   globe.position.copy(moonCenter);
   scene.add(globe);
 
-  /**
-   * Coarse reference-sphere wireframe for latitudes outside the 87°S–90°S LOLA overview.
-   * Same hole/orientation as the textured globe so the polar DEM owns the cap; ~10° cells
-   * stay readable (not a solid-blue shell). No DEM displacement — honesty via mode-label.
-   */
-  const outerShellShape = new T.SphereGeometry(radius * 1.0012, 36, 18, 0, Math.PI * 2, 0, Math.PI - seam);
-  outerShellShape.rotateX(Math.PI);
-  outerShellShape.rotateY(Math.PI / 2);
-  const outerShell = new T.Mesh(
-    outerShellShape,
-    new T.MeshBasicMaterial({
-      color: 0x89b6ba,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.62,
-      depthWrite: false,
-    }),
-  );
-  outerShell.position.copy(moonCenter);
-  outerShell.renderOrder = 1;
-  outerShell.visible = false;
-  scene.add(outerShell);
-
   const overviewBody = await fetchAsset('terrain/polar-overview.bin').then(r => r.arrayBuffer());
   const header = new DataView(overviewBody);
   const overview: Grid = {
@@ -255,21 +232,18 @@ export async function startTerrain(): Promise<TerrainApi> {
   }
   let controls = createControls();
   /**
-   * Relief/elevation stream local DEM windows. Mesh/wireframe keeps the full
-   * 87°S–90°S 320 m overview plus a coarse global sphere shell outside that cap —
-   * never reintroduce stride 1–2 crater-local wireframe (solid-blue density).
+   * Mesh/wireframe: far = full-cap 320 m overview; zoomed = coarse detail windows
+   * (stride 4/8 → 20–40 m over ~5–10 km). Never stride 1–2 (solid-blue density).
+   * Relief/elevation keep fine 5–20 m windows.
    */
-  function detailPolicy(distance: number): { maxDistance: number; stride: number } | null {
-    if (layer.value === 'mesh') return null;
+  function detailPolicy(distance: number): { maxDistance: number; stride: number } {
+    if (layer.value === 'mesh') {
+      if (distance < 2200) return { maxDistance: 5500, stride: 4 };
+      return { maxDistance: 5500, stride: 8 };
+    }
     if (distance < 1000) return { maxDistance: 6300, stride: 1 };
     if (distance < 2300) return { maxDistance: 6300, stride: 2 };
     return { maxDistance: 6300, stride: 4 };
-  }
-
-  function setOverviewModeLabel() {
-    element('mode-label').textContent = layer.value === 'mesh'
-      ? 'POLAR 320 M LOLA · OUTSIDE · ~10° SPHERE GRID'
-      : '87°S–90°S · 320 M OVERVIEW';
   }
 
   function setLayer() {
@@ -277,15 +251,10 @@ export async function startTerrain(): Promise<TerrainApi> {
     backdrop.material = overviewMaterials[key];
     if (detail) detail.material = materials[key];
     element('legend').hidden = key !== 'elevation';
-    const meshOn = key === 'mesh';
-    outerShell.visible = meshOn;
-    lunarSurface.transparent = meshOn;
-    lunarSurface.opacity = meshOn ? 0.38 : 1;
-    lunarSurface.needsUpdate = true;
     // Mesh vs relief use different stride caps — drop the current window so LOD reloads uniformly.
     request?.abort();
     removeDetail();
-    setOverviewModeLabel();
+    element('mode-label').textContent = '87°S–90°S · 320 M OVERVIEW';
     nextUpdate = performance.now();
   }
   layer.onchange = setLayer;
@@ -307,10 +276,9 @@ export async function startTerrain(): Promise<TerrainApi> {
     currentGrid = grid;
     currentKey = key;
     const span = (size-1)*grid.spacing;
-    // Relief/elevation: open overview under a fully valid window.
-    // Mesh never cuts the polar overview — wide base wireframe stays primary.
-    if (layer.value !== 'mesh' &&
-        grid.values.every(Number.isFinite) &&
+    // Cut overview under a fully valid window so detail + base don't z-fight
+    // (double shells / intersecting tops). Mesh uses wide stride 4/8 windows only.
+    if (grid.values.every(Number.isFinite) &&
         [grid.x,grid.x+span].every(x=>Math.hypot(x,grid.y) < capRadius && Math.hypot(x,grid.y-span) < capRadius)) {
       cutout.value.set(grid.x+3,grid.y-span+3,grid.x+span-3,grid.y-3);
     }
@@ -336,15 +304,14 @@ export async function startTerrain(): Promise<TerrainApi> {
   function updateDetail() {
     const distance = camera.position.distanceTo(controls.target);
     const [x,y] = projection(controls.target);
-    const policy = detailPolicy(distance);
-    if (!policy || distance > policy.maxDistance || Math.hypot(x,y) > capRadius) {
+    const { maxDistance, stride } = detailPolicy(distance);
+    if (distance > maxDistance || Math.hypot(x,y) > capRadius) {
       request?.abort();
       removeDetail();
-      setOverviewModeLabel();
+      element('mode-label').textContent = '87°S–90°S · 320 M OVERVIEW';
       status.textContent = '';
       return;
     }
-    const { stride } = policy;
     const span = 256 * stride, step = 64 * stride;
     const column = Math.round(((x+100000)/5-span/2)/step)*step;
     const row = Math.round(((100000-y)/5-span/2)/step)*step;

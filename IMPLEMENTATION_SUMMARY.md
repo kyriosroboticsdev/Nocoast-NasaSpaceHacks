@@ -25,7 +25,7 @@ End-to-end **find / compare / decide** navigator on the Vite / TypeScript / Thre
 | Ephemeris | Bundled JPL for CR1/SR1 (extend via `science:ephemeris` when online); **no clamp past series end** (uncovered hours = unknown); calibrated analytic fallback (badged) |
 | Assessment | Exact `[start,end]` sampling; sun/shadow/**unknown** hours; windows with transition midpoints; power = 0 when not sunlit |
 | Ranking | Tiered authority: LOLA 5 m+JPL → overview → sphere/analytic (hard tier sort + score penalties); provenance badges |
-| Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play**; mesh = polar 320 m LOLA overview + coarse **global** ~10° sphere wireframe outside 87°S (no crater-local dense wireframe) |
+| Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play**; mesh = polar 320 m LOLA overview when far, coarse 20–40 m detail windows when zoomed (never 5 m solid-blue) |
 | Markers | Three categories on mesh: **catalog** (teal ●), **search** (amber ◆), **chosen** (coral ■) + Site B **compare** (violet ◎) |
 | Adopt → 3D | Site A changes / Adopt / map pick / custom apply **always** re-focus camera + chosen marker (no mystery CR1 snap) |
 | Compare | Side-by-side Site A / Site B with compare marker |
@@ -56,12 +56,16 @@ Full requirements mapping: `REQUIREMENTS_AUDIT.md`.
 5. Hits plot as amber ◆ markers; **Adopt** sets custom Site A **and retains the overview LOLA horizon + elevation used for ranking** (not downgraded to sphere).  
 6. UI labels honesty: coarse ranking, not meter-perfect / not global optimum. Prefer CR1/SR1 for study-grade LOLA.
 
-### Mesh LOD (preview)
+### Mesh LOD (preview) — decision (Randy Qs)
 
-- Default layer remains **mesh**.  
-- Mesh/wireframe uses the full-cap **320 m LOLA overview** (87°S–90°S / ~91 km stereographic disc) **plus** a coarse **global reference-sphere wireframe** (~10° lat/lon cells) outside that cap, so catalog sites beyond 87°S sit on readable geometry (not texture-only globe). Badge: `POLAR 320 M LOLA · OUTSIDE · ~10° SPHERE GRID`.  
-- Outside-cap shell is not DEM-displaced (honest label); polar region stays LOLA-accurate. No crater-local mesh windows / no overview cutout.  
-- Relief / elevation still stream 5–20 m detail near the view center; mesh never reintroduces stride 1–2 solid-blue density.
+**Outside-cap wireframe / real DEM?**  
+**Reverted** the `5b9bdfe` ~10° global sphere grid beyond 87°S. Real (or low-res real) DEM displacement outside the polar overview is **not practical for this demo**: the only bundled height product is `public/terrain/polar-overview.bin` (~1.3 MB, 320 m LOLA, 87°S–90°S). The polar 5 m mosaic alone is a multi-GB download (`scripts/download-polar.mjs`); a hemispheric/global LOLA suitable for wireframe displacement is not shippable without huge assets. A non-DEM sphere shell also caused **z-fighting / double-shell / polar-hole intersection** with the LOLA disc and textured globe — so the clean fix is remove the outer shell, keep polar LOLA mesh + textured globe outside the cap.
+
+**Polar dynamic LOD (restored):**  
+- Far / overview: full-cap **320 m LOLA** wireframe (`87°S–90°S · 320 M OVERVIEW`).  
+- Zoomed (camera distance &lt; ~5.5 km to target): stream detail windows at **stride 8 (~40 m)** then **stride 4 (~20 m)** when closer — readable density, not solid blue.  
+- **Never** mesh stride 1–2 (5–10 m). Relief/elevation still use 5–20 m.  
+- When a fully valid detail window loads, the overview is **cut out under it** (same as relief) so tops/bottoms do not intersect. Edge fade into overview via `meshFor(..., parent)` keeps the join continuous.
 
 ## Key files
 

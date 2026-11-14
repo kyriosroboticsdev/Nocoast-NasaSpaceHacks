@@ -14,10 +14,15 @@ const moonCenter = new T.Vector3(0,-radius,0);
 
 type Site = {name: string; siteId?: string; latitudeDeg: number; longitudeEastDeg: number; surfaceElevationM: number};
 
+export type TerrainPickCallback = (latitudeDeg: number, longitudeEastDeg: number) => void;
+
 export type TerrainApi = {
   focusLatLon: (latitudeDeg: number, longitudeEastDeg: number) => void;
   showGlobe: (animate?: boolean) => void;
   showPolarCap: () => void;
+  /** When enabled, next terrain click reports lat/lon instead of only flying. */
+  setPickMode: (enabled: boolean, onPick?: TerrainPickCallback) => void;
+  isPickMode: () => boolean;
 };
 type Grid = {x: number; y: number; width: number; spacing: number; values: Float32Array};
 
@@ -429,6 +434,27 @@ export async function startTerrain(): Promise<TerrainApi> {
   };
   const ray = new T.Raycaster();
   let pressed: {id:number; x:number; y:number} | undefined;
+  let pickMode = false;
+  let pickCallback: TerrainPickCallback | undefined;
+
+  function latLonFromPolarXY(x: number, y: number): { latitudeDeg: number; longitudeEastDeg: number } {
+    const rho = Math.hypot(x, y);
+    // Inverse of focusLatLon: rho = 2R tan((lat+90)/2°)
+    const latitudeDeg = 2 * T.MathUtils.radToDeg(Math.atan(rho / (2 * radius))) - 90;
+    // Prefer atan2 so lon is well-defined at the pole; world: +X=90°E, -Z=0°E → lon = atan2(x,y)
+    let longitudeEastDeg = T.MathUtils.radToDeg(Math.atan2(x, y));
+    if (longitudeEastDeg < 0) longitudeEastDeg += 360;
+    return { latitudeDeg, longitudeEastDeg };
+  }
+
+  function latLonFromGlobeHit(point: T.Vector3): { latitudeDeg: number; longitudeEastDeg: number } {
+    const radial = point.clone().sub(moonCenter).normalize();
+    const latitudeDeg = T.MathUtils.radToDeg(Math.asin(radial.y));
+    let longitudeEastDeg = T.MathUtils.radToDeg(Math.atan2(radial.x, -radial.z));
+    if (longitudeEastDeg < 0) longitudeEastDeg += 360;
+    return { latitudeDeg, longitudeEastDeg };
+  }
+
   renderer.domElement.addEventListener('pointerdown', event => {
     pressed = event.isPrimary && event.button === 0 ? {id:event.pointerId,x:event.clientX,y:event.clientY} : undefined;
   });
@@ -446,6 +472,11 @@ export async function startTerrain(): Promise<TerrainApi> {
     const candidates = detail ? [detail,backdrop,globe] : [backdrop,globe];
     for (const hit of ray.intersectObjects(candidates,false)) {
       if (hit.object === globe) {
+        if (pickMode && pickCallback) {
+          const ll = latLonFromGlobeHit(hit.point);
+          pickCallback(ll.latitudeDeg, ll.longitudeEastDeg);
+          break;
+        }
         focusedPoint = undefined;
         element('details').replaceChildren();
         const radial = hit.point.clone().sub(moonCenter).normalize();
@@ -454,6 +485,12 @@ export async function startTerrain(): Promise<TerrainApi> {
       }
       const [x,y] = projection(hit.point);
       if (hit.object === backdrop && x>bounds.x && x<bounds.z && y>bounds.y && y<bounds.w) continue;
+      if (pickMode && pickCallback) {
+        const ll = latLonFromPolarXY(x, y);
+        pickCallback(ll.latitudeDeg, ll.longitudeEastDeg);
+        focusTerrain(x, y);
+        break;
+      }
       focusTerrain(x,y);
       break;
     }
@@ -495,5 +532,17 @@ export async function startTerrain(): Promise<TerrainApi> {
     focusLatLon,
     showGlobe: (animate = true) => showGlobe(animate),
     showPolarCap,
+    setPickMode(enabled, onPick) {
+      pickMode = enabled;
+      pickCallback = enabled ? onPick : undefined;
+      renderer.domElement.style.cursor = enabled ? 'crosshair' : '';
+      const hint = element('hint');
+      if (enabled) {
+        hint.textContent = 'Pick mode · click terrain to set custom Site A (sphere horizon) · Esc or button to cancel';
+      } else {
+        hint.textContent = 'Click to fly · Drag to orbit · Middle-drag to pan · Scroll or pinch to zoom';
+      }
+    },
+    isPickMode: () => pickMode,
   };
 }

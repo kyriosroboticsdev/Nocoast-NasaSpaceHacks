@@ -1,9 +1,9 @@
 import type { SiteCatalogEntry } from './types';
 
 /**
- * Curated south-pole / notable sites.
+ * Curated landing sites for rapid comparison.
  * Study sites (CR1/SR1) match sites.json and ship LOLA terrain horizons.
- * Other curated entries and custom lat/lon use sphere_optimistic horizons —
+ * Other curated / Apollo / CLPS / international entries use sphere_optimistic —
  * UI must surface that flag so planners do not treat them as measured.
  */
 export const SITE_CATALOG: SiteCatalogEntry[] = [
@@ -89,6 +89,165 @@ export const SITE_CATALOG: SiteCatalogEntry[] = [
     horizonStatus: 'sphere_fallback',
     horizonModel: 'sphere_optimistic',
   },
+  {
+    siteId: 'nobile-rim',
+    name: 'Nobile crater rim (polar)',
+    publishedLabel: 'NOB',
+    latitudeDeg: -85.2,
+    longitudeEastDeg: 55.0,
+    surfaceElevationM: 1000,
+    observerHeightAboveGroundM: 2,
+    category: 'curated',
+    notes: 'Polar crater rim region discussed for ice and CLPS-style targeting. Sphere horizon.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  // ---- CLPS / commercial-style targets (approximate public coords; sphere horizons) ----
+  {
+    siteId: 'clps-im1-region',
+    name: 'IM-1 region (Malapert A area)',
+    publishedLabel: 'IM1',
+    latitudeDeg: -80.13,
+    longitudeEastDeg: 1.44,
+    surfaceElevationM: 2000,
+    observerHeightAboveGroundM: 2,
+    category: 'clps',
+    notes: 'Representative Intuitive Machines IM-1 south-polar approach region. Sphere horizon only.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  {
+    siteId: 'clps-viper-naberius',
+    name: 'VIPER / Nobile vicinity',
+    publishedLabel: 'VIP',
+    latitudeDeg: -85.42,
+    longitudeEastDeg: 31.35,
+    surfaceElevationM: 900,
+    observerHeightAboveGroundM: 2,
+    category: 'clps',
+    notes: 'Approximate VIPER exploration vicinity near Nobile. Sphere horizon; not an official NASA landing pin.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  {
+    siteId: 'clps-prl-shalton',
+    name: 'Shackleton–de Gerlache ridge (CLPS-style)',
+    publishedLabel: 'SDR',
+    latitudeDeg: -89.0,
+    longitudeEastDeg: 210.0,
+    surfaceElevationM: 1600,
+    observerHeightAboveGroundM: 2,
+    category: 'clps',
+    notes: 'Representative CLPS-region ridge between Shackleton and de Gerlache. Sphere horizon.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  // ---- Apollo heritage (non-polar; sphere; educational contrast) ----
+  {
+    siteId: 'apollo-11',
+    name: 'Apollo 11 · Sea of Tranquility',
+    publishedLabel: 'A11',
+    latitudeDeg: 0.67408,
+    longitudeEastDeg: 23.47297,
+    surfaceElevationM: -1900,
+    observerHeightAboveGroundM: 2,
+    category: 'apollo',
+    notes: 'Equatorial heritage site — Earth LOS and solar day differ sharply from polar ops. Sphere horizon; outside polar mosaic.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  {
+    siteId: 'apollo-12',
+    name: 'Apollo 12 · Oceanus Procellarum',
+    publishedLabel: 'A12',
+    latitudeDeg: -3.01239,
+    longitudeEastDeg: 336.5781,
+    surfaceElevationM: -1500,
+    observerHeightAboveGroundM: 2,
+    category: 'apollo',
+    notes: 'Equatorial heritage site for Earth-analog contrast in Learn mode. Sphere horizon.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  {
+    siteId: 'apollo-14',
+    name: 'Apollo 14 · Fra Mauro',
+    publishedLabel: 'A14',
+    latitudeDeg: -3.6453,
+    longitudeEastDeg: 342.5229,
+    surfaceElevationM: -1000,
+    observerHeightAboveGroundM: 2,
+    category: 'apollo',
+    notes: 'Equatorial heritage site. Sphere horizon; outside polar mosaic.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  {
+    siteId: 'apollo-15',
+    name: 'Apollo 15 · Hadley–Apennine',
+    publishedLabel: 'A15',
+    latitudeDeg: 26.1322,
+    longitudeEastDeg: 3.6339,
+    surfaceElevationM: -2000,
+    observerHeightAboveGroundM: 2,
+    category: 'apollo',
+    notes: 'Mid-latitude heritage site. Sphere horizon.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  {
+    siteId: 'apollo-16',
+    name: 'Apollo 16 · Descartes',
+    publishedLabel: 'A16',
+    latitudeDeg: -8.9734,
+    longitudeEastDeg: 15.5011,
+    surfaceElevationM: -500,
+    observerHeightAboveGroundM: 2,
+    category: 'apollo',
+    notes: 'Equatorial highland heritage site. Sphere horizon.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  {
+    siteId: 'apollo-17',
+    name: 'Apollo 17 · Taurus–Littrow',
+    publishedLabel: 'A17',
+    latitudeDeg: 20.1908,
+    longitudeEastDeg: 30.7717,
+    surfaceElevationM: -1500,
+    observerHeightAboveGroundM: 2,
+    category: 'apollo',
+    notes: 'Last Apollo landing — useful Earth-day contrast vs polar blackouts. Sphere horizon.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  // ---- International / other programs (approximate; educational) ----
+  {
+    siteId: 'chang-e-4',
+    name: 'Chang\'e-4 · Von Kármán (farside)',
+    publishedLabel: 'CE4',
+    latitudeDeg: -45.4446,
+    longitudeEastDeg: 177.5991,
+    surfaceElevationM: -5900,
+    observerHeightAboveGroundM: 2,
+    category: 'international',
+    notes: 'Farside site — direct Earth LOS is blocked by the Moon; relay-dependent. Sphere horizon; DTE will show as poor by design.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  {
+    siteId: 'chandrayaan3',
+    name: 'Chandrayaan-3 · near 69°S',
+    publishedLabel: 'CH3',
+    latitudeDeg: -69.373,
+    longitudeEastDeg: 32.319,
+    surfaceElevationM: -500,
+    observerHeightAboveGroundM: 2,
+    category: 'international',
+    notes: 'Near-polar Indian landing region — bridges equatorial Apollo and true south-pole geometry. Sphere horizon.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
 ];
 
 export function findSite(siteId: string): SiteCatalogEntry | undefined {
@@ -108,7 +267,7 @@ export function resolveSiteCoords(
       longitudeEastDeg: lon,
       elevationM: 0,
       observerHeightM: 2,
-      label: `Custom ${Math.abs(lat).toFixed(3)}°S ${lon.toFixed(3)}°E`,
+      label: `Custom ${Math.abs(lat).toFixed(3)}°${lat < 0 ? 'S' : 'N'} ${lon.toFixed(3)}°E`,
       horizonModel: 'sphere_optimistic',
     };
   }
@@ -132,3 +291,11 @@ export function resolveSiteCoords(
     horizonModel: site.horizonModel,
   };
 }
+
+export const CATALOG_GROUP_LABELS: Record<string, string> = {
+  study: 'Study points (LOLA horizons)',
+  curated: 'Curated polar candidates',
+  clps: 'CLPS / commercial-style (approx.)',
+  apollo: 'Apollo heritage (equatorial contrast)',
+  international: 'International / other programs',
+};

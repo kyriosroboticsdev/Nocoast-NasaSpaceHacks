@@ -12,7 +12,7 @@
       <div>
         <p class="eyebrow">NOCOAST · NASA SPACE APPS · SOUTH POLE</p>
         <h1>Lunar Landing Site Navigator</h1>
-        <p class="tagline" id="mode-tagline">Compare sites and dates for solar power and direct-to-Earth communications.</p>
+        <p class="tagline" id="mode-tagline">Find, compare, and decide landing sites and dates for solar power and direct-to-Earth communications.</p>
       </div>
       <div class="header-actions">
         <div class="mode-toggle" role="group" aria-label="Application mode">
@@ -27,8 +27,9 @@
       <article>
         <h2>Why the south pole is hard</h2>
         <p>Near 90°S, the Sun stays low and skims a jagged horizon. Ridges a few kilometers away can block sunlight for days, and Earth may sit just above or below the local terrain — so power and communications rise and fall together with landing site and date.</p>
-        <p>This Learn view uses the <strong>same scenario engine</strong> as Planner: same horizons, same ephemeris, same viability grade. Guided picks below jump to curated comparisons; enable “Show technical details” when you want the thresholds behind GO / RISKY / NO-GO.</p>
-        <p class="learn-tip">Try CR1 vs SR1 on the same week, then the +14 day launch-slip guide — small date moves can flip which site looks healthier.</p>
+        <p>This Learn view uses the <strong>same scenario engine</strong> as Planner. Use <strong>Rank sites</strong> and <strong>Suggest better dates</strong> below to see why one site/date wins and another fails — then adopt with one click.</p>
+        <p class="learn-tip" id="learn-verdict-tip">Try CR1 vs SR1 on the same week, then slip the start — small date moves can flip which site looks healthier. Verdict grades the <strong>mission window</strong>; scrub explores <strong>instants</strong> inside it.</p>
+        <p class="learn-earth-analog" id="learn-earth-analog">On Earth, a clear day usually means continuous sunlight and radio. Near the lunar pole, sunlight and Earth line-of-sight can vanish for hours even when “day” should last — that is the engineering surprise this tool teaches.</p>
       </article>
       <div class="guided">
         <h3>Guided scenarios</h3>
@@ -37,6 +38,8 @@
           <button type="button" data-guide="sr1-jan" title="Shackleton Rim same week">SR1 · same week</button>
           <button type="button" data-guide="compare" title="Side-by-side power and Earth LOS">Compare CR1 vs SR1</button>
           <button type="button" data-guide="slip" title="Same sites, start slipped two weeks">Launch slip +14 days</button>
+          <button type="button" data-guide="apollo" title="Equatorial Apollo vs polar study">Apollo 11 vs CR1</button>
+          <button type="button" data-guide="rank" title="Open ranked catalog for this window">Rank this window</button>
         </div>
       </div>
     </section>
@@ -54,6 +57,11 @@
               <label for="lon-a">Lon ° E</label>
               <input id="lon-a" type="number" step="0.0001" value="0">
               <button type="button" id="apply-custom-a">Apply custom A</button>
+              <p class="control-hint custom-warn">Custom points use an <strong>optimistic sphere horizon</strong> (terrain unknown). Prefer CR1/SR1 for LOLA-grade assessment.</p>
+            </div>
+            <div class="pick-row">
+              <button type="button" id="pick-map-a" title="Click the 3D map to set custom Site A">Pick on map</button>
+              <button type="button" id="cancel-pick" hidden>Cancel pick</button>
             </div>
           </div>
 
@@ -107,17 +115,70 @@
         </section>
       </section>
 
+      <!-- Decision loop: rank + date suggestions -->
+      <section class="cluster decision-cluster" aria-label="Find and decide" data-tour="decision">
+        <div class="decision-panel" id="decision-panel">
+          <div class="decision-header">
+            <h2>Find · compare · decide</h2>
+            <p class="decision-lead">Grade the current mission window, then rank other sites or slip the start date. Adopt a row to jump the scenario.</p>
+          </div>
+          <div class="decision-actions">
+            <button type="button" id="rank-sites">Rank sites for this window</button>
+            <button type="button" id="suggest-dates">Suggest better dates</button>
+            <button type="button" id="jump-best-window">Jump scrub to best ∩</button>
+          </div>
+          <p class="neighborhood-note" id="neighborhood-note">Neighborhood “better spot nearby” search is deferred: LOLA 360° horizons exist only for CR1/SR1. A sphere grid would look precise but understate terrain obstruction — use Rank + custom pick for exploration, then treat non-study grades as optimistic.</p>
+          <div class="decision-columns">
+            <div class="decision-col">
+              <h3>Site ranking <span id="rank-status" class="muted-inline"></span></h3>
+              <div id="rank-list" class="rank-list" role="list"></div>
+            </div>
+            <div class="decision-col">
+              <h3>Date / launch-slip helper <span id="date-status" class="muted-inline"></span></h3>
+              <div class="slip-quick" id="slip-quick">
+                <button type="button" data-slip="-14">−14 d</button>
+                <button type="button" data-slip="-7">−7 d</button>
+                <button type="button" data-slip="7">+7 d</button>
+                <button type="button" data-slip="14">+14 d</button>
+              </div>
+              <div id="date-list" class="rank-list" role="list"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Metrics + thresholds stay together -->
       <section class="cluster assess-cluster" aria-label="Power and communications assessment">
         <div class="metrics" id="metrics-a" data-tour="viability">
           <h2 id="metrics-a-title">Site A</h2>
-          <div class="viability" id="viability-a">—</div>
+          <div class="verdict-dual">
+            <div>
+              <p class="verdict-label">Mission window grade</p>
+              <div class="viability" id="viability-a">—</div>
+            </div>
+            <div>
+              <p class="verdict-label">At scrub time</p>
+              <div class="instant-chip" id="instant-a">—</div>
+            </div>
+          </div>
+          <p class="verdict-caption" id="verdict-caption-a">Window grade uses the full mission start→end. Scrub only changes the instant chip, skyline, and time-to-set.</p>
+          <p class="nogo-prompt" id="nogo-prompt-a" hidden></p>
           <div class="metric-grid" id="metric-grid-a"></div>
           <p class="horizon-flag" id="horizon-flag-a"></p>
         </div>
         <div class="metrics" id="metrics-b">
           <h2 id="metrics-b-title">Site B</h2>
-          <div class="viability" id="viability-b">—</div>
+          <div class="verdict-dual">
+            <div>
+              <p class="verdict-label">Mission window grade</p>
+              <div class="viability" id="viability-b">—</div>
+            </div>
+            <div>
+              <p class="verdict-label">At scrub time</p>
+              <div class="instant-chip" id="instant-b">—</div>
+            </div>
+          </div>
+          <p class="verdict-caption" id="verdict-caption-b">Same shared UTC window as Site A.</p>
           <div class="metric-grid" id="metric-grid-b"></div>
           <p class="horizon-flag" id="horizon-flag-b"></p>
         </div>
@@ -131,6 +192,8 @@
             <input id="panel-area" type="number" min="0.1" max="50" step="0.1" value="2">
             <label for="panel-eff">Panel efficiency</label>
             <input id="panel-eff" type="number" min="0.05" max="0.45" step="0.01" value="0.28">
+            <label for="panel-tilt">Panel tilt °</label>
+            <input id="panel-tilt" type="number" min="0" max="60" step="1" value="0">
             <label for="battery-floor">Battery floor W</label>
             <input id="battery-floor" type="number" min="0" max="500" step="5" value="40">
           </details>
@@ -151,9 +214,30 @@
           <label for="duration">Mission length (Earth hours)</label>
           <input id="duration" type="number" min="6" max="720" step="6" value="168">
 
+          <div class="season-presets" id="season-presets">
+            <span class="preset-label">Quick windows</span>
+            <button type="button" data-season="jan15">Mid-Jan 2027</button>
+            <button type="button" data-season="jan1">Early Jan 2027</button>
+            <button type="button" data-season="jan29">Late Jan 2027</button>
+            <button type="button" data-season="lunar-day">~1 lunar day (708 h)</button>
+          </div>
+          <p class="control-hint">Bundled Horizons fidelity peaks in Jan 2027 for CR1/SR1; other seasons use analytic fallback (~1–3° illustrative).</p>
+
           <label for="scrub">Time scrubber (UTC)</label>
           <input id="scrub" type="range" min="0" max="168" step="0.1" value="0">
+          <div class="play-row">
+            <button type="button" id="play-scrub" aria-pressed="false">Play</button>
+            <button type="button" id="pause-scrub" hidden>Pause</button>
+            <label for="play-speed" class="inline-label">Speed</label>
+            <select id="play-speed">
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+              <option value="4">4×</option>
+            </select>
+          </div>
           <p class="scrub-readout" id="scrub-label">—</p>
+          <p class="best-window-label" id="best-window-label">—</p>
           <p class="control-hint">Scrub explores instants inside the mission window (skyline, elev, time-to-set). GO / RISKY / NO-GO and availability % grade the whole window — change start, duration, or site to recompute them.</p>
         </aside>
 
@@ -163,8 +247,8 @@
             <canvas id="skyline" width="800" height="140" aria-label="Horizon skyline with Sun and Earth"></canvas>
           </div>
           <div class="viz-block" data-tour="timeline">
-            <h3>Mission timeline</h3>
-            <canvas id="timeline" width="800" height="100" aria-label="Sunlight and Earth LOS timeline"></canvas>
+            <h3>Mission timeline · sun ∩ Earth highlighted</h3>
+            <canvas id="timeline" width="800" height="120" aria-label="Sunlight and Earth LOS timeline"></canvas>
           </div>
         </div>
       </section>
@@ -172,10 +256,11 @@
       <section class="provenance" id="provenance">
         <h3>Provenance &amp; limits</h3>
         <ul>
-          <li>Horizons: bundled JPL observer az/el for CR1/SR1 (Jan 2027); live API or analytic fallback otherwise.</li>
-          <li>Horizons (terrain): LOLA 5 m near-field + 320 m overview; gaps never invented.</li>
-          <li>Custom / curated non-study sites use an optimistic sphere horizon — labeled explicitly.</li>
-          <li>3D display lighting ≠ authoritative observer Sun/Earth status.</li>
+          <li>Horizons: bundled JPL observer az/el for CR1/SR1 (Jan 2027); live API or analytic fallback otherwise — source labeled on scrub readout.</li>
+          <li>Horizons (terrain): LOLA 5 m near-field + 320 m overview for CR1/SR1 only; gaps never invented.</li>
+          <li>Custom / curated / Apollo / CLPS catalog entries use an optimistic sphere horizon — labeled explicitly; do not treat as LOLA-grade.</li>
+          <li>Rank / date helper scores use the same assessMission engine as the badges; non-study sites remain sphere-optimistic.</li>
+          <li>3D display lighting ≠ authoritative observer Sun/Earth status. Quest VR runtime is not shipped — export JSON for external viz.</li>
         </ul>
         <div class="share-row">
           <button type="button" id="copy-link">Copy shareable link</button>

@@ -21,7 +21,7 @@ export type SiteCatalogEntry = {
   longitudeEastDeg: number;
   surfaceElevationM: number;
   observerHeightAboveGroundM: number;
-  category: 'study' | 'curated' | 'custom';
+  category: 'study' | 'curated' | 'apollo' | 'clps' | 'international' | 'custom';
   notes?: string;
   horizonStatus: HorizonStatus;
   horizonModel: HorizonModel;

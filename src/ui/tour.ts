@@ -40,9 +40,15 @@ const STEPS: TourStep[] = [
     target: 'compare',
   },
   {
+    id: 'decision',
+    title: 'Find · compare · decide',
+    body: 'Use Rank sites to score the catalog for this UTC window, Suggest better dates to slip the start, and Jump scrub to best ∩ to inspect the longest simultaneous stretch. Adopt/Apply jumps the scenario in one click.',
+    target: 'decision',
+  },
+  {
     id: 'time',
     title: 'Mission time',
-    body: 'Set mission start and length first — those define the window being graded. Then scrub inside the window to watch Sun and Earth move. Scrub does not change GO / RISKY / NO-GO; changing start, duration, or site does.',
+    body: 'Set mission start and length first — those define the window being graded. Play animates the scrubber for education. Scrub does not change GO / RISKY / NO-GO; changing start, duration, or site does.',
     target: 'time',
   },
   {
@@ -54,19 +60,19 @@ const STEPS: TourStep[] = [
   {
     id: 'timeline',
     title: 'Mission timeline',
-    body: 'Bars show sunlight, Earth line-of-sight, and simultaneous windows across the mission. The vertical marker tracks the scrubber.',
+    body: 'Bars show sunlight, Earth LOS, and sun ∩ Earth. A dashed highlight marks the best simultaneous (or best single) window — use Jump scrub to best ∩ to land on it.',
     target: 'timeline',
   },
   {
     id: 'viability',
-    title: 'Viability grade',
-    body: 'GO / RISKY / NO-GO grades the whole mission window (availability %, blackouts, power proxy) — not the scrub instant. Change start date or site to recompute; Site B appears when compare is on.',
+    title: 'Window grade vs scrub',
+    body: 'Mission window grade (GO / RISKY / NO-GO) scores the whole start→end span. The “At scrub time” chip shows BOTH / SUNLIT / EARTH LOS / BLACKOUT for the instant under the scrubber — they are intentionally separate.',
     target: 'viability',
   },
   {
     id: 'thresholds',
     title: 'Assessment settings',
-    body: 'Planner thresholds (Earth elevation floor, panel size/efficiency, battery floor) sit beside the metrics they affect. In Learn mode, use “Show technical details” instead.',
+    body: 'Planner thresholds (min Earth elevation, panel area/efficiency/tilt, battery floor) sit beside the metrics they affect. In Learn mode, use “Show technical details” instead.',
     target: 'thresholds',
   },
 ];

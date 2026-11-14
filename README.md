@@ -22,7 +22,7 @@ Cold-path demo (&lt; 2 minutes):
 
 1. Confirm Planner mode → Site A = CR1, Site B = SR1, compare on.
 2. Scrub the UTC slider; watch Sun/Earth markers on the 360° skyline and the timeline bars.
-3. Read sunlight %, Earth LOS %, power proxy, and time-to-sunset / Earthset.
+3. Read sunlight %, Earth LOS %, panel watts, energy/coverage, and time-to-sunset / Earthset.
 4. Toggle **Learn** for the south-pole story and guided CR1 / SR1 / slip scenarios.
 5. Optional: **Copy shareable link** or **Export time series JSON** (Quest-ready shape).
 
@@ -54,7 +54,8 @@ Custom lat/lon and non-study curated sites use an **optimistic sphere horizon**,
 src/scenario/   shared Planner ↔ Learn state + catalog + URL sync
 src/horizon/    load / sphere fallback / elevation-at-azimuth
 src/ephemeris/  bundled Horizons + live API client + analytic fallback
-src/assess/     sunlight, Earth LOS, blackouts, power proxy, viability
+src/assess/     sunlight, Earth LOS, blackouts, assessment orchestration
+src/power/      solar input adapter + pure irradiance, panel power and energy model
 src/viz/        skyline ribbon + Gantt timeline
 src/ui/         formatting helpers + Learn narrative
 src/app.ts      mode shell + assessment orchestration
@@ -77,3 +78,25 @@ For a fully offline terrain mosaic, see the original polar download flow (`node 
 ## Branch
 
 Implementation lives on `preview` (from `vracton/terrain`).
+
+## Solar contribution: `solar-integration`
+
+This branch adds the Person 3 solar module on top of `preview` at `6871774`.
+The new commit contains our solar changes; the team's existing preview commits
+are its base.
+
+Integration flow: site/observer metadata + Sun ephemeris → the visibility
+module's `sunlit` mask → `src/power/adapter.ts` → `src/power/model.mjs` → panel
+watts, mission watt-hours and coverage in the planner/JSON export. Visibility
+owns terrain obstruction; solar consumes its result once and adds panel
+orientation, active area, efficiency and Sun distance. Earth availability is
+independent of solar generation. Missing inputs stay unknown.
+
+Run `npm.cmd test` and `npm.cmd run build` to verify. The existing panel controls
+now include true-north facing bearing, and shared URLs preserve the settings.
+
+See the [solar README and teammate handoff](docs/solar/README.md) for the input
+contract, units/frames, source coverage, current limitations and commit-only
+instructions. [Latest repo updates](docs/solar/REPO_UPDATE.md) are documented
+separately. Terrain validation is still qualified in the UI; batteries and
+loads are outside this P0 module.

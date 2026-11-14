@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "0.1.0",
+  "artifactType": "solar-input",
+  "artifactId": "contract-example-v1",
+  "scenarioId": "contract-example-v1",
+  "generatedAtUtc": "2026-11-14T17:27:32Z",
+  "label": "Two-sample synthetic integration example",
+  "frameId": "MOON_ME_DE421",
+  "siteId": "connecting-ridge-cr1",
+  "site": {
+    "latitudeDeg": -89.4555,
+    "longitudeEastDeg": 222.6192,
+    "surfaceElevationM": 1949.6080773175818,
+    "referenceRadiusM": 1737400
+  },
+  "observerHeightAboveGroundM": 2,
+  "time": {
+    "startUtc": "2027-01-01T00:00:00Z",
+    "endUtc": "2027-01-01T00:10:00Z",
+    "baseStepSeconds": 600,
+    "visibilityInterpolation": "previous-sample-hold"
+  },
+  "provenance": {
+    "ephemeris": {
+      "provider": "Synthetic engineering test fixture; not a lunar ephemeris"
+    },
+    "visibility": {
+      "provider": "Synthetic mask for testing power attenuation; not NASA terrain",
+      "mode": "synthetic-test",
+      "sunModel": "fractional-test-v1"
+    }
+  },
+  "samples": [
+    {
+      "timeUtc": "2027-01-01T00:00:00Z",
+      "sun": {
+        "azimuthDeg": 90,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T00:10:00Z",
+      "sun": {
+        "azimuthDeg": 92.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    }
+  ]
+}

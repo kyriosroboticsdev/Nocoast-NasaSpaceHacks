@@ -146,15 +146,17 @@ export function applyUrlParams(search: string) {
   }
 
   const thresholds: Partial<ScenarioThresholds> = {};
-  const minEl = parseFinite(params.get('minEl'), -5, 90);
+  const minEl = parseFinite(params.get('minEarthElevationDeg') ?? params.get('minEl'), -5, 90);
   if (minEl != null) thresholds.minEarthElevationDeg = minEl;
-  const area = parseFinite(params.get('area'), 0.01, 1000);
+  const area = parseFinite(params.get('panelAreaM2') ?? params.get('area'), 0, 1000000);
   if (area != null) thresholds.panelAreaM2 = area;
-  const eff = parseFinite(params.get('eff'), 0.01, 1);
+  const eff = parseFinite(params.get('panelEfficiency') ?? params.get('eff'), 0, 1);
   if (eff != null) thresholds.panelEfficiency = eff;
-  const tilt = parseFinite(params.get('tilt'), -90, 90);
+  const tilt = parseFinite(params.get('panelTiltDeg') ?? params.get('tilt'), 0, 180);
   if (tilt != null) thresholds.panelTiltDeg = tilt;
-  const floor = parseFinite(params.get('floor'), 0, 1e6);
+  const bearing = parseFinite(params.get('panelAzimuthDeg'), 0, 359.999999);
+  if (bearing != null) thresholds.panelAzimuthDeg = bearing;
+  const floor = parseFinite(params.get('batteryFloorW') ?? params.get('floor'), 0, 1e6);
   if (floor != null) thresholds.batteryFloorW = floor;
   if (Object.keys(thresholds).length) patch.thresholds = { ...state.thresholds, ...thresholds };
 
@@ -193,6 +195,7 @@ export function scenarioToSearchParams(s: ScenarioState = state): string {
   p.set('area', String(s.thresholds.panelAreaM2));
   p.set('eff', String(s.thresholds.panelEfficiency));
   p.set('tilt', String(s.thresholds.panelTiltDeg));
+  p.set('panelAzimuthDeg', String(s.thresholds.panelAzimuthDeg));
   p.set('floor', String(s.thresholds.batteryFloorW));
   return p.toString();
 }

@@ -1,6 +1,6 @@
 /**
  * Plain-language Planner metric explanations — significance + how calculated.
- * Copy matches assess/windows.ts and assess/decision.ts (proxy power, unknown ≠ blackout).
+ * Copy matches assess/windows.ts and assess/decision.ts (direct-beam solar power, unknown ≠ blackout).
  */
 
 export type MetricHelpId =
@@ -24,14 +24,19 @@ export type MetricHelpId =
   | 'minEarthEl'
   | 'panelArea'
   | 'panelEff'
-  | 'panelTilt';
+  | 'panelTilt'
+  | 'panelAzimuth'
+  | 'totalEnergy'
+  | 'knownEnergy'
+  | 'solarCoverage'
+  | 'samplePower'
+  | 'irradiance'
+  | 'incidence';
 
 export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> = {
   sunlight: {
-    title: 'Sunlight availability',
-    body:
-      'Share of the mission start→end span when the Sun clears the local terrain horizon (clearance > 0°). ' +
-      'Counted from hourly samples; transitions count as half-on. Missing ephemeris or horizon bearings are unknown — they do not count as night.',
+    title: "Sunlight availability",
+    body: "Share of the mission when the Sun center clears the terrain horizon (>0\u00b0). The planner normally samples every 10 minutes; window transitions use the visibility module\u2019s midpoint approximation. Unknown is neither night nor sunlight. Solar energy separately holds each supplied mask over its following interval.",
   },
   earthLos: {
     title: 'Earth LOS availability',
@@ -46,15 +51,12 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
       'Outside ∩ you may have sunlight but no DTE (store data / wait for Earthrise) or Earth contact while in shadow (draw from battery). Percent is simultaneous hours ÷ mission length.',
   },
   meanPower: {
-    title: 'Mean power proxy',
-    body:
-      'Average of the rough panel power at each known sample (unknown hours excluded). When sunlit: 1361 W/m² × panel area × efficiency × max(0, sin(sun elevation + tilt)); otherwise 0 W. ' +
-      'This is a geometry proxy for comparing sites/dates — not a flight electrical model. GO also requires mean power ≥ battery floor.',
+    title: "Mean panel output",
+    body: "Duration-weighted solar energy divided by mission hours. Direct-beam power uses 1361/rangeAu\u00b2 W/m\u00b2 \u00d7 area \u00d7 efficiency \u00d7 max(0, panel-normal dot Sun-direction) \u00d7 upstream visible fraction. Unknown intervals make the full-window mean unknown. This constant-efficiency estimate excludes batteries, loads, temperature, dust and electrical losses.",
   },
   peakPower: {
-    title: 'Peak power proxy',
-    body:
-      'Highest sample power in the known window using the same proxy formula as mean power. Useful for sizing headroom; GO gates use the mean vs battery floor, not the peak.',
+    title: "Sampled peak panel output",
+    body: "Highest known sampled panel output inside the half-open mission window. The end-boundary sample adds no extra peak or duration. This is not a bound on unsampled peaks; consult solar coverage when data is incomplete.",
   },
   sunBlackout: {
     title: 'Longest sun blackout',
@@ -102,11 +104,8 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
       'Earth elevation minus terrain horizon in that azimuth. LOS is true only when this clearance ≥ Min Earth elevation °.',
   },
   viability: {
-    title: 'Mission window grade',
-    body:
-      'GO: sunlight ≥ 40%, Earth LOS ≥ 40%, mean power ≥ battery floor, and ≥ ~50% of hours known. ' +
-      'RISKY: sunlight and Earth LOS each ≥ 20% with enough known coverage (storage/relay/date slip may still be needed). ' +
-      'NO-GO: below those bars (sphere-only sites may be labeled terrain-unknown). Grades the full start→end window — not the scrub chip.',
+    title: "Mission window grade",
+    body: "The existing heuristic uses sunlight, Earth LOS, mean power and known coverage. Solar integration additionally requires complete inputs and declared terrain validation. Otherwise the grade is UNKNOWN. This is not a battery or mission-survival simulation.",
   },
   instant: {
     title: 'At scrub time',
@@ -114,9 +113,8 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
       'Ops status for the single scrub sample: BOTH (sun ∩ Earth), SUNLIT (power, no DTE), EARTH LOS (contact, no sun), BLACKOUT (neither), or UNKNOWN (gap). Independent of the window grade.',
   },
   batteryFloor: {
-    title: 'Battery floor',
-    body:
-      'Rough continuous-draw floor (W) used as a GO gate against mean power proxy. If mean power sits below this floor, the window cannot be GO even with decent sunlight % — framing battery risk during night / outage.',
+    title: "Planning power threshold",
+    body: "Existing heuristic threshold in watts for the mission grade. This P0 solar module does not simulate a battery or habitat load. A mean-power threshold does not establish survival through a blackout.",
   },
   minEarthEl: {
     title: 'Min Earth elevation',
@@ -124,26 +122,30 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
       'Margin above the terrain horizon required before counting Earth LOS (degrees). Higher values demand clearer DTE geometry and usually lower Earth availability %.',
   },
   panelArea: {
-    title: 'Panel area',
-    body:
-      'Assumed array area (m²) in the power proxy. Scales mean/peak watts linearly when the site is sunlit.',
+    title: "Active panel area",
+    body: "Active collecting area in square meters. Power scales linearly with this area.",
   },
   panelEff: {
-    title: 'Panel efficiency',
-    body:
-      'Assumed conversion efficiency (0–1) in the power proxy. Multiplies with area and solar constant when sunlit.',
+    title: "Panel efficiency",
+    body: "Conversion efficiency as a ratio from 0 to 1, held constant in this P0 model. Temperature dependence and electrical losses are excluded.",
   },
   panelTilt: {
-    title: 'Panel tilt',
-    body:
-      'Degrees of tilt toward the Sun used in the incidence proxy: irradiance ∝ sin(sun elevation + tilt), clamped at ≥ 0. 0° = horizontal panel.',
+    title: "Tilt from horizontal",
+    body: "Fixed panel normal tilt from local up: 0\u00b0 is face-up horizontal, 90\u00b0 is vertical, 180\u00b0 faces down. Facing bearing chooses its direction. The model uses an ENU dot product with the true Sun direction, not terrain clearance.",
   },
+  panelAzimuth: { title: "Panel facing bearing", body: "Bearing of the fixed panel normal, clockwise from true local north: N=0\u00b0, E=90\u00b0, S=180\u00b0, W=270\u00b0. It does not change the horizon mask. Bearing has no effect when the panel is horizontal." },
+  totalEnergy: { title: "Total solar energy", body: "Estimated generated energy in Wh over physical mission time. Unobstructed endpoint watts are trapezoidally integrated; the left visibility mask is held on each interval. Unknown endpoints or gaps over 600 s make the total unknown." },
+  knownEnergy: { title: "Known energy subtotal", body: "Energy only from intervals with complete solar inputs. It remains a subtotal if coverage is below 100%; it is not the full-mission total." },
+  solarCoverage: { title: "Solar data coverage", body: "Percentage of mission duration with known solar interval energy. Unknown geometry, range, observer/frame mismatch, horizon gaps or missing endpoints reduce coverage. Complete coverage is not independent terrain validation." },
+  samplePower: { title: "Panel output at scrub sample", body: "Watts at the nearest stored sample to the scrubber. It consumes the upstream terrain mask once. Known blocked Sun or back-face incidence gives zero; missing required data gives unknown." },
+  irradiance: { title: "Direct normal irradiance", body: "Irradiance perpendicular to the incoming Sun direction: a nominal 1361 W/m\u00b2 at 1 AU scaled by inverse-square observer-to-Sun distance. Panel projection and terrain obstruction are applied separately." },
+  incidence: { title: "Panel incidence angle", body: "Angle between the panel normal and the direction toward the Sun. Zero is face-on. At or above 90\u00b0 the single-face panel receives no direct power. Terrain may block it at any incidence angle." },
 };
 
 /** Short power / comms primer for metric cards and Learn. */
 export const POWER_COMMS_PRIMER =
   'Communications: Earth LOS needs terrain clearance plus the min-elevation gate; availability % is DTE-up hours ÷ mission length; longest Earth blackout is the worst no-contact stretch; unknown hours are ephemeris/horizon gaps, not outages. ' +
-  'Power: sunlight needs sun clearance > 0°; mean watts use area × efficiency × tilt incidence when sunlit (else 0) and are compared to the battery floor for GO. ' +
+  'Power: fixed panel orientation, area, efficiency, Sun distance and terrain visibility determine watts; elapsed time determines watt-hours. Unknown intervals make the total and mean unknown. No batteries or loads are simulated. ' +
   'Sun ∩ Earth is when both are true — the window you can recharge while talking to Earth with no relay.';
 
 export function attachMetricHelp(

@@ -1,0 +1,62 @@
+{
+  "contract": "../UI_CONTRACT.md",
+  "targetViewports": [
+    "1440x1000",
+    "390x844"
+  ],
+  "renderedEvidence": [
+    {
+      "viewport": "1440x1000",
+      "artifact": "desktop.jpg",
+      "observation": "CR1/SR1 power and energy grids beside panel controls, preliminary warnings, no overlap."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "narrow-tooltips.jpg",
+      "observation": "Latest UI with metric help controls. Focused mean-power tooltip fits inside 390px client viewport; no document overflow. Partial solar coverage separately checked in browser and tests."
+    }
+  ],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "All four panel inputs have explicit labels, >=40px controls, min/max constraints and teal 2px focus outline. Tab moves from tilt to panel facing. Existing high-contrast dark theme retained. Latest focusable solar metric help and bearing help are present; phone tooltip remains within screen."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "Desktop scrollWidth1425<=1440; narrow scrollWidth390=390. Inspected both screenshots and narrow controls without clipping. No new motion added."
+  },
+  "contentStates": {
+    "loading": {
+      "status": "pass",
+      "evidence": "Delayed local science fetch: Updating power & comms assessment\u2026 appeared, then cleared after calculation."
+    },
+    "empty": {
+      "status": "pass",
+      "evidence": "Custom site: unavailable message, 0% solar coverage, Unknown W/Wh; recovery points to CR1/SR1 January 2027."
+    },
+    "error": {
+      "status": "pass",
+      "evidence": "Efficiency=2 triggers native maximum-1 validation and preserves the prior efficiency in the shared scenario URL."
+    },
+    "partial": {
+      "status": "pass",
+      "evidence": "Latest browser: Feb28 +48h, coverage50%, total/mean Unknown; actual Sun source ends Mar1. Unknown hours are preserved by upstream windows."
+    },
+    "success": {
+      "status": "pass",
+      "evidence": "Latest browser export after terrain fixes: Jan15 +168h, area2, efficiency.28, tilt90,bearing180 -> mean709.2654142158942W, total119156.58958827022Wh; complete inputs, comparison validation pending."
+    },
+    "permission": {
+      "status": "not-applicable",
+      "reason": "Local browser calculation and file download; no authentication or external write."
+    }
+  },
+  "checks": {
+    "regressionTests": 54,
+    "build": "passed; existing >500kB bundle warning",
+    "terrainValidation": "Frame/coverage fixes landed upstream; explicit validation declaration still absent.",
+    "communications": "Upstream bounded provider, window accounting and authority updates incorporated.",
+    "previewBaseline": "6871774",
+    "regionalSearch": "Upstream analytic candidates excluded with explicit reason; regression added.",
+    "tooltips": "Upstream tooltips preserved; solar model explanations updated. Phone focus tooltip is bounded at x16..374 within clientWidth390."
+  }
+}

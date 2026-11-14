@@ -1,0 +1,20 @@
+{
+  "viewport": "390x844",
+  "previewBaseline": "652a36e",
+  "scenario": {
+    "startUtc": "2027-02-28T00:00:00Z",
+    "durationHours": 48,
+    "panelTiltDeg": 90,
+    "panelAzimuthDeg": 180
+  },
+  "observed": {
+    "innerWidth": 390,
+    "scrollWidth": 390,
+    "coverage": "50%",
+    "meanPower": "Unknown",
+    "totalEnergy": "Unknown",
+    "knownEnergy": "0.0 Wh",
+    "directNormalIrradiance": "1387.2 W/m2"
+  },
+  "screenshot": "Latest capture stalled and was cancelled. Prior narrow-partial.jpg retained as earlier layout reference."
+}

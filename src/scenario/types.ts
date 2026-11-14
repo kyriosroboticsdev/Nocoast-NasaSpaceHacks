@@ -33,12 +33,14 @@ export type SiteCatalogEntry = {
 export type ScenarioThresholds = {
   /** Minimum clear Earth elevation (deg) for usable antenna link. */
   minEarthElevationDeg: number;
-  /** Panel area (m²) for rough power proxy. */
+  /** Active panel area (m²). */
   panelAreaM2: number;
   /** Panel efficiency 0–1. */
   panelEfficiency: number;
-  /** Assumed panel tilt toward mean Sun (deg); 0 = horizontal. */
+  /** Panel normal tilt from local up (deg); 0 = face-up horizontal. */
   panelTiltDeg: number;
+  /** Bearing of panel normal, clockwise from true north (deg). */
+  panelAzimuthDeg: number;
   /** Rough continuous draw floor (W) for battery-risk framing. */
   batteryFloorW: number;
 };
@@ -67,13 +69,14 @@ export type ScenarioState = {
   showTechnicalDetails: boolean;
 };
 
-export type ViabilityGrade = 'GO' | 'RISKY' | 'NO-GO';
+export type ViabilityGrade = 'GO' | 'RISKY' | 'NO-GO' | 'UNKNOWN';
 
 export const DEFAULT_THRESHOLDS: ScenarioThresholds = {
   minEarthElevationDeg: 5,
   panelAreaM2: 2,
   panelEfficiency: 0.28,
   panelTiltDeg: 0,
+  panelAzimuthDeg: 0,
   batteryFloorW: 40,
 };
 

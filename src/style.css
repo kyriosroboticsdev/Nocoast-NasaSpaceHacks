@@ -641,3 +641,16 @@ body.mode-learn .assess-controls h3 { display: none; }
   .time-controls { order: 0; }
   .viz-stack { order: 1; }
 }
+/* Solar output reuses the assessment grid; long provenance must wrap on phones. */
+.solar-warning { grid-column: 1 / -1; margin: 4px 0; color: #f3ce8d; overflow-wrap: anywhere; font-size: 0.82rem; line-height: 1.5; }
+.viability.unknown { color: #f3ce8d; }
+@media (max-width: 600px) {
+  .metric-tooltip {
+    position: fixed;
+    inset: auto 16px 16px;
+    width: auto;
+    max-width: none;
+    max-height: 60vh;
+    overflow: auto;
+  }
+}

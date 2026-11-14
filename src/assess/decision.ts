@@ -17,7 +17,7 @@ export type RankedSite = {
   sunlightPct: number;
   earthLosPct: number;
   simultaneousPct: number;
-  meanPowerW: number;
+  meanPowerW: number | null;
   score: number;
   assessment: MissionAssessment;
 };
@@ -29,7 +29,7 @@ export type DateSuggestion = {
   sunlightPct: number;
   earthLosPct: number;
   simultaneousPct: number;
-  meanPowerW: number;
+  meanPowerW: number | null;
   score: number;
   deltaSimultaneousPct: number;
   label: string;
@@ -112,6 +112,7 @@ export function findBestWindow(assessment: MissionAssessment): {
 
 /** Soft score; authority penalties keep sphere/analytic from outranking LOLA+JPL. */
 export function scoreAssessment(a: MissionAssessment): number {
+  if (!a.solar?.summary.eligibleForTerrainComparison || a.meanPowerW == null) return -Infinity;
   const viab =
     a.viability === 'GO' ? 30 :
     a.viability === 'RISKY' ? 12 : 0;
@@ -142,6 +143,7 @@ export function rankAssessments(
   }>,
 ): RankedSite[] {
   return rows
+    .filter(r => r.assessment.solar?.summary.eligibleForTerrainComparison)
     .map(r => ({
       siteId: r.siteId,
       label: r.label,
@@ -173,6 +175,7 @@ export function buildDateSuggestions(
 ): DateSuggestion[] {
   const baseScore = scoreAssessment(baseline);
   return candidates
+    .filter(c => c.assessment.solar?.summary.eligibleForTerrainComparison)
     .map(c => {
       const score = scoreAssessment(c.assessment);
       const sign = c.offsetDays > 0 ? '+' : '';
@@ -204,10 +207,11 @@ export function buildDateSuggestions(
 
 /** Plain-language why this site/date wins or fails — for Learn + NO-GO prompts. */
 export function explainVerdict(a: MissionAssessment): string {
+  if (a.viability === 'UNKNOWN') return `${a.siteLabel}: ${a.viabilityReason}`;
   const parts: string[] = [];
   if (a.viability === 'GO') {
     parts.push(
-      `${a.siteLabel} looks viable over this window: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, Sun ∩ Earth ${a.simultaneousPct.toFixed(0)}% (power while talking to Earth), mean power ~${a.meanPowerW.toFixed(0)} W.`,
+      `${a.siteLabel} looks viable over this window: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, Sun ∩ Earth ${a.simultaneousPct.toFixed(0)}% (power while talking to Earth), mean power ~${(a.meanPowerW?.toFixed(0) ?? 'unknown')} W.`,
     );
   } else if (a.viability === 'RISKY') {
     parts.push(
@@ -215,7 +219,7 @@ export function explainVerdict(a: MissionAssessment): string {
     );
   } else {
     parts.push(
-      `${a.siteLabel} fails planning thresholds here: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, Sun ∩ Earth only ${a.simultaneousPct.toFixed(0)}%, mean power ~${a.meanPowerW.toFixed(0)} W.`,
+      `${a.siteLabel} fails planning thresholds here: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, Sun ∩ Earth only ${a.simultaneousPct.toFixed(0)}%, mean power ~${(a.meanPowerW?.toFixed(0) ?? 'unknown')} W.`,
     );
   }
   if (a.horizonModel === 'sphere_optimistic') {

@@ -30,6 +30,7 @@
         <p>This Learn view uses the <strong>same scenario engine</strong> as Planner. Use <strong>Rank sites</strong> and <strong>Suggest better dates</strong> below to see why one site/date wins and another fails — then adopt with one click.</p>
         <p class="learn-tip" id="learn-verdict-tip">Try CR1 vs SR1 on the same week, then slip the start — small date moves can flip which site looks healthier. Verdict grades the <strong>mission window</strong>; scrub explores <strong>instants</strong> inside it.</p>
         <p class="learn-earth-analog" id="learn-earth-analog">On Earth, a clear day usually means continuous sunlight and radio. Near the lunar pole, sunlight and Earth line-of-sight can vanish for hours even when “day” should last — that is the engineering surprise this tool teaches.</p>
+        <p class="learn-power-comms" id="learn-power-comms">Communications need Earth above the terrain plus a min-elevation gate; power needs the Sun clear of ridges, then a rough panel proxy (area × efficiency × tilt) compared to a battery floor. The critical ops window is <strong>Sun ∩ Earth</strong> — hours you can recharge while talking to Earth with no relay. Use the <strong>?</strong> controls on Planner metrics for how each number is calculated.</p>
       </article>
       <div class="guided">
         <h3>Guided scenarios</h3>
@@ -135,7 +136,7 @@
         <div class="decision-panel" id="decision-panel">
           <div class="decision-header">
             <h2>Find · compare · decide</h2>
-            <p class="decision-lead">Grade the current mission window, then rank other sites or slip the start date. Adopt a row to jump the scenario.</p>
+            <p class="decision-lead">Grade the current mission window for <strong>solar power</strong> and <strong>direct-to-Earth communications</strong>, then rank other sites or slip the start date. Prefer high <strong>Sun ∩ Earth</strong> (power while talking to Earth, no relay), watch longest blackouts and mean watts vs battery floor, and treat unknown hours as coverage gaps — not outages. Adopt a row to jump the scenario.</p>
           </div>
           <div class="decision-actions">
             <button type="button" id="find-best-location">Find best location</button>
@@ -189,48 +190,50 @@
           <h2 id="metrics-a-title">Site A</h2>
           <div class="verdict-dual">
             <div>
-              <p class="verdict-label">Mission window grade</p>
+              <p class="verdict-label has-metric-help" id="verdict-help-a">Mission window grade</p>
               <div class="viability" id="viability-a">—</div>
             </div>
             <div>
-              <p class="verdict-label">At scrub time</p>
+              <p class="verdict-label has-metric-help" id="instant-help-a">At scrub time</p>
               <div class="instant-chip" id="instant-a">—</div>
             </div>
           </div>
-          <p class="verdict-caption" id="verdict-caption-a">Window grade uses the full mission start→end. Scrub only changes the instant chip, skyline, and time-to-set.</p>
+          <p class="verdict-caption" id="verdict-caption-a">Window grade uses the full mission start→end (sunlight %, Earth LOS %, Sun ∩ Earth, mean power vs battery floor). Scrub only changes the instant chip, skyline, and time-to-set. Tap <strong>?</strong> on any metric for significance and calculation.</p>
           <p class="nogo-prompt" id="nogo-prompt-a" hidden></p>
           <div class="metric-grid" id="metric-grid-a"></div>
+          <p class="metric-primer" id="metric-primer-a"></p>
           <p class="horizon-flag" id="horizon-flag-a"></p>
         </div>
         <div class="metrics" id="metrics-b">
           <h2 id="metrics-b-title">Site B</h2>
           <div class="verdict-dual">
             <div>
-              <p class="verdict-label">Mission window grade</p>
+              <p class="verdict-label has-metric-help" id="verdict-help-b">Mission window grade</p>
               <div class="viability" id="viability-b">—</div>
             </div>
             <div>
-              <p class="verdict-label">At scrub time</p>
+              <p class="verdict-label has-metric-help" id="instant-help-b">At scrub time</p>
               <div class="instant-chip" id="instant-b">—</div>
             </div>
           </div>
-          <p class="verdict-caption" id="verdict-caption-b">Same shared UTC window as Site A.</p>
+          <p class="verdict-caption" id="verdict-caption-b">Same shared UTC window as Site A. Compare ∩ %, blackouts, and mean power — not only the grade letter.</p>
           <div class="metric-grid" id="metric-grid-b"></div>
+          <p class="metric-primer" id="metric-primer-b"></p>
           <p class="horizon-flag" id="horizon-flag-b"></p>
         </div>
         <aside class="controls assess-controls" data-tour="thresholds">
           <h3>Assessment settings</h3>
           <details class="thresholds" id="thresholds-box" open>
             <summary>Planner thresholds</summary>
-            <label for="min-earth-el">Min Earth elevation °</label>
+            <label for="min-earth-el" class="has-metric-help" id="help-min-earth-el">Min Earth elevation °</label>
             <input id="min-earth-el" type="number" min="0" max="30" step="0.5" value="5">
-            <label for="panel-area">Panel area m²</label>
+            <label for="panel-area" class="has-metric-help" id="help-panel-area">Panel area m²</label>
             <input id="panel-area" type="number" min="0.1" max="50" step="0.1" value="2">
-            <label for="panel-eff">Panel efficiency</label>
+            <label for="panel-eff" class="has-metric-help" id="help-panel-eff">Panel efficiency</label>
             <input id="panel-eff" type="number" min="0.05" max="0.45" step="0.01" value="0.28">
-            <label for="panel-tilt">Panel tilt °</label>
+            <label for="panel-tilt" class="has-metric-help" id="help-panel-tilt">Panel tilt °</label>
             <input id="panel-tilt" type="number" min="0" max="60" step="1" value="0">
-            <label for="battery-floor">Battery floor W</label>
+            <label for="battery-floor" class="has-metric-help" id="help-battery-floor">Battery floor W</label>
             <input id="battery-floor" type="number" min="0" max="500" step="5" value="40">
           </details>
           <label class="check" id="tech-details-label">

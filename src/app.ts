@@ -56,6 +56,12 @@ import {
   viabilityClass,
 } from './ui/format';
 import { createTour } from './ui/tour';
+import {
+  POWER_COMMS_PRIMER,
+  attachMetricHelp,
+  mountStaticHelp,
+  type MetricHelpId,
+} from './ui/metricHelp';
 
 const base = import.meta.env.BASE_URL;
 const el = <E extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as E;
@@ -143,34 +149,62 @@ function renderMetricGrid(target: HTMLElement, a: MissionAssessment, scrubIso: s
   const instant = a.samples.reduce((best, s) =>
     Math.abs(Date.parse(s.utc) - Date.parse(scrubIso)) < Math.abs(Date.parse(best.utc) - Date.parse(scrubIso)) ? s : best,
   a.samples[0]);
-  const rows: Array<[string, string, boolean?, string?]> = [
-    ['— Mission window —', '', false, 'group'],
-    ['Sunlight availability', fmtPct(a.sunlightPct)],
-    ['Earth LOS availability', fmtPct(a.earthLosPct)],
-    ['Sun ∩ Earth windows', fmtPct(a.simultaneousPct)],
-    ['Mean power proxy', fmtPower(a.meanPowerW)],
-    ['Peak power proxy', fmtPower(a.peakPowerW), true],
-    ['Longest sun blackout', fmtHours(a.longestSunBlackoutHours)],
-    ['Longest Earth blackout', fmtHours(a.longestEarthBlackoutHours)],
-    ['— At scrub time —', '', false, 'group'],
-    ['Time to sunset', fmtHours(a.hoursToSunset)],
-    ['Time to Earthset', fmtHours(a.hoursToEarthset)],
-    ['Sun elev (scrub)', fmtDeg(instant?.sunEl), true],
-    ['Sun clear elev', fmtDeg(instant?.sunClearEl), true],
-    ['Earth elev (scrub)', fmtDeg(instant?.earthEl), true],
-    ['Earth clear elev', fmtDeg(instant?.earthClearEl), true],
+  const floor = getScenario().thresholds.batteryFloorW;
+  const meanVsFloor =
+    a.meanPowerW >= floor
+      ? `${fmtPower(a.meanPowerW)} · ≥ floor ${fmtPower(floor)}`
+      : `${fmtPower(a.meanPowerW)} · below floor ${fmtPower(floor)}`;
+  const uid = target.id || 'metric';
+  type Row =
+    | { kind: 'group'; label: string }
+    | { kind: 'metric'; label: string; value: string; help?: MetricHelpId; tech?: boolean };
+
+  const rows: Row[] = [
+    { kind: 'group', label: '— Mission window —' },
+    { kind: 'metric', label: 'Sunlight availability', value: fmtPct(a.sunlightPct), help: 'sunlight' },
+    { kind: 'metric', label: 'Earth LOS availability', value: fmtPct(a.earthLosPct), help: 'earthLos' },
+    { kind: 'metric', label: 'Sun ∩ Earth windows', value: fmtPct(a.simultaneousPct), help: 'sunEarth' },
+    { kind: 'metric', label: 'Mean power proxy', value: meanVsFloor, help: 'meanPower' },
+    { kind: 'metric', label: 'Peak power proxy', value: fmtPower(a.peakPowerW), help: 'peakPower', tech: true },
+    { kind: 'metric', label: 'Longest sun blackout', value: fmtHours(a.longestSunBlackoutHours), help: 'sunBlackout' },
+    { kind: 'metric', label: 'Longest Earth blackout', value: fmtHours(a.longestEarthBlackoutHours), help: 'earthBlackout' },
   ];
+  if ((a.unknownHours ?? 0) > 0.05) {
+    rows.push({
+      kind: 'metric',
+      label: 'Unknown hours',
+      value: fmtHours(a.unknownHours),
+      help: 'unknownHours',
+    });
+  }
+  rows.push(
+    { kind: 'group', label: '— At scrub time —' },
+    { kind: 'metric', label: 'Time to sunset', value: fmtHours(a.hoursToSunset), help: 'timeSunset' },
+    { kind: 'metric', label: 'Time to Earthset', value: fmtHours(a.hoursToEarthset), help: 'timeEarthset' },
+    { kind: 'metric', label: 'Sun elev (scrub)', value: fmtDeg(instant?.sunEl), help: 'sunElev', tech: true },
+    { kind: 'metric', label: 'Sun clear elev', value: fmtDeg(instant?.sunClearEl), help: 'sunClear', tech: true },
+    { kind: 'metric', label: 'Earth elev (scrub)', value: fmtDeg(instant?.earthEl), help: 'earthElev', tech: true },
+    { kind: 'metric', label: 'Earth clear elev', value: fmtDeg(instant?.earthClearEl), help: 'earthClear', tech: true },
+  );
+
   target.replaceChildren();
-  for (const [label, value, tech, kind] of rows) {
+  for (const row of rows) {
     const div = document.createElement('div');
-    if (kind === 'group') {
+    if (row.kind === 'group') {
       div.className = 'metric-group';
-      div.innerHTML = `<span>${label}</span>`;
+      const span = document.createElement('span');
+      span.textContent = row.label;
+      div.append(span);
       target.append(div);
       continue;
     }
-    if (tech) div.className = 'tech-only';
-    div.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+    if (row.tech) div.className = 'tech-only';
+    const span = document.createElement('span');
+    span.textContent = row.label;
+    if (row.help) attachMetricHelp(span, row.help, uid);
+    const strong = document.createElement('strong');
+    strong.textContent = row.value;
+    div.append(span, strong);
     target.append(div);
   }
 }
@@ -303,6 +337,19 @@ function paintLearnTip(a: MissionAssessment, b?: MissionAssessment) {
   tip.textContent = text;
 }
 
+function paintMetricPrimers(a: MissionAssessment, slot: 'a' | 'b') {
+  const primer = el(`metric-primer-${slot}`);
+  if (!primer) return;
+  const sunH = a.sunlightHours.toFixed(1);
+  const earthH = a.earthLosHours.toFixed(1);
+  const bothH = a.simultaneousHours.toFixed(1);
+  const unk = (a.unknownHours ?? 0) > 0.05 ? ` · ~${a.unknownHours.toFixed(1)} h unknown (not blackout)` : '';
+  primer.textContent =
+    `Comms: Earth LOS ${fmtPct(a.earthLosPct)} (~${earthH} h DTE-up); longest Earth blackout ${fmtHours(a.longestEarthBlackoutHours)}. ` +
+    `Power: sunlight ${fmtPct(a.sunlightPct)} (~${sunH} h); mean ${fmtPower(a.meanPowerW)} vs floor ${fmtPower(getScenario().thresholds.batteryFloorW)}; longest sun blackout ${fmtHours(a.longestSunBlackoutHours)}. ` +
+    `Sun ∩ Earth ${fmtPct(a.simultaneousPct)} (~${bothH} h) — recharge while talking to Earth, no relay.${unk}`;
+}
+
 function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = {}) {
   if (!assessA) return;
   el('metrics-a-title').textContent = assessA.siteLabel;
@@ -313,6 +360,7 @@ function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = 
   paintNogoPrompt(assessA);
   paintBestWindowLabel(assessA);
   renderMetricGrid(el('metric-grid-a'), assessA, state.scrubUtc);
+  paintMetricPrimers(assessA, 'a');
   el('horizon-flag-a').textContent = horizonFlagText(assessA);
 
   if (assessB && state.compareEnabled) {
@@ -323,6 +371,7 @@ function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = 
     viabB.className = `viability ${viabilityClass(assessB.viability)}`;
     paintInstantChip('instant-b', assessB, state.scrubUtc);
     renderMetricGrid(el('metric-grid-b'), assessB, state.scrubUtc);
+    paintMetricPrimers(assessB, 'b');
     el('horizon-flag-b').textContent = horizonFlagText(assessB);
   } else {
     el('metrics-b').hidden = true;
@@ -883,7 +932,31 @@ function setPickMode(enabled: boolean) {
   });
 }
 
+function wireMetricHelpChrome() {
+  const pairs: Array<[string, MetricHelpId, string]> = [
+    ['verdict-help-a', 'viability', 'a'],
+    ['instant-help-a', 'instant', 'a'],
+    ['verdict-help-b', 'viability', 'b'],
+    ['instant-help-b', 'instant', 'b'],
+    ['help-min-earth-el', 'minEarthEl', 'th'],
+    ['help-panel-area', 'panelArea', 'th'],
+    ['help-panel-eff', 'panelEff', 'th'],
+    ['help-panel-tilt', 'panelTilt', 'th'],
+    ['help-battery-floor', 'batteryFloor', 'th'],
+  ];
+  for (const [id, helpId, uid] of pairs) {
+    const host = document.getElementById(id);
+    if (host) mountStaticHelp(host, helpId, uid);
+  }
+  const primerLearn = el('learn-power-comms');
+  if (primerLearn && !primerLearn.dataset.filled) {
+    primerLearn.textContent = POWER_COMMS_PRIMER;
+    primerLearn.dataset.filled = '1';
+  }
+}
+
 function wireUi() {
+  wireMetricHelpChrome();
   el('mode-planner').onclick = () => setMode('planner');
   el('mode-learn').onclick = () => setMode('learn');
   el<HTMLSelectElement>('site').onchange = e => {

@@ -66,7 +66,7 @@ const STEPS: TourStep[] = [
   {
     id: 'viability',
     title: 'Window grade vs scrub',
-    body: 'Mission window grade (GO / RISKY / NO-GO) scores the whole start→end span. The “At scrub time” chip shows BOTH / SUNLIT / EARTH LOS / BLACKOUT for the instant under the scrubber — they are intentionally separate.',
+    body: 'Mission window grade (GO / RISKY / NO-GO) scores the whole start→end span. Metric cards show sunlight, Earth LOS, Sun ∩ Earth (power while talking to Earth), mean watts vs battery floor, and blackouts — tap ? for how each is calculated. The “At scrub time” chip is a separate instant status.',
     target: 'viability',
   },
   {

@@ -207,15 +207,15 @@ export function explainVerdict(a: MissionAssessment): string {
   const parts: string[] = [];
   if (a.viability === 'GO') {
     parts.push(
-      `${a.siteLabel} looks viable over this window: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, simultaneous ${a.simultaneousPct.toFixed(0)}%.`,
+      `${a.siteLabel} looks viable over this window: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, Sun ∩ Earth ${a.simultaneousPct.toFixed(0)}% (power while talking to Earth), mean power ~${a.meanPowerW.toFixed(0)} W.`,
     );
   } else if (a.viability === 'RISKY') {
     parts.push(
-      `${a.siteLabel} is marginal: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%. Storage, relay, or a date slip may be needed.`,
+      `${a.siteLabel} is marginal: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, Sun ∩ Earth ${a.simultaneousPct.toFixed(0)}%. Storage, relay, or a date slip may be needed when ∩ is thin.`,
     );
   } else {
     parts.push(
-      `${a.siteLabel} fails planning thresholds here: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, simultaneous only ${a.simultaneousPct.toFixed(0)}%.`,
+      `${a.siteLabel} fails planning thresholds here: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, Sun ∩ Earth only ${a.simultaneousPct.toFixed(0)}%, mean power ~${a.meanPowerW.toFixed(0)} W.`,
     );
   }
   if (a.horizonModel === 'sphere_optimistic') {

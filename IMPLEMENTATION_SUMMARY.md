@@ -4,6 +4,13 @@
 **Branch:** `preview` (from `vracton/terrain`)  
 **Remote:** `origin/preview` on [kyriosroboticsdev/Nocoast-NasaSpaceHacks](https://github.com/kyriosroboticsdev/Nocoast-NasaSpaceHacks)
 
+## Metric explanations (Planner UX)
+
+Accessible **?** tooltips (hover + keyboard focus, `aria-describedby`) on key statistics and thresholds explain **why the number matters** and **how it is calculated** from `assess/windows.ts` / GO gates:
+
+- Sunlight %, Earth LOS %, **Sun ∩ Earth** (power while talking to Earth / no relay), mean power vs battery floor, peak power, longest sun/Earth blackouts, unknown hours, time to sunset/Earthset, scrub elev/clearance, viability grade, instant chip, and threshold inputs (min Earth el, panel area/eff/tilt, battery floor).
+- Metric cards also show a live **power & comms primer** (hours + % + floor); Learn / decision-lead copy expand the same story. Honesty preserved: proxy watts, LOLA vs sphere, analytic vs JPL badges unchanged.
+
 ## What was built
 
 End-to-end **find / compare / decide** navigator on the Vite / TypeScript / Three.js polar terrain explorer:

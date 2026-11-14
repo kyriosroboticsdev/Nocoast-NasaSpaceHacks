@@ -5,6 +5,7 @@ export const LEARN_INTRO = {
   paragraphs: [
     'Near 90°S, the Sun stays low and skims a jagged horizon. Ridges a few kilometers away can block sunlight for days, and Earth may sit just above or below the local terrain — so power and communications rise and fall together with landing site and date.',
     'This Learn view uses the same scenario engine as Planner. Rank sites and Suggest better dates show why one site/date wins and another fails; adopt with one click. Enable “Show technical details” for raw thresholds.',
+    'Read more than the grade letter: Earth LOS % and blackouts describe direct-to-Earth contact (min elevation gate, no relay); sunlight % and mean watts describe power delivery (panel area × efficiency × tilt proxy vs battery floor). Sun ∩ Earth is when both are true — recharge while talking to Earth.',
   ],
 };
 

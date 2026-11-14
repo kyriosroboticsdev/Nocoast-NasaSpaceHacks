@@ -1,0 +1,15 @@
+node_modules
+dist
+.cache
+data
+exports
+__pycache__
+.venv
+.pytest_cache
+.ruff_cache
+.git
+.env
+public
+src
+scripts/*.mjs
+scripts/lib

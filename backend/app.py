@@ -7,6 +7,8 @@ from fastapi.staticfiles import StaticFiles
 
 from . import analysis, polarmap, terrain
 from .config import CONTRACT, ROOT, SITES, TIME, parse_utc
+from .pathfinding import earth_moon
+from .pathfinding.graph import NoPathError, Weights, shortest_path
 
 app = FastAPI(title="Lunar Navigator: Sun, Earth & Communication")
 DIST = ROOT / "dist"
@@ -115,6 +117,39 @@ def polar_map_meta():
 @app.get("/api/polar_map.png")
 def polar_map_png():
     return Response(polarmap.png_bytes(), media_type="image/png", headers={"Cache-Control": "max-age=86400"})
+
+
+@app.get("/api/pathfind")
+def pathfind(epochUtc: str = TIME["defaultStartUtc"], layers: int = Query(24, ge=2, le=200),
+             lateralSteps: int = Query(4, ge=3, le=12), lateralSpreadKm: float = Query(3000.0, gt=0),
+             wDistance: float = Query(1.0, ge=0), wDarkness: float = Query(1.0, ge=0),
+             wNoComm: float = Query(1.0, ge=0)):
+    """Best Earth<->Moon relay-satellite path at a single epoch: a weighted multi-objective shortest
+    path that trades off sunlit time (no battery reliance), obstacle avoidance, Earth-comm time and
+    distance (see backend/pathfinding/). First-pass model: a straight-line corridor with lateral detour
+    options, no propagated trajectory and no real obstacle catalog yet
+    (backend/pathfinding/earth_moon.py)."""
+    epoch = parse_utc(epochUtc)
+    nodes, edges = earth_moon.build_corridor_graph(epoch, layers=layers, lateral_steps=lateralSteps,
+                                                    lateral_spread_km=lateralSpreadKm)
+    weights = Weights(distance=wDistance, darkness=wDarkness, no_comm=wNoComm)
+    try:
+        result = shortest_path(nodes, edges, earth_moon.start_id(), earth_moon.goal_id(layers), weights)
+    except (NoPathError, KeyError) as e:
+        raise HTTPException(400, str(e)) from e
+    return {
+        "epochUtc": epochUtc,
+        "waypoints": [
+            {"id": nid, "positionKm": list(nodes[nid].position_km), "sunlit": nodes[nid].sunlit,
+             "earthVisible": nodes[nid].earth_visible, "blocked": nodes[nid].blocked}
+            for nid in result.node_ids
+        ],
+        "totalDistanceKm": result.total_distance_km,
+        "sunlitFraction": result.sunlit_fraction,
+        "earthCommFraction": result.earth_comm_fraction,
+        "obstaclesTouched": result.obstacles_touched,
+        "cost": result.cost,
+    }
 
 
 # Production: serve the built website (`npm run build` -> dist/) from the same server as the API.

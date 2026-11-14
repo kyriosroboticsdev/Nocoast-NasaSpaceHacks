@@ -109,6 +109,33 @@ function snapStride(ideal: number, maxStride: number): number {
 }
 
 /**
+ * Hide the diametric far hemisphere of elevation wireframes so dense near-side
+ * edges stay open lines instead of looking filled by the opposite shell.
+ * Works for MeshBasicMaterial wireframe (triangle edges as lines).
+ */
+function applyNearHemisphereClip(shader: {
+  uniforms: Record<string, { value: unknown }>;
+  vertexShader: string;
+  fragmentShader: string;
+}) {
+  shader.uniforms.moonCenter = { value: moonCenter };
+  shader.vertexShader = 'varying vec3 vWireWorldPos;\n' + shader.vertexShader.replace(
+    '#include <project_vertex>',
+    `vWireWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+     #include <project_vertex>`,
+  );
+  shader.fragmentShader = 'uniform vec3 moonCenter; varying vec3 vWireWorldPos;\n' +
+    shader.fragmentShader.replace(
+      '#include <clipping_planes_fragment>',
+      `#include <clipping_planes_fragment>
+       vec3 radial = normalize(vWireWorldPos - moonCenter);
+       vec3 toCam = normalize(cameraPosition - moonCenter);
+       // Drop the far hemisphere; keep a thin limb band.
+       if (dot(radial, toCam) < 0.04) discard;`,
+    );
+}
+
+/**
  * Displaced cylindrical LDEM wireframe with a south-polar hole so it never
  * intersects the 87°S–90°S LOLA overview (or its fade-to-sphere rim).
  * `step` subsamples the DEM grid (1 = native 4 ppd) for zoom-adaptive density.
@@ -310,15 +337,35 @@ export async function startTerrain(): Promise<TerrainApi> {
   const materials = {
     relief: polarSurface,
     elevation: new T.MeshBasicMaterial({vertexColors:true}),
-    mesh: new T.MeshBasicMaterial({color:0x89b6ba,wireframe:true}),
+    // Wireframe lines only (no filled faces). Far-hemi discard hides the opposite
+    // shell; depthWrite lets near lines occlude without opaque triangle fill.
+    mesh: new T.MeshBasicMaterial({
+      color: 0x89b6ba,
+      wireframe: true,
+      side: T.DoubleSide,
+      depthTest: true,
+      depthWrite: true,
+      transparent: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    }),
   };
+  materials.mesh.onBeforeCompile = applyNearHemisphereClip;
+  materials.mesh.customProgramCacheKey = () => 'mesh-wire-near-hemi';
   const globalWireMaterial = new T.MeshBasicMaterial({
     color: 0x89b6ba,
     wireframe: true,
-    transparent: true,
-    opacity: 0.72,
-    depthWrite: false,
+    side: T.DoubleSide,
+    depthTest: true,
+    depthWrite: true,
+    transparent: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
   });
+  globalWireMaterial.onBeforeCompile = applyNearHemisphereClip;
+  globalWireMaterial.customProgramCacheKey = () => 'global-wire-near-hemi';
   // Start coarse; zoom LOD rebuilds to native 4 ppd when close enough.
   let globalWireStep = 16;
   let globalWire = meshFromGlobalLdem(globalLdem, globalWireMaterial, globalWireStep);
@@ -331,9 +378,12 @@ export async function startTerrain(): Promise<TerrainApi> {
   const cap = {value:capRadius};
   const overviewMaterials = Object.fromEntries(Object.entries(materials).map(([key, material]) => {
     const copy = material.clone();
-    copy.customProgramCacheKey = () => `polar-overview-${key}`;
+    copy.customProgramCacheKey = () => key === 'mesh'
+      ? 'polar-overview-mesh-near-hemi'
+      : `polar-overview-${key}`;
     copy.onBeforeCompile = shader => {
       if (key === 'relief') applyPolarImagery(shader);
+      if (key === 'mesh') applyNearHemisphereClip(shader);
       shader.uniforms.detailBounds = cutout;
       shader.uniforms.capRadius = cap;
       shader.vertexShader = 'attribute vec2 projectedXY; varying vec2 polarXY;\n' + shader.vertexShader.replace('#include <begin_vertex>', `
@@ -467,9 +517,10 @@ export async function startTerrain(): Promise<TerrainApi> {
     const meshOn = key === 'mesh';
     globalWire.visible = meshOn;
     // Dim the solid globe under the outside-cap wireframe so shells don't fight.
+    // Keep depthWrite on so the near globe occludes the far hemisphere wires.
     lunarSurface.transparent = meshOn;
     lunarSurface.opacity = meshOn ? 0.34 : 1;
-    lunarSurface.depthWrite = !meshOn;
+    lunarSurface.depthWrite = true;
     lunarSurface.needsUpdate = true;
     // Mesh vs relief use different stride caps — drop the current window so LOD reloads uniformly.
     request?.abort();

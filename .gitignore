@@ -1,3 +1,12 @@
 node_modules/
 dist/
 .cache/
+
+# Person 2 (Python science backend)
+data/
+exports/
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.env

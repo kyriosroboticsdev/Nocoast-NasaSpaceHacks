@@ -17,6 +17,11 @@ What a first-time visitor sees:
 
 ---
 
+> **Status 2026-11-14:** Phases 1 and 2 are implemented and verified in-browser (plain verdict
+> sentences, big metric cards, expert-view toggle, jargon renames incl. timeline/tour/help copy,
+> realistic terrain default, 4-step question tour + Full tour, Learn analogies, NO-GO consequence
+> copy, color-blind ✓/⚠/✗ icons). Phases 3–5 remain open.
+
 ## Phase 1 — First impression (highest impact, ~1 day)
 
 1. **Plain-English verdict sentence, front and center.**

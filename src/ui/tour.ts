@@ -168,6 +168,25 @@ function placeCard(card: HTMLElement, hole: ReturnType<typeof padRect>) {
       card.style.top = '16px';
       card.style.bottom = 'auto';
     }
+    // The spotlighted target renders above the card (it must beat the dim overlay), so any
+    // overlap hides the card's buttons. When a tall target overlaps, dock the card beside it.
+    const cr2 = card.getBoundingClientRect();
+    const overlaps = !(
+      cr2.right < hole.left
+      || cr2.left > hole.left + hole.width
+      || cr2.bottom < hole.top
+      || cr2.top > hole.top + hole.height
+    );
+    if (overlaps) {
+      const rightSpace = window.innerWidth - (hole.left + hole.width);
+      if (rightSpace > cardW + 28) {
+        card.style.left = `${hole.left + hole.width + 14}px`;
+      } else if (hole.left > cardW + 28) {
+        card.style.left = `${hole.left - cardW - 14}px`;
+      }
+      card.style.top = `${Math.max(16, Math.min(hole.top, window.innerHeight - cr2.height - 16))}px`;
+      card.style.bottom = 'auto';
+    }
   });
 }
 

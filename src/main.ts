@@ -103,14 +103,14 @@ const MESH_PIXELS_PER_EDGE = 14;
 /** Faint elevation colormap under mesh wireframe (polar solid underlay). */
 const MESH_UNDERLAY_OPACITY = 0.28;
 /** Quantize camera direction so lazy remesh is stable under tiny orbit jitter. */
-const VIEW_DIR_QUANT = 12;
+const VIEW_DIR_QUANT = 5;
 
 /**
- * Wireframe only inside this surface-altitude band (Whole Moon ~3.8e6 hides mesh).
- * Hysteresis: show below SHOW, hide above HIDE so scroll ticks don't flicker.
+ * Wireframe altitude band (surface distance). Polar / whole-ish views stay wired;
+ * only true Whole Moon (~3.8e6) drops to the faint underlay. Hysteresis avoids flicker.
  */
-const MESH_WIRE_SHOW_DIST = 900_000;
-const MESH_WIRE_HIDE_DIST = 1_200_000;
+const MESH_WIRE_SHOW_DIST = 2_800_000;
+const MESH_WIRE_HIDE_DIST = 3_600_000;
 
 /**
  * Five fixed LOD bands shared by polar LOLA (320 m) and global LDEM (4 ppd).
@@ -125,10 +125,13 @@ const MESH_LOD_BANDS = [
   { globalStep: 16, polarStride: 128 },
 ] as const;
 
-/** Expand frustum planes by this world margin so lazy edges aren't a hard square. */
-const FRUSTUM_PAD_M = 100_000;
-/** Extra limb band beyond geometric horizon (was 0.08). */
-const LIMB_DOT_PAD = 0.14;
+/**
+ * Expand frustum planes by this world margin so global lazy edges aren't a hard square.
+ * Polar overview never uses frustum cull (full circular disc).
+ */
+const FRUSTUM_PAD_M = 420_000;
+/** Extra limb band beyond geometric horizon — keep a wide near-side shell. */
+const LIMB_DOT_PAD = 0.32;
 
 function lodBandEdgeMeters(band: number): number {
   const i = T.MathUtils.clamp(band | 0, 0, MESH_LOD_BANDS.length - 1);
@@ -537,7 +540,8 @@ export async function startTerrain(): Promise<TerrainApi> {
     orbit.mouseButtons.MIDDLE = T.MOUSE.PAN;
     orbit.screenSpacePanning = true;
     orbit.listenToKeyEvents(renderer.domElement);
-    orbit.addEventListener('change',()=> {nextUpdate = performance.now()+180;});
+    // Short defer: polar mesh is LOD-stable (full disc); only global lazy-cull may rebuild.
+    orbit.addEventListener('change',()=> {nextUpdate = performance.now()+70;});
     return orbit;
   }
   let controls = createControls();
@@ -581,15 +585,16 @@ export async function startTerrain(): Promise<TerrainApi> {
     globalWireStep = step;
   }
 
-  function rebuildPolarWire(stride: number, cull: VisibilityCull) {
-    const keepCutout = cutout.value.clone();
+  /** Full polar-cap wireframe (no frustum cull) so the disc stays circular, not a jagged box. */
+  function rebuildPolarWire(stride: number) {
+    // Kill any leftover detail cutout so underlay never punches a solid teal hole/island.
+    cutout.value.set(0, 0, 0, 0);
     removePolarWire();
-    polarWire = meshFor(overview, polarWireMaterial, undefined, stride, cull);
+    polarWire = meshFor(overview, polarWireMaterial, undefined, stride);
     polarWire.visible = layer.value === 'mesh' && meshWiresEnabled;
     polarWire.renderOrder = 2;
     polarWire.raycast = () => {};
     scene.add(polarWire);
-    cutout.value.copy(keepCutout);
     polarWireStride = stride;
   }
 
@@ -604,24 +609,24 @@ export async function startTerrain(): Promise<TerrainApi> {
 
   /** Solid elevation underlay under mesh wires (full polar extent, no view cull). */
   function ensureMeshUnderlay() {
-    const keepCutout = cutout.value.clone();
+    cutout.value.set(0, 0, 0, 0);
     scene.remove(backdrop);
     backdrop.geometry.dispose();
     backdrop = meshFor(overview, meshUnderlayMaterial, undefined, 1);
     backdrop.renderOrder = 0;
     scene.add(backdrop);
-    cutout.value.copy(keepCutout);
   }
 
   /**
-   * Mesh mode: zoom gate + ~5 discrete LOD bands + shared lazy visibility cull
-   * for polar LOLA and global LDEM (no continuous remesh on every scroll tick).
+   * Mesh mode: raised zoom gate + ~5 hysteretic LOD bands.
+   * Polar LOLA always covers the full circular overview (no frustum cull → no stair-step patch).
+   * Global LDEM stays lazy-culled with a wide pad; rebuilds only when the quantized view key moves.
    */
   function updateMeshLod(force = false) {
     if (layer.value !== 'mesh') return;
     camera.updateMatrixWorld(true);
     const dist = surfaceViewDistance();
-    // Zoom threshold: Whole Moon / far → faint colormap only; wires when close enough.
+    // Zoom threshold: Whole Moon / far → faint colormap only; wires for polar + whole-ish.
     const wantWires = meshWiresEnabled
       ? dist <= MESH_WIRE_HIDE_DIST
       : dist <= MESH_WIRE_SHOW_DIST;
@@ -636,25 +641,31 @@ export async function startTerrain(): Promise<TerrainApi> {
     const edge = targetWireEdgeMeters();
     const band = pickLodBand(edge, force ? -1 : meshLodBand);
     const { globalStep, polarStride } = MESH_LOD_BANDS[band];
-    // Pad scales with cell size so coarse bands keep soft borders without far-side fill.
-    const padM = Math.max(FRUSTUM_PAD_M, lodBandEdgeMeters(band) * 1.75);
+    // Generous pad so global lazy edges stay soft / circular-ish, not a hard square.
+    const padM = Math.max(FRUSTUM_PAD_M, lodBandEdgeMeters(band) * 5.5);
     const cull = visibilityCullFromCamera(camera, padM);
-    const key = viewCullKey(cull, polarStride, globalStep);
-    if (!force && key === meshViewKey && band === meshLodBand) {
+    // View key ignores polar (full disc); only global cull + LOD band can thrash remesh.
+    const key = viewCullKey(cull, 0, globalStep);
+    const bandChanged = force || band !== meshLodBand;
+    const viewChanged = force || key !== meshViewKey;
+    if (!bandChanged && !viewChanged) {
       globalWire.visible = true;
       if (polarWire) polarWire.visible = true;
       return;
     }
     meshViewKey = key;
     meshLodBand = band;
-    rebuildPolarWire(polarStride, cull);
-    rebuildGlobalWire(globalStep, cull, true);
+    // Polar: rebuild only on LOD band change — full disc, never frustum-cropped.
+    if (bandChanged || !polarWire) rebuildPolarWire(polarStride);
+    else if (polarWire) polarWire.visible = true;
+    // Global: rebuild when orbit/zoom changes the quantized visibility key or band.
+    if (bandChanged || viewChanged) rebuildGlobalWire(globalStep, cull, true);
     if (!currentKey) setOverviewModeLabel();
   }
 
   /**
    * Relief/elevation: fine 5–20 m polar detail windows.
-   * Mesh mode skips this path — polar uses the same overview LOD/cull as global.
+   * Mesh mode skips this path — polar uses full-overview LOD wires (no detail island).
    */
   function detailPolicy(distance: number): { maxDistance: number; stride: number } {
     if (distance < 1000) return { maxDistance: 6300, stride: 1 };
@@ -666,7 +677,7 @@ export async function startTerrain(): Promise<TerrainApi> {
     if (layer.value === 'mesh') {
       if (!meshWiresEnabled) {
         element('mode-label').textContent =
-          'MESH HIDDEN · ZOOM IN · FAINT ELEVATION UNDERLAY';
+          'MESH HIDDEN · ZOOM CLOSER · FAINT ELEVATION UNDERLAY';
         return;
       }
       const polarM = overview.spacing * polarWireStride;
@@ -902,7 +913,7 @@ export async function startTerrain(): Promise<TerrainApi> {
     controls = createControls();
     controls.target.copy(target);
     controls.update();
-    nextUpdate = performance.now()+180;
+    nextUpdate = performance.now()+70;
   }
   type Flight = {
     start: number; fromHeight: number; toHeight: number; direction: T.Vector3;
@@ -1097,7 +1108,8 @@ export async function startTerrain(): Promise<TerrainApi> {
       controls.update();
     }
     if (now >= nextUpdate) {
-      nextUpdate = now + 200;
+      // Snappy LOD/gate checks; remesh itself is keyed/band-gated so this is cheap when stable.
+      nextUpdate = now + 90;
       // LOD / zoom-gate while flying so Whole Moon keeps faint underlay without dense wires.
       if (layer.value === 'mesh') updateMeshLod();
       if (!flight) updateDetail();

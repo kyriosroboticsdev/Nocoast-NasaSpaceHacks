@@ -63,6 +63,95 @@ function heightAt(grid: Grid, x: number, y: number) {
   return du+dv <= 1 ? a+(b-a)*du+(c-a)*dv : d+(c-d)*(1-du)+(b-d)*(1-dv);
 }
 
+/** Hard clip: polar 320 m LOLA owns ≤87°S; global LDEM starts north of that. */
+const GLOBAL_HOLE_LAT_DEG = -87;
+/** Fade global heights to the reference sphere approaching the polar join. */
+const GLOBAL_FADE_LAT_DEG = -86;
+
+type GlobalLdem = {
+  width: number;
+  height: number;
+  ppd: number;
+  lonWestDeg: number;
+  latNorthDeg: number;
+  metersPerUnit: number;
+  values: Int16Array;
+};
+
+function parseGlobalLdem(buffer: ArrayBuffer): GlobalLdem {
+  const header = new DataView(buffer);
+  const magic = String.fromCharCode(
+    header.getUint8(0), header.getUint8(1), header.getUint8(2), header.getUint8(3),
+  );
+  if (magic !== 'LDEM') throw new Error('Unexpected global LDEM magic');
+  const version = header.getUint32(4, true);
+  if (version !== 1) throw new Error(`Unsupported global LDEM version ${version}`);
+  const width = header.getUint32(8, true);
+  const height = header.getUint32(12, true);
+  const ppd = header.getUint32(16, true);
+  const lonWestDeg = header.getFloat32(20, true);
+  const latNorthDeg = header.getFloat32(24, true);
+  const metersPerUnit = header.getFloat32(28, true);
+  const values = new Int16Array(buffer, 32, width * height);
+  return { width, height, ppd, lonWestDeg, latNorthDeg, metersPerUnit, values };
+}
+
+/**
+ * Displaced cylindrical LDEM wireframe with a south-polar hole so it never
+ * intersects the 87°S–90°S LOLA overview (or its fade-to-sphere rim).
+ */
+function meshFromGlobalLdem(dem: GlobalLdem, material: T.Material) {
+  const { width, height, ppd, lonWestDeg, latNorthDeg, metersPerUnit, values } = dem;
+  const positions = new Float32Array(width * height * 3);
+  const lookup = new Int32Array(width * height).fill(-1);
+  let vertexCount = 0;
+  const radial = new T.Vector3();
+  for (let j = 0; j < height; j++) {
+    const latDeg = latNorthDeg - (j + 0.5) / ppd;
+    if (latDeg < GLOBAL_HOLE_LAT_DEG) continue;
+    const lat = T.MathUtils.degToRad(latDeg);
+    const cosLat = Math.cos(lat);
+    const sinLat = Math.sin(lat);
+    const fade = latDeg <= GLOBAL_FADE_LAT_DEG
+      ? T.MathUtils.smoothstep(latDeg, GLOBAL_HOLE_LAT_DEG, GLOBAL_FADE_LAT_DEG)
+      : 1;
+    for (let i = 0; i < width; i++) {
+      const lonDeg = lonWestDeg + (i + 0.5) / ppd;
+      const lon = T.MathUtils.degToRad(lonDeg);
+      const h = values[j * width + i] * metersPerUnit * fade;
+      // World frame matches globe picks: +Y through south pole, +X = 90°E, −Z = 0°E.
+      radial.set(
+        cosLat * Math.sin(lon),
+        -sinLat,
+        -cosLat * Math.cos(lon),
+      ).normalize();
+      const idx = vertexCount++;
+      lookup[j * width + i] = idx;
+      positions[idx * 3] = moonCenter.x + radial.x * (radius + h);
+      positions[idx * 3 + 1] = moonCenter.y + radial.y * (radius + h);
+      positions[idx * 3 + 2] = moonCenter.z + radial.z * (radius + h);
+    }
+  }
+  const triangles: number[] = [];
+  for (let j = 0; j < height - 1; j++) {
+    for (let i = 0; i < width; i++) {
+      const i1 = (i + 1) % width;
+      const a = lookup[j * width + i];
+      const b = lookup[j * width + i1];
+      const c = lookup[(j + 1) * width + i];
+      const d = lookup[(j + 1) * width + i1];
+      if (a < 0 || b < 0 || c < 0 || d < 0) continue;
+      triangles.push(a, c, b, b, c, d);
+    }
+  }
+  const geometry = new T.BufferGeometry();
+  geometry.setAttribute('position', new T.BufferAttribute(positions.subarray(0, vertexCount * 3), 3));
+  geometry.setIndex(triangles);
+  const mesh = new T.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
 function meshFor(grid: Grid, material: T.Material, parent?: Grid) {
   const {values, width, spacing} = grid;
   const positions = new Float32Array(values.length*3);
@@ -166,6 +255,8 @@ export async function startTerrain(): Promise<TerrainApi> {
     x:header.getInt32(0,true), y:header.getInt32(4,true),
     width:header.getUint32(8,true), spacing:320, values:new Float32Array(overviewBody,12),
   };
+  const globalLdemBody = await fetchAsset('terrain/global-ldem-4ppd.bin').then(r => r.arrayBuffer());
+  const globalLdem = parseGlobalLdem(globalLdemBody);
   const polarSurface = lunarSurface.clone();
   function applyPolarImagery(shader: Parameters<typeof polarSurface.onBeforeCompile>[0]) {
     shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `
@@ -185,6 +276,21 @@ export async function startTerrain(): Promise<TerrainApi> {
     elevation: new T.MeshBasicMaterial({vertexColors:true}),
     mesh: new T.MeshBasicMaterial({color:0x89b6ba,wireframe:true}),
   };
+  const globalWire = meshFromGlobalLdem(
+    globalLdem,
+    new T.MeshBasicMaterial({
+      color: 0x89b6ba,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false,
+    }),
+  );
+  globalWire.visible = false;
+  globalWire.renderOrder = 1;
+  // Picks stay on the textured globe / polar DEM — wireframe is display-only.
+  globalWire.raycast = () => {};
+  scene.add(globalWire);
   const cutout = {value:new T.Vector4()};
   const cap = {value:capRadius};
   const overviewMaterials = Object.fromEntries(Object.entries(materials).map(([key, material]) => {
@@ -246,15 +352,28 @@ export async function startTerrain(): Promise<TerrainApi> {
     return { maxDistance: 6300, stride: 4 };
   }
 
+  function setOverviewModeLabel() {
+    element('mode-label').textContent = layer.value === 'mesh'
+      ? 'POLAR 320 M LOLA · GLOBAL LDEM 4 PPD'
+      : '87°S–90°S · 320 M OVERVIEW';
+  }
+
   function setLayer() {
     const key = layer.value as keyof typeof materials;
     backdrop.material = overviewMaterials[key];
     if (detail) detail.material = materials[key];
     element('legend').hidden = key !== 'elevation';
+    const meshOn = key === 'mesh';
+    globalWire.visible = meshOn;
+    // Dim the solid globe under the outside-cap wireframe so shells don't fight.
+    lunarSurface.transparent = meshOn;
+    lunarSurface.opacity = meshOn ? 0.34 : 1;
+    lunarSurface.depthWrite = !meshOn;
+    lunarSurface.needsUpdate = true;
     // Mesh vs relief use different stride caps — drop the current window so LOD reloads uniformly.
     request?.abort();
     removeDetail();
-    element('mode-label').textContent = '87°S–90°S · 320 M OVERVIEW';
+    setOverviewModeLabel();
     nextUpdate = performance.now();
   }
   layer.onchange = setLayer;
@@ -308,7 +427,7 @@ export async function startTerrain(): Promise<TerrainApi> {
     if (distance > maxDistance || Math.hypot(x,y) > capRadius) {
       request?.abort();
       removeDetail();
-      element('mode-label').textContent = '87°S–90°S · 320 M OVERVIEW';
+      setOverviewModeLabel();
       status.textContent = '';
       return;
     }

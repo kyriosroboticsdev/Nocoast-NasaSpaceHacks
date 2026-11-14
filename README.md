@@ -61,11 +61,17 @@ src/app.ts      mode shell + assessment orchestration
 src/main.ts     existing Three.js polar terrain viewer (extended, not rewritten)
 ```
 
-## Terrain notes (unchanged core)
+## Terrain notes
 
-The overview uses a 320 m LOLA polar DEM. Near the camera, the viewer streams 5–20 m detail when the `/terrain/window` endpoint (or bundled focus windows) is available. Display lighting is **not** authoritative observer Sun/Earth status — that comes from the science pane.
+The polar overview uses a 320 m LOLA DEM (87°S–90°S). Near the camera, the viewer streams 5–20 m detail when the `/terrain/window` endpoint (or bundled focus windows) is available. In **mesh** mode, latitudes outside the polar cap use a displaced wireframe from NASA SVS **global LDEM 4 ppd** (`public/terrain/global-ldem-4ppd.bin`, ~2 MB). Display lighting is **not** authoritative observer Sun/Earth status — that comes from the science pane.
 
-For a fully offline terrain mosaic, see the original polar download flow (`node scripts/download-polar.mjs` + `POLAR_LOCAL_ONLY=1`). Bundled overview + CR1/SR1 focus windows are enough for the navigator demo.
+Regenerate the global LDEM browser asset (downloads ~4 MB TIFF into `.cache/` if needed):
+
+```powershell
+npm.cmd run terrain:global-ldem
+```
+
+For a fully offline polar mosaic, see the original polar download flow (`node scripts/download-polar.mjs` + `POLAR_LOCAL_ONLY=1`). Bundled overview + CR1/SR1 focus windows + global LDEM 4 ppd are enough for the navigator demo.
 
 ## Accuracy policy
 

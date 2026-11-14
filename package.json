@@ -6,6 +6,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "terrain": "node scripts/build-terrain.mjs",
+    "terrain:global-ldem": "node scripts/build-global-ldem.mjs",
     "science:horizons": "node scripts/compute-horizons.mjs",
     "science:ephemeris": "node scripts/fetch-horizons.mjs",
     "science:search": "node scripts/precompute-search-grid.mjs",

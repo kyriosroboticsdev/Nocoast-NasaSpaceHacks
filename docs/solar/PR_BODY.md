@@ -1,24 +1,25 @@
 ## What does this PR do?
 
-Replaces the planner's solar power proxy with the shared direct-beam model,
-including Sun distance, fixed panel orientation, upstream terrain visibility
-and integrated mission energy. Adds panel bearing, data coverage, replayable
-JSON input/output and solar regression CI. Based on preview through 6871774.
+Integrates Person 3 solar generation with constant-load battery dispatch,
+reserve and power limits, unmet energy, electrical outages, and an explicit
+power/communication requirements score. Adds tested fixed-panel/site grid search,
+landing-delay worst cases, cancellation, shared settings and replayable exports.
 
-Missing solar inputs remain unknown. Current terrain estimates remain
-preliminary and are excluded from power rankings; the analytic regional search
-explains why no solar-qualified candidates exist. Teammate contracts and
-remaining upstream work are documented in docs/solar/README.md.
+Visibility remains owned by the existing astronomy/horizon modules. Incomplete
+cases remain unknown; preliminary terrain never receives a validated mission
+grade. Optimizers report the best tested choices, preserving missing-case reasons.
+See docs/solar/MISSION_MODEL.md for assumptions and module handoffs.
 
 ## How was it tested?
 
-- 54 local regression tests passed with npm test.
-- Type-check and production build passed with npm run build.
-- Browser checks at 1440x1000 and 390x844: panel controls, blocked power,
-  partial coverage, invalid efficiency, shared settings and JSON export.
+- 94 Node regression tests, including analytical dispatch cases and seeded
+  energy-conservation checks, passed.
+- Type-check and production build passed.
+- Browser checks cover settings validation, battery results, nominal/robust
+  optimization, delay reports, applying results, cancellation and JSON export.
 
 ## Checklist
 
 - [ ] CI passes
 - [x] No DEMs / SPICE kernels / large data files committed
-- [x] Angles documented (degrees vs radians, azimuth convention)
+- [x] Angles, UTC clocks, Wh/W and derived event offsets documented

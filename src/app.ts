@@ -53,10 +53,12 @@ import {
   fmtPct,
   fmtPower,
   fmtEnergy,
+  fmtAvailability,
   localDateInputValue,
   viabilityClass,
 } from './ui/format';
 import { createTour } from './ui/tour';
+import { wireMissionUi, missionGrade, appendBatteryChart, fmtDuration, missionAnalysisExport } from './ui/mission';
 import {
   POWER_COMMS_PRIMER,
   attachMetricHelp,
@@ -98,6 +100,7 @@ function decisionKey(state: ScenarioState): string {
     start: state.startUtc,
     hours: state.durationHours,
     th: state.thresholds,
+    mission: state.missionSettings,
   });
 }
 
@@ -150,11 +153,7 @@ function renderMetricGrid(target: HTMLElement, a: MissionAssessment, scrubIso: s
   const instant = a.samples.reduce((best, s) =>
     Math.abs(Date.parse(s.utc) - Date.parse(scrubIso)) < Math.abs(Date.parse(best.utc) - Date.parse(scrubIso)) ? s : best,
   a.samples[0]);
-  const floor = getScenario().thresholds.batteryFloorW;
-  const meanVsFloor =
-    a.meanPowerW == null ? 'Unknown' : a.meanPowerW >= floor
-      ? `${fmtPower(a.meanPowerW)} · ≥ floor ${fmtPower(floor)}`
-      : `${fmtPower(a.meanPowerW)} · below floor ${fmtPower(floor)}`;
+  const meanVsFloor = fmtPower(a.meanPowerW);
   const uid = target.id || 'metric';
   type Row =
     | { kind: 'group'; label: string }
@@ -172,6 +171,20 @@ function renderMetricGrid(target: HTMLElement, a: MissionAssessment, scrubIso: s
     { kind: 'metric', label: 'Sampled peak panel output', value: fmtPower(a.peakPowerW), help: 'peakPower', tech: true },
     { kind: 'metric', label: 'Longest sun blackout', value: fmtHours(a.longestSunBlackoutHours), help: 'sunBlackout' },
     { kind: 'metric', label: 'Longest Earth blackout', value: fmtHours(a.longestEarthBlackoutHours), help: 'earthBlackout' },
+    { kind: 'group', label: '— Equipment power + storage —' },
+    { kind: 'metric', label: 'Electrical power availability', value: fmtAvailability(a.mission?.summary.powerAvailabilityFraction), help: 'electricalAvailability' },
+    { kind: 'metric', label: 'Unserved load energy', value: fmtEnergy(a.mission?.summary.unservedEnergyWh), help: 'unservedEnergy' },
+    { kind: 'metric', label: 'Longest power outage', value: fmtDuration(a.mission?.summary.longestPowerOutageSeconds), help: 'powerOutage' },
+    { kind: 'metric', label: 'First known power loss', value: a.mission?.summary.firstKnownPowerLossOffsetSeconds == null
+      ? a.mission?.summary.complete ? 'None' : 'Unknown'
+      : a.mission.summary.firstKnownPowerLossOffsetSeconds === 0 ? 'At landing' : `${fmtDuration(a.mission.summary.firstKnownPowerLossOffsetSeconds)} after landing`, help: 'powerOutage' },
+    { kind: 'metric', label: 'Battery at end', value: fmtEnergy(a.mission?.summary.finalBatteryWh), help: 'batteryWh' },
+    { kind: 'metric', label: 'Minimum battery energy', value: fmtEnergy(a.mission?.summary.minimumBatteryWh), help: 'batteryWh', tech: true },
+    { kind: 'metric', label: 'Battery losses', value: fmtEnergy(a.mission?.summary.batteryLossWh), help: 'batteryWh', tech: true },
+    { kind: 'metric', label: 'Demanded load energy', value: fmtEnergy(a.mission?.summary.loadEnergyWh), help: 'unservedEnergy', tech: true },
+    { kind: 'metric', label: 'Powered Earth contact', value: fmtAvailability(a.mission?.summary.jointAvailabilityFraction), help: 'jointPoweredComms' },
+    { kind: 'metric', label: 'Mission score', value: a.mission?.viability.score == null ? 'Unknown' : `${a.mission.viability.score.toFixed(1)}/100${a.mission.viability.qualifiedForMissionDecision ? '' : ' preliminary'}`, help: 'missionScore' },
+
   ];
   if ((a.unknownHours ?? 0) > 0.05) {
     rows.push({
@@ -205,7 +218,7 @@ function renderMetricGrid(target: HTMLElement, a: MissionAssessment, scrubIso: s
     reason.textContent = `Solar sample unavailable: ${instant.solar.quality.reason}. Use CR1/SR1 in January-February 2027 or regenerate matching science data.`;
     target.append(reason);
   }
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
     const div = document.createElement('div');
     if (row.kind === 'group') {
       div.className = 'metric-group';
@@ -218,12 +231,13 @@ function renderMetricGrid(target: HTMLElement, a: MissionAssessment, scrubIso: s
     if (row.tech) div.className = 'tech-only';
     const span = document.createElement('span');
     span.textContent = row.label;
-    if (row.help) attachMetricHelp(span, row.help, uid);
+    if (row.help) attachMetricHelp(span, row.help, `${uid}-${index}`);
     const strong = document.createElement('strong');
     strong.textContent = row.value;
     div.append(span, strong);
     target.append(div);
   }
+  appendBatteryChart(target, a);
 }
 
 function hoursUntil(a: MissionAssessment, scrub: string, kind: 'sun' | 'earth'): number | null {
@@ -285,6 +299,7 @@ async function computeSlot(state: ScenarioState, slot: 'A' | 'B', override?: {
     durationHours: state.durationHours,
     scrubUtc: override?.startUtc ?? state.scrubUtc,
     thresholds: state.thresholds,
+    missionSettings: state.missionSettings,
   });
 }
 
@@ -363,15 +378,15 @@ function paintMetricPrimers(a: MissionAssessment, slot: 'a' | 'b') {
   const unk = (a.unknownHours ?? 0) > 0.05 ? ` · ~${a.unknownHours.toFixed(1)} h unknown (not blackout)` : '';
   primer.textContent =
     `Comms: Earth LOS ${fmtPct(a.earthLosPct)} (~${earthH} h DTE-up); longest Earth blackout ${fmtHours(a.longestEarthBlackoutHours)}. ` +
-    `Power: sunlight ${fmtPct(a.sunlightPct)} (~${sunH} h); mean ${fmtPower(a.meanPowerW)} vs floor ${fmtPower(getScenario().thresholds.batteryFloorW)}; longest sun blackout ${fmtHours(a.longestSunBlackoutHours)}. ` +
-    `Sun ∩ Earth ${fmtPct(a.simultaneousPct)} (~${bothH} h) — recharge while talking to Earth, no relay.${unk}`;
+    `Power: electrical availability ${fmtAvailability(a.mission?.summary.powerAvailabilityFraction)}; unmet load ${fmtEnergy(a.mission?.summary.unservedEnergyWh)}; longest electrical outage ${fmtDuration(a.mission?.summary.longestPowerOutageSeconds)}. ` +
+    `Sun ∩ Earth ${fmtPct(a.simultaneousPct)} (~${bothH} h) is illumination/contact overlap; powered Earth contact ${fmtAvailability(a.mission?.summary.jointAvailabilityFraction)} includes battery support.${unk}`;
 }
 
 function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = {}) {
   if (!assessA) return;
   el('metrics-a-title').textContent = assessA.siteLabel;
   const viabA = el('viability-a');
-  viabA.textContent = assessA.viability === 'UNKNOWN' ? 'UNKNOWN · solar inputs need validation' : `${assessA.viability} · ${assessA.viabilityReason}`;
+  viabA.textContent = missionGrade(assessA);
   viabA.className = `viability ${viabilityClass(assessA.viability)}`;
   paintInstantChip('instant-a', assessA, state.scrubUtc);
   paintNogoPrompt(assessA);
@@ -384,7 +399,7 @@ function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = 
     el('metrics-b').hidden = false;
     el('metrics-b-title').textContent = assessB.siteLabel;
     const viabB = el('viability-b');
-    viabB.textContent = assessB.viability === 'UNKNOWN' ? 'UNKNOWN · solar inputs need validation' : `${assessB.viability} · ${assessB.viabilityReason}`;
+    viabB.textContent = missionGrade(assessB);
     viabB.className = `viability ${viabilityClass(assessB.viability)}`;
     paintInstantChip('instant-b', assessB, state.scrubUtc);
     renderMetricGrid(el('metric-grid-b'), assessB, state.scrubUtc);
@@ -448,6 +463,8 @@ function isScrubOnlyChange(prev: ScenarioState | undefined, next: ScenarioState)
     && prev.durationHours === next.durationHours
     && prev.primary === next.primary
     && prev.secondary === next.secondary
+    && prev.missionSettings === next.missionSettings
+    && prev.planning === next.planning
     && prev.thresholds === next.thresholds
   );
 }
@@ -559,7 +576,7 @@ function adoptSearchHit(hit: SearchHit) {
 async function recompute(state: ScenarioState) {
   const key = JSON.stringify({
     a: state.primary, b: state.secondary, start: state.startUtc,
-    hours: state.durationHours, th: state.thresholds, compare: state.compareEnabled,
+    hours: state.durationHours, th: state.thresholds, mission: state.missionSettings, compare: state.compareEnabled,
   });
   if (key === lastKey && assessA) {
     paintScrubOnly(state);
@@ -975,6 +992,7 @@ function wireMetricHelpChrome() {
 }
 
 function wireUi() {
+  wireMissionUi(base);
   wireMetricHelpChrome();
   el('mode-planner').onclick = () => setMode('planner');
   el('mode-learn').onclick = () => setMode('learn');
@@ -1127,7 +1145,7 @@ function wireUi() {
   el('export-json').onclick = () => {
     if (!assessA) return;
     const payload = {
-      schemaVersion: 'solar-integration-0.1.0',
+      schemaVersion: 'mission-integration-0.2.0',
       exportedAtUtc: new Date().toISOString(),
       scenario: getScenario(),
       siteA: assessA,
@@ -1144,14 +1162,16 @@ function wireUi() {
         score: r.score,
       })),
       dateSuggestions: lastDateSuggestions,
+      ...missionAnalysisExport(),
       notes: [
         'Solar input/output contract 0.1.0; watts, watt-hours, UTC seconds, ENU vectors; null means unknown.',
         'solarInput retains the upstream mask; solar retains model, panel, provenance, samples and interval energy.',
+        'mission adds constant-load battery dispatch, unmet energy, outages, and explicit power/comms requirements. Event offsets are seconds from landing.',
         'No Quest VR runtime is bundled — consume this JSON in an external viewer.',
         'Regional search uses LOLA 320 m overview horizons — not meter-perfect.',
       ],
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `lunar-site-navigator-${Date.now()}.json`;

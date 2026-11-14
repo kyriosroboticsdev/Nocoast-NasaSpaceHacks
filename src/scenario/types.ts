@@ -1,4 +1,5 @@
 /** Canonical scenario types shared by Planner and Learn modes. */
+import { DEFAULT_MISSION_SETTINGS, type MissionSettings } from '../power/mission';
 
 export type AppMode = 'planner' | 'learn';
 
@@ -41,7 +42,7 @@ export type ScenarioThresholds = {
   panelTiltDeg: number;
   /** Bearing of panel normal, clockwise from true north (deg). */
   panelAzimuthDeg: number;
-  /** Rough continuous draw floor (W) for battery-risk framing. */
+  /** Constant equipment consumption W during the site stay. Historical field name retained for URL compatibility. */
   batteryFloorW: number;
 };
 
@@ -66,6 +67,8 @@ export type ScenarioState = {
   primary: ScenarioSlot;
   secondary: ScenarioSlot;
   thresholds: ScenarioThresholds;
+  missionSettings: MissionSettings;
+  planning: { maxDelayHours: number; delayStepHours: number; orientationStepDeg: number; robustOptimization: boolean };
   showTechnicalDetails: boolean;
 };
 
@@ -94,6 +97,8 @@ export function createDefaultScenario(): ScenarioState {
     primary: { id: 'A', siteId: 'connecting-ridge-cr1' },
     secondary: { id: 'B', siteId: 'shackleton-rim-sr1' },
     thresholds: { ...DEFAULT_THRESHOLDS },
+    missionSettings: structuredClone(DEFAULT_MISSION_SETTINGS),
+    planning: { maxDelayHours: 48, delayStepHours: 12, orientationStepDeg: 30, robustOptimization: false },
     showTechnicalDetails: false,
   };
 }

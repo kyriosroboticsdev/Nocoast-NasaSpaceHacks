@@ -87,3 +87,6 @@ Eligibility only means the required data is complete and declared to use upstrea
 For Unity, science vectors are `[east,north,up]`. The agreed final scene direction is `[east,up,north]`. A directional light typically needs the negative ray direction relative to the vector pointing toward the Sun. Do not change the underlying data frame to match the renderer.
 
 No battery, load, communications, or viability score is required for this P0 input. Add those as separately versioned P1 calculations.
+
+The implemented P1/P2 layer is documented in [MISSION_MODEL.md](MISSION_MODEL.md).
+It consumes this unchanged P0 contract and exports separately versioned mission artifacts.

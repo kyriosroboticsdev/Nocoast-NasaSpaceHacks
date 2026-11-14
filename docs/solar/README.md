@@ -1,9 +1,12 @@
-# Solar integration (P0)
+# Solar and mission integration (P0–P2)
 
-The planner now uses the standalone lab's unchanged direct-beam kernel in
-`src/power/model.mjs`. Its typed input adapter is `src/power/adapter.ts`.
-No battery, base-load, electrical-bus sizing, optimizer or new viability score is
-implemented. The existing planning threshold is a heuristic, not a battery model.
+The Person 3 implementation now includes P0 solar power, P1 constant-load battery
+simulation and mission requirements, and P2 finite panel/site optimization and
+landing-delay worst cases. The standalone P0 kernel remains in
+`src/power/model.mjs`; `adapter.ts` connects the existing visibility output.
+
+See [MISSION_MODEL.md](MISSION_MODEL.md) for the electrical equations, defaults,
+score, limitations, delay assumptions, resource limits and replay examples.
 
 ## Run and verify
 
@@ -20,8 +23,9 @@ efficiency (0–1), tilt from face-up horizontal (0–180°), and normal's beari
 orientations in the site's local frame, not Sun tracking. Both comparison sites
 use the same hardware settings. Share URLs preserve these settings.
 
-The window reports total Wh, time-weighted mean W, sampled peak W, known-energy
-subtotal and data coverage. The scrubber reports a nearest sampled instant, not
+The solar window reports total Wh, time-weighted mean W, sampled peak W, known-energy
+subtotal and data coverage. The mission layer adds battery Wh, unmet load, electrical outages,
+first known power loss, powered Earth contact and an explicit policy score. The scrubber reports a nearest sampled instant, not
 an exact arbitrary-time solution. The final endpoint brackets the last interval
 and contributes no extra mission duration or sampled peak.
 
@@ -61,7 +65,7 @@ elevation sine or terrain attenuation after the incidence dot product.
 | --- | --- |
 | Terrain | `HorizonProfile`, matching site/frame/surface elevation and 2 m observer; true-north azimuth; gaps remain null. |
 | Sun/Earth and visibility | `EphemerisProvider.series.sun` with az/el and `rangeAu`, source/frame/observer metadata and real temporal coverage. `assessInstant` owns the single `sunlit` terrain decision. |
-| Solar | `adaptSolarSample` consumes that decision; kernel computes panel incidence, irradiance, W and interval Wh. It does not raycast terrain or recompute visibility. |
+| Solar/mission | Adapter consumes the mask once; kernel computes PV. Mission layer owns battery dispatch, electrical outages, policy score and tested panel/site/delay comparisons. |
 | UI/Quest | Read the exported `solarInput` and `solar`; render W/Wh and quality consistently. Renderer lighting never overrides scientific visibility. |
 
 The latest preview includes frame/ray-coverage fixes. After numerical/reference
@@ -79,6 +83,7 @@ finite-disk visibility. The kernel accepts fractional exposure when a solar
 input explicitly declares a fractional model, but this boolean app adapter
 does not claim to calculate solar-disk fractions.
 
+Mission dispatch consumes the same solar intervals, with no extra terrain multiplier.
 Power rejects analytic/legacy Sun inputs, invalid geometry, observer/frame/site
 mismatch, interpolation across gaps and requests outside the actual source
 span. The updated visibility provider returns null outside its covered span. Solar
@@ -113,18 +118,21 @@ sample quality, intervals and coverage. `eligibleForTerrainComparison` in the
 app additionally requires terrain validation; the generic kernel only checks
 completeness and declared terrain provenance.
 
-The regression suite covers analytical physics, geometry, held visibility,
+The regression suite also covers battery conservation, within-interval outages, reserve/rate limits,
+policy scoring, delay replay, complete-case grid selection and cancellation.
+P0 tests cover analytical physics, geometry, held visibility,
 missing data, gaps, boundary timing, adapter validation, replay, URL hardware
 round trips and the bundled NASA sample contract. No network is used by tests.
-Browser evidence is in `evidence/`; it is local validation evidence, not a
+Browser evidence is in `evidence/`; mission UI evidence is in `mission-evidence/`; it is local validation evidence, not a
 scientific validation of terrain.
 
 ## Commit only your solar changes
 
 This contribution lives on `solar-integration`, based on `preview` at
 `6871774`. A new commit records only our changes relative to that base: the
-solar module, adapter, controls/exports, solar data refresh, regression tests
-and integration documentation. Teammates' existing commits remain in history.
+solar module, adapter, mission model, optimizer, controls/exports, data refresh,
+regression tests and integration documentation. P0 was committed as `162caf9`;
+the new P1/P2 work is a follow-up on the same branch. Teammates' existing commits remain in history.
 
 Review the changes, then commit locally:
 

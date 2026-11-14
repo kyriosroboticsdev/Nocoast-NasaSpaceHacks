@@ -55,7 +55,7 @@ src/scenario/   shared Planner ↔ Learn state + catalog + URL sync
 src/horizon/    load / sphere fallback / elevation-at-azimuth
 src/ephemeris/  bundled Horizons + live API client + analytic fallback
 src/assess/     sunlight, Earth LOS, blackouts, assessment orchestration
-src/power/      solar input adapter + pure irradiance, panel power and energy model
+src/power/      solar adapter + irradiance, battery/load dispatch, panel/site/delay planning
 src/viz/        skyline ribbon + Gantt timeline
 src/ui/         formatting helpers + Learn narrative
 src/app.ts      mode shell + assessment orchestration
@@ -81,13 +81,14 @@ Implementation lives on `preview` (from `vracton/terrain`).
 
 ## Solar contribution: `solar-integration`
 
-This branch adds the Person 3 solar module on top of `preview` at `6871774`.
+This branch adds the Person 3 solar and mission modules on top of `preview` at `6871774`.
 The new commit contains our solar changes; the team's existing preview commits
 are its base.
 
 Integration flow: site/observer metadata + Sun ephemeris → the visibility
 module's `sunlit` mask → `src/power/adapter.ts` → `src/power/model.mjs` → panel
-watts, mission watt-hours and coverage in the planner/JSON export. Visibility
+watts, battery/load simulation, electrical shortages/outages, mission score,
+finite panel/site optimization and landing-delay comparisons in the planner/JSON export. Visibility
 owns terrain obstruction; solar consumes its result once and adds panel
 orientation, active area, efficiency and Sun distance. Earth availability is
 independent of solar generation. Missing inputs stay unknown.
@@ -97,6 +98,7 @@ now include true-north facing bearing, and shared URLs preserve the settings.
 
 See the [solar README and teammate handoff](docs/solar/README.md) for the input
 contract, units/frames, source coverage, current limitations and commit-only
-instructions. [Latest repo updates](docs/solar/REPO_UPDATE.md) are documented
-separately. Terrain validation is still qualified in the UI; batteries and
-loads are outside this P0 module.
+instructions. See the [mission model and usage guide](docs/solar/MISSION_MODEL.md)
+for battery assumptions, score policy, tested-grid scope and replay examples. [Latest repo updates](docs/solar/REPO_UPDATE.md) are documented
+separately. Terrain validation remains qualified in the UI. The P0 kernel is unchanged;
+the version 0.2 mission layer adds constant load, bounded storage and explicit requirements.

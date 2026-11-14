@@ -42,5 +42,23 @@ export function dateInputToUtcIso(value: string) {
 
 export function fmtEnergy(wh: number | null | undefined) {
   if (wh == null || !Number.isFinite(wh)) return 'Unknown';
+  if (wh > 0 && wh < 0.05) return '<0.1 Wh';
   return wh >= 1000 ? `${(wh / 1000).toFixed(2)} kWh` : `${wh.toFixed(1)} Wh`;
+}
+
+export function fmtDuration(seconds: number | null | undefined) {
+  if (seconds == null) return 'Unknown';
+  if (seconds === 0) return 'None';
+  if (seconds < 0.1) return `${seconds.toPrecision(2)} s`;
+  if (seconds < 60) return `${seconds.toFixed(1)} s`;
+  if (seconds < 3600) return `${(seconds / 60).toFixed(1)} min`;
+  return `${(seconds / 3600).toFixed(2)} h`;
+}
+
+export function fmtAvailability(fraction: number | null | undefined) {
+  if (fraction == null || !Number.isFinite(fraction)) return 'Unknown';
+  if (fraction === 1) return '100%';
+  if (fraction > 0.9995) return '<100%';
+  if (fraction === 0) return '0%';
+  return `${(fraction * 100).toFixed(1)}%`;
 }

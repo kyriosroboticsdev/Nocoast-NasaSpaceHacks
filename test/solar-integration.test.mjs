@@ -8,7 +8,7 @@ import { interpolateSeries } from '../.cache/solar-tests/ephemeris/horizons.js';
 import { sphereHorizon } from '../.cache/solar-tests/horizon/types.js';
 import { DEFAULT_THRESHOLDS, createDefaultScenario } from '../.cache/solar-tests/scenario/types.js';
 import { getScenario, setScenario, scenarioToSearchParams, applyUrlParams } from '../.cache/solar-tests/scenario/state.js';
-import { fmtPower, fmtEnergy } from '../.cache/solar-tests/ui/format.js';
+import { fmtPower, fmtEnergy, fmtAvailability, fmtDuration } from '../.cache/solar-tests/ui/format.js';
 import { rankSearchCandidates } from '../.cache/solar-tests/assess/search.js';
 import { simulate } from '../src/power/model.mjs';
 
@@ -278,4 +278,38 @@ test('URL sharing preserves new upstream Site B coordinates and scrub settings w
   assert.equal(getScenario().scrubUtc, scenario.scrubUtc);
   assert.equal(getScenario().thresholds.panelTiltDeg, 120);
   assert.equal(getScenario().thresholds.panelAzimuthDeg, 270);
+});
+
+test('stored energy can satisfy mission power requirements even when mean generation is below the load', () => {
+  const f = fixture(); f.thresholds.batteryFloorW = 500;
+  f.horizon.validation = { status: 'validated', algorithmVersion: 'synthetic-unit-test-only' };
+  f.missionSettings = { battery: { capacityWh: 1000, initialSocFraction: 1, reserveSocFraction: 0,
+    chargeEfficiency: 1, dischargeEfficiency: 1, maxChargeW: 1000, maxDischargeW: 1000 },
+    requirements: { minPowerAvailabilityFraction: 1, minCommsAvailabilityFraction: 0.5, maxCommsBlackoutHours: 24 } };
+  const a = assessMission(f);
+  assert.ok(a.meanPowerW < 500); close(a.mission.summary.unservedEnergyWh, 0);
+  assert.equal(a.viability, 'GO'); close(a.mission.viability.score, 100);
+});
+
+test('mission communication consumption agrees with the visibility owner midpoint windows', () => {
+  const f = fixture(), get = f.provider.get;
+  f.provider.get = (body, utc) => body === 'earth'
+    ? { utc, azimuthDeg: 0, elevationDeg: Date.parse(utc) - Date.parse(START) < 1800000 ? 30 : -10 } : get(body, utc);
+  const a = assessMission(f);
+  close(a.mission.summary.commsAvailabilityFraction * 100, a.earthLosPct);
+});
+
+test('display distinguishes near-full availability and small shortages from exact success', () => {
+  assert.equal(fmtAvailability(1), '100%');
+  assert.equal(fmtAvailability(0.9999999), '<100%');
+  assert.equal(fmtAvailability(null), 'Unknown');
+  assert.notEqual(fmtEnergy(0.0001), fmtEnergy(0));
+  assert.notEqual(fmtDuration(1e-7), fmtDuration(0));
+});
+
+test('scrubbing does not alter physical mission consumption or battery history', () => {
+  const f = fixture(); const before = assessMission(f);
+  f.scrubUtc = '2027-01-01T01:00:00Z'; const after = assessMission(f);
+  assert.deepEqual(after.mission.summary, before.mission.summary);
+  assert.deepEqual(after.mission.segments, before.mission.segments);
 });

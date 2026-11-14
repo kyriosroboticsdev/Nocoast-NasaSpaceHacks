@@ -1,6 +1,8 @@
 import { horizonElevationAt, type HorizonProfile } from '../horizon/types';
 import type { EphemerisProvider } from '../ephemeris/horizons';
 import type { ScenarioThresholds, ViabilityGrade } from '../scenario/types';
+import { simulateMission, DEFAULT_MISSION_SETTINGS, type MissionSettings, type MissionResult } from '../power/mission';
+import { communicationTimeline } from './visibility';
 import { adaptSolarSample, buildSolarInput, panelFromThresholds, STEP_SECONDS } from '../power/adapter';
 import { calculatePower, simulate, type PowerResult, type PowerSample, type SolarInput } from '../power/model.mjs';
 
@@ -45,6 +47,7 @@ export type MissionAssessment = {
   solarInput: SolarInput | null;
   solar: PowerResult | null;
   powerWarning: string;
+  mission: MissionResult | null;
   viability: ViabilityGrade;
   viabilityReason: string;
   hoursToSunset: number | null;
@@ -228,6 +231,7 @@ export function assessMission(options: {
   scrubUtc: string;
   thresholds: ScenarioThresholds;
   stepHours?: number;
+  missionSettings?: MissionSettings;
 }): MissionAssessment {
   const step = options.stepHours ?? STEP_SECONDS / 3600;
   if (!Number.isFinite(step) || step <= 0 || !Number.isFinite(options.durationHours)
@@ -246,7 +250,9 @@ export function assessMission(options: {
     : options.horizon.model !== 'lola_terrain' ? 'Illustrative horizon power; study terrain is unavailable.'
     : options.horizon.validation?.status !== 'validated'
       ? 'Preliminary power: upstream terrain validation has not been supplied.'
-      : 'Direct-beam estimate; 10-minute sampled visibility. Batteries, thermal losses and eclipses are excluded.';
+      : 'Direct-beam estimate; 10-minute sampled visibility. Battery/load effects are reported in the separate mission layer; thermal losses and eclipses are excluded.';
+
+  const mission = solar ? simulateMission(solar, options.thresholds.batteryFloorW, options.missionSettings ?? DEFAULT_MISSION_SETTINGS, communicationTimeline(samples)) : null;
 
   const sunInt = integrateFlag(samples, s => s.sunlit);
   const earthInt = integrateFlag(samples, s => s.earthLos);
@@ -266,32 +272,16 @@ export function assessMission(options: {
   const earthLosPct = Math.min(100, (100 * earthLosHours) / span);
   const simultaneousPct = Math.min(100, (100 * simultaneousHours) / span);
 
-  // Known-fraction viability: do not treat unknown as blackout, but require enough known coverage.
-  const knownFraction = Math.max(0, 1 - unknownHours / span);
-  let viability: ViabilityGrade = 'NO-GO';
-  let viabilityReason = 'Insufficient sunlight or Earth LOS for the selected thresholds.';
-
-  const sphereOnly = options.horizonModel === 'sphere_optimistic';
-  // Sphere alone must not get RISKY promotion without Earth LOS.
-  if (sunlightPct >= 40 && earthLosPct >= 40 && meanPowerW != null && meanPowerW >= options.thresholds.batteryFloorW && knownFraction >= 0.5) {
-    viability = 'GO';
-    viabilityReason = 'Sunlight and Earth LOS both meet planning thresholds with margin.';
-  } else if (sunlightPct >= 20 && earthLosPct >= 20 && knownFraction >= 0.5) {
-    viability = 'RISKY';
-    viabilityReason = 'Partial coverage — feasible with storage/relay or schedule tuning.';
-  } else if (sphereOnly) {
-    viability = 'NO-GO';
-    viabilityReason = 'Sphere-horizon estimate only — insufficient Earth/sun coverage (terrain unknown).';
-  }
-
-  if (unknownHours > span * 0.25) {
-    viabilityReason += ` Ephemeris unknown for ~${unknownHours.toFixed(1)} h of the window.`;
-  }
-
-  if (!solar?.summary.eligibleForTerrainComparison) {
-    viability = 'UNKNOWN';
-    viabilityReason = powerWarning + ' Mission grade requires complete solar inputs and validated terrain.';
-  }
+  let viability: ViabilityGrade = 'UNKNOWN';
+  let viabilityReason = powerWarning;
+  if (mission?.viability.qualifiedForMissionDecision) {
+    viability = mission.viability.requirementsMet ? 'GO' : 'NO-GO';
+    viabilityReason = mission.viability.requirementsMet
+      ? 'Electrical power and communication requirements are met in this model.'
+      : 'Electrical power or communication requirements are not met; inspect outages and unserved energy.';
+  } else if (mission?.viability.score != null) {
+    viabilityReason = 'Conditional mission estimate; upstream terrain validation has not been supplied.';
+  } else viabilityReason = 'Mission result unknown because solar or communication coverage is incomplete.';
 
   return {
     siteLabel: options.siteLabel,
@@ -316,6 +306,7 @@ export function assessMission(options: {
     solarInput,
     solar,
     powerWarning,
+    mission,
     viability,
     viabilityReason,
     hoursToSunset: hoursUntilFalse(samples, options.scrubUtc, s => s.sunlit),

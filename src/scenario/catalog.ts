@@ -1,6 +1,11 @@
 import type { SiteCatalogEntry } from './types';
 
-/** Curated south-pole / notable sites. Study sites match sites.json coords. */
+/**
+ * Curated south-pole / notable sites.
+ * Study sites (CR1/SR1) match sites.json and ship LOLA terrain horizons.
+ * Other curated entries and custom lat/lon use sphere_optimistic horizons —
+ * UI must surface that flag so planners do not treat them as measured.
+ */
 export const SITE_CATALOG: SiteCatalogEntry[] = [
   {
     siteId: 'connecting-ridge-cr1',

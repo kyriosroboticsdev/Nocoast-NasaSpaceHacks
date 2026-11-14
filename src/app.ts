@@ -23,6 +23,7 @@ import { loadHorizonProfile } from './horizon/load';
 import { createEphemerisProvider } from './ephemeris/horizons';
 import { assessMission, type MissionAssessment } from './assess/windows';
 import { renderSkyline } from './viz/skyline';
+import { renderTimeline } from './viz/timeline';
 import {
   dateInputToUtcIso,
   fmtDeg,
@@ -162,6 +163,12 @@ function paintAssessment(state: ScenarioState) {
       } : undefined);
     });
   el('scrub-label').textContent = `${state.scrubUtc.replace('.000Z', 'Z')} · ${assessA.ephemerisSource}`;
+  renderTimeline(
+    el<HTMLCanvasElement>('timeline'),
+    assessA,
+    state.scrubUtc,
+    state.compareEnabled ? assessB : null,
+  );
   syncUrl();
 }
 

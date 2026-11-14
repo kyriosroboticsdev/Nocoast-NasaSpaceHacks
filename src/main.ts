@@ -98,22 +98,14 @@ function parseGlobalLdem(buffer: ArrayBuffer): GlobalLdem {
 
 /** Equatorial cell size of the 4 ppd global LDEM (~7.58 km). */
 const GLOBAL_NATIVE_M = (2 * Math.PI * radius) / 1440;
-/**
- * Aim for this many screen pixels between wireframe edges.
- * ~14 packed into solid blue; 64 keeps open cells with clearly visible edges.
- */
-const MESH_PIXELS_PER_EDGE = 64;
-/** Floor on polar 320 m LOLA stride (16 → ~5.1 km cells; never dense fill). */
-const MESH_POLAR_MIN_STRIDE = 16;
-/** Floor on global 4 ppd LDEM step (8 → ~61 km / ~1°; Whole Moon stays a grid). */
-const MESH_GLOBAL_MIN_STEP = 8;
+/** Aim for this many screen pixels between wireframe edges (readable, never solid fill). */
+const MESH_PIXELS_PER_EDGE = 14;
 
 /** Power-of-two stride so LOD rebuilds are stable under small zoom jitter. */
-function snapStride(ideal: number, maxStride: number, minStride = 1): number {
-  const lo = Math.max(1, minStride);
-  const clamped = Math.min(maxStride, Math.max(lo, ideal));
+function snapStride(ideal: number, maxStride: number): number {
+  const clamped = Math.min(maxStride, Math.max(1, ideal));
   const snapped = 2 ** Math.round(Math.log2(clamped));
-  return Math.min(maxStride, Math.max(lo, snapped));
+  return Math.min(maxStride, Math.max(1, snapped));
 }
 
 /**
@@ -327,8 +319,8 @@ export async function startTerrain(): Promise<TerrainApi> {
     opacity: 0.72,
     depthWrite: false,
   });
-  // Start coarse; zoom LOD may refine but never below MESH_GLOBAL_MIN_STEP.
-  let globalWireStep = 32;
+  // Start coarse; zoom LOD rebuilds to native 4 ppd when close enough.
+  let globalWireStep = 16;
   let globalWire = meshFromGlobalLdem(globalLdem, globalWireMaterial, globalWireStep);
   globalWire.visible = false;
   globalWire.renderOrder = 1;
@@ -426,17 +418,16 @@ export async function startTerrain(): Promise<TerrainApi> {
   }
 
   /**
-   * Zoom-adaptive triangulation for mesh mode: far → coarse (open wireframe),
-   * close → finer but floored so edges stay ≥ ~MESH_PIXELS_PER_EDGE on screen
-   * and never pack into a solid blue fill at Whole Moon or polar zoom.
+   * Zoom-adaptive triangulation for mesh mode: far → coarse (readable lines),
+   * close → finer but capped so edges stay ≥ ~MESH_PIXELS_PER_EDGE on screen.
    */
   function updateMeshLod() {
     if (layer.value !== 'mesh') return;
     const edge = targetWireEdgeMeters();
-    // Polar 320 m LOLA: stride so spacing*stride ≈ target edge (min 16 ≈ 5 km, max 256 ≈ 82 km).
-    const polarStride = snapStride(edge / overview.spacing, 256, MESH_POLAR_MIN_STRIDE);
-    // Global 4 ppd (~7.6 km): same pixel budget (min 8 ≈ 61 km, max 64 ≈ 485 km).
-    const globalStep = snapStride(edge / GLOBAL_NATIVE_M, 64, MESH_GLOBAL_MIN_STEP);
+    // Polar 320 m LOLA: stride so spacing*stride ≈ target edge (max 128 ≈ 40 km).
+    const polarStride = snapStride(edge / overview.spacing, 128);
+    // Global 4 ppd (~7.6 km): same pixel budget (max 32 ≈ 240 km / ~20°).
+    const globalStep = snapStride(edge / GLOBAL_NATIVE_M, 32);
     if (polarStride !== polarWireStride) rebuildPolarBackdrop(polarStride, 'mesh');
     rebuildGlobalWire(globalStep);
     // Keep detail-window badge while a local tile is loaded.
@@ -445,13 +436,13 @@ export async function startTerrain(): Promise<TerrainApi> {
 
   /**
    * Mesh/wireframe: overview + global remesh by zoom; detail windows only when
-   * close, stride from screen-edge budget (never finer than 40 m / stride 8).
+   * close, stride from screen-edge budget (never finer than 20 m / stride 4).
    * Relief/elevation keep fine 5–20 m windows.
    */
   function detailPolicy(distance: number): { maxDistance: number; stride: number } {
     if (layer.value === 'mesh') {
       const edge = targetWireEdgeMeters();
-      const stride = Math.max(8, snapStride(edge / 5, 64));
+      const stride = Math.max(4, snapStride(edge / 5, 32));
       return { maxDistance: 5500, stride };
     }
     if (distance < 1000) return { maxDistance: 6300, stride: 1 };

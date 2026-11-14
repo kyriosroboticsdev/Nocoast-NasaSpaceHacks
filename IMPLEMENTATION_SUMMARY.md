@@ -61,13 +61,13 @@ Full requirements mapping: `REQUIREMENTS_AUDIT.md`.
 **Outside-cap wireframe / real DEM at 4 ppd source.**  
 NASA SVS CGI Moon Kit `ldem_4.tif` → `npm run terrain:global-ldem` → `public/terrain/global-ldem-4ppd.bin`. Mesh mode keeps real elevations; density is **resampled by zoom**, not fixed full-grid tessellation.
 
-**How density is chosen:** target world edge ≈ `metersPerPixel × 64` from camera surface distance, FOV, and viewport height (open cells, not solid fill). Strides snap to powers of two with hard floors (polar ≥ 16, global ≥ 8).
+**How density is chosen:** target world edge ≈ `metersPerPixel × 14` from camera surface distance, FOV, and viewport height. Strides snap to powers of two (stable under orbit jitter).
 
 | View | Polar LOLA (native 320 m) | Global LDEM (native ~7.6 km) |
 | --- | --- | --- |
-| Whole Moon / far | coarse (up to stride 256 ≈ 82 km) | coarse (up to step 64 ≈ 485 km) |
-| Mid / polar overview | medium strides (≥ 16 ≈ 5 km) | medium steps (≥ 8 ≈ 61 km) |
-| Close | finer, still ≥ ~64 px/edge and stride ≥ 16; detail tiles never finer than **40 m** (stride ≥ 8) | never finer than step 8 (~61 km) |
+| Whole Moon / far | coarse (up to stride 128 ≈ 40 km) | coarse (up to step 32 ≈ 240 km) |
+| Mid / polar overview | medium strides | medium steps |
+| Close | finer, still ≥ ~14 px/edge; detail tiles never finer than **20 m** (stride ≥ 4) | down to native 4 ppd |
 
 **Overlap avoided:** global mesh hard-clips south of **87°S**, fades −86°→−87°, dims globe under wireframe — no z-fight at the polar hole.
 

@@ -46,7 +46,8 @@ async function elevationWindow(req, res, next) {
   const [column, row, stride] = numbers;
   const size = 257;
   const extent = (size - 1) * stride + 1;
-  if (req.method !== 'GET' || ![1, 2, 4].includes(stride) ||
+  // 1/2/4 for relief; 8 for mesh/wireframe (wider, lower-density windows).
+  if (req.method !== 'GET' || ![1, 2, 4, 8].includes(stride) ||
       !Number.isInteger(column) || !Number.isInteger(row) ||
       column + extent > 40000 || row + extent > 40000) {
     res.writeHead(400).end('Invalid terrain window');

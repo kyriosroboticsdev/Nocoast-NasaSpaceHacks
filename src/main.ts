@@ -231,11 +231,28 @@ export async function startTerrain(): Promise<TerrainApi> {
     return orbit;
   }
   let controls = createControls();
+  /** Mesh/wireframe: cap density (never finer than 20 m) and prefer wide medium windows. */
+  function detailPolicy(distance: number): { maxDistance: number; stride: number } {
+    if (layer.value === 'mesh') {
+      // Prefer 320 m overview across the polar study area; detail only when close,
+      // and only stride 4/8 (20–40 m over ~5–10 km) — never 5 m solid-blue wireframe.
+      if (distance < 2200) return { maxDistance: 5500, stride: 4 };
+      return { maxDistance: 5500, stride: 8 };
+    }
+    if (distance < 1000) return { maxDistance: 6300, stride: 1 };
+    if (distance < 2300) return { maxDistance: 6300, stride: 2 };
+    return { maxDistance: 6300, stride: 4 };
+  }
+
   function setLayer() {
     const key = layer.value as keyof typeof materials;
     backdrop.material = overviewMaterials[key];
     if (detail) detail.material = materials[key];
     element('legend').hidden = key !== 'elevation';
+    // Mesh vs relief use different stride caps — drop the current window so LOD reloads uniformly.
+    request?.abort();
+    removeDetail();
+    nextUpdate = performance.now();
   }
   layer.onchange = setLayer;
   setLayer();
@@ -262,7 +279,11 @@ export async function startTerrain(): Promise<TerrainApi> {
       cutout.value.set(grid.x+3,grid.y-span+3,grid.x+span-3,grid.y-3);
     }
     scene.add(detail);
-    setLayer();
+    // Apply materials without invalidating the window we just loaded.
+    const matKey = layer.value as keyof typeof materials;
+    backdrop.material = overviewMaterials[matKey];
+    detail.material = materials[matKey];
+    element('legend').hidden = matKey !== 'elevation';
     if (!flight && focusedPoint && controls.target.distanceTo(focusedPoint.target)<1) {
       const {x,y} = focusedPoint;
       const h = groundHeight(x,y);
@@ -279,14 +300,14 @@ export async function startTerrain(): Promise<TerrainApi> {
   function updateDetail() {
     const distance = camera.position.distanceTo(controls.target);
     const [x,y] = projection(controls.target);
-    if (distance > 6300 || Math.hypot(x,y) > capRadius) {
+    const { maxDistance, stride } = detailPolicy(distance);
+    if (distance > maxDistance || Math.hypot(x,y) > capRadius) {
       request?.abort();
       removeDetail();
       element('mode-label').textContent = '87°S–90°S · 320 M OVERVIEW';
       status.textContent = '';
       return;
     }
-    const stride = distance < 1000 ? 1 : distance < 2300 ? 2 : 4;
     const span = 256 * stride, step = 64 * stride;
     const column = Math.round(((x+100000)/5-span/2)/step)*step;
     const row = Math.round(((100000-y)/5-span/2)/step)*step;

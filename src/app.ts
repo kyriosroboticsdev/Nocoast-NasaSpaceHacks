@@ -655,7 +655,7 @@ function renderSearchList(rows: SearchHit[]) {
       <span class="rank-pos">#${i + 1}</span>
       <span class="rank-body">
         <strong>${row.publishedLabel} · ${Math.abs(row.latitudeDeg).toFixed(3)}°S ${row.longitudeEastDeg.toFixed(2)}°E</strong>
-        <span class="rank-metrics">${row.viability} · ∩ ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)} · overview LOLA</span>
+        <span class="rank-metrics">${row.viability} · ∩ ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)} · mean ${fmtPower(row.meanPowerW)} (floor ${fmtPower(getScenario().thresholds.batteryFloorW)}) · overview LOLA</span>
       </span>
       <span class="rank-adopt">Adopt</span>`;
     item.onclick = () => adoptSearchHit(row);

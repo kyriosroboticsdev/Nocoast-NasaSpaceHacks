@@ -18,7 +18,7 @@ End-to-end **find / compare / decide** navigator on the Vite / TypeScript / Thre
 | Ephemeris | Bundled JPL for CR1/SR1 (extend via `science:ephemeris` when online); **no clamp past series end** (uncovered hours = unknown); calibrated analytic fallback (badged) |
 | Assessment | Exact `[start,end]` sampling; sun/shadow/**unknown** hours; windows with transition midpoints; power = 0 when not sunlit |
 | Ranking | Tiered authority: LOLA 5 m+JPL → overview → sphere/analytic (hard tier sort + score penalties); provenance badges |
-| Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play** |
+| Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play**; mesh LOD caps density (no 5 m wireframe) and prefers 320 m overview / 20–40 m wide windows |
 | Markers | Three categories on mesh: **catalog** (teal ●), **search** (amber ◆), **chosen** (coral ■) + Site B **compare** (violet ◎) |
 | Adopt → 3D | Site A changes / Adopt / map pick / custom apply **always** re-focus camera + chosen marker (no mystery CR1 snap) |
 | Compare | Side-by-side Site A / Site B with compare marker |
@@ -45,8 +45,15 @@ Full requirements mapping: `REQUIREMENTS_AUDIT.md`.
 1. Offline: `npm run science:search` → `scripts/precompute-search-grid.mjs` writes `public/science/search/polar-cap-candidates.json` (~262 points, ~10 km spacing, 87°S–90°S).  
 2. Each candidate stores compact **LOLA 320 m overview** horizon elev bins (2° azimuth, 640 m ray step to 250 km) — **no 5 m near-field**.  
 3. In-app **Find best location** filters by region (full cap or around Site A radius), scores with `assessMission` + analytic ephemeris (2 h steps), ranks top-N.  
-4. Hits plot as amber ◆ markers; **Adopt** sets custom Site A **and retains the overview LOLA horizon + elevation used for ranking** (not downgraded to sphere).  
-5. UI labels honesty: coarse ranking, not meter-perfect / not global optimum. Prefer CR1/SR1 for study-grade LOLA.
+4. **Power is in search scoring** (not sunlight-only): soft score uses `meanPowerW` (panel area × efficiency × solar constant × incidence when sunlit); GO viability also requires `meanPowerW ≥ batteryFloorW`. Hit badges show mean power + floor.  
+5. Hits plot as amber ◆ markers; **Adopt** sets custom Site A **and retains the overview LOLA horizon + elevation used for ranking** (not downgraded to sphere).  
+6. UI labels honesty: coarse ranking, not meter-perfect / not global optimum. Prefer CR1/SR1 for study-grade LOLA.
+
+### Mesh LOD (preview)
+
+- Default layer remains **mesh**.  
+- Mesh mode never loads 5 m / 10 m detail windows (stride 1–2); caps at **20 m (stride 4)** when close and **40 m (stride 8)** mid-zoom (~5–10 km span).  
+- Farther out: full-cap **320 m overview** wireframe so geometry stays readable over the polar study area instead of a crater-sized dense blue patch.
 
 ## Key files
 

@@ -1,5 +1,7 @@
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createHeightField, parseGlobalLdem } from './terrain/heightField';
+import { createMoonMesh, MOON_MESH_MAX_LEVEL } from './terrain/moonMesh';
 
 const radius = 1737400;
 const capRadius = 2 * radius * Math.tan(T.MathUtils.degToRad(1.5));
@@ -63,131 +65,13 @@ function heightAt(grid: Grid, x: number, y: number) {
   return du+dv <= 1 ? a+(b-a)*du+(c-a)*dv : d+(c-d)*(1-du)+(b-d)*(1-dv);
 }
 
-/** Hard clip: polar 320 m LOLA owns ≤87°S; global LDEM starts north of that. */
-const GLOBAL_HOLE_LAT_DEG = -87;
-/** Fade global heights to the reference sphere approaching the polar join. */
-const GLOBAL_FADE_LAT_DEG = -86;
-
-type GlobalLdem = {
-  width: number;
-  height: number;
-  ppd: number;
-  lonWestDeg: number;
-  latNorthDeg: number;
-  metersPerUnit: number;
-  values: Int16Array;
-};
-
-function parseGlobalLdem(buffer: ArrayBuffer): GlobalLdem {
-  const header = new DataView(buffer);
-  const magic = String.fromCharCode(
-    header.getUint8(0), header.getUint8(1), header.getUint8(2), header.getUint8(3),
-  );
-  if (magic !== 'LDEM') throw new Error('Unexpected global LDEM magic');
-  const version = header.getUint32(4, true);
-  if (version !== 1) throw new Error(`Unsupported global LDEM version ${version}`);
-  const width = header.getUint32(8, true);
-  const height = header.getUint32(12, true);
-  const ppd = header.getUint32(16, true);
-  const lonWestDeg = header.getFloat32(20, true);
-  const latNorthDeg = header.getFloat32(24, true);
-  const metersPerUnit = header.getFloat32(28, true);
-  const values = new Int16Array(buffer, 32, width * height);
-  return { width, height, ppd, lonWestDeg, latNorthDeg, metersPerUnit, values };
-}
-
-/** Equatorial cell size of the 4 ppd global LDEM (~7.58 km). */
-const GLOBAL_NATIVE_M = (2 * Math.PI * radius) / 1440;
-/** Aim for this many screen pixels between wireframe edges (readable, never solid fill). */
-const MESH_PIXELS_PER_EDGE = 14;
-
-/** Power-of-two stride so LOD rebuilds are stable under small zoom jitter. */
-function snapStride(ideal: number, maxStride: number): number {
-  const clamped = Math.min(maxStride, Math.max(1, ideal));
-  const snapped = 2 ** Math.round(Math.log2(clamped));
-  return Math.min(maxStride, Math.max(1, snapped));
-}
-
 /**
- * Displaced cylindrical LDEM wireframe with a south-polar hole so it never
- * intersects the 87°S–90°S LOLA overview (or its fade-to-sphere rim).
- * `step` subsamples the DEM grid (1 = native 4 ppd) for zoom-adaptive density.
+ * Polar stereographic DEM mesh for the lunar-surface and elevation layers
+ * (320 m overview and the streamed 5–20 m detail windows). The mesh layer
+ * does not use this; it draws the whole Moon through `createMoonMesh`.
  */
-function meshFromGlobalLdem(dem: GlobalLdem, material: T.Material, step = 1) {
-  const { width, height, ppd, lonWestDeg, latNorthDeg, metersPerUnit, values } = dem;
-  const stride = Math.max(1, step | 0);
-  const jSamples: number[] = [];
-  for (let j = 0; j < height; j += stride) jSamples.push(j);
-  const iSamples: number[] = [];
-  for (let i = 0; i < width; i += stride) iSamples.push(i);
-  const jCount = jSamples.length;
-  const iCount = iSamples.length;
-  const positions = new Float32Array(jCount * iCount * 3);
-  const lookup = new Int32Array(jCount * iCount).fill(-1);
-  let vertexCount = 0;
-  const radial = new T.Vector3();
-  for (let jj = 0; jj < jCount; jj++) {
-    const j = jSamples[jj];
-    const latDeg = latNorthDeg - (j + 0.5) / ppd;
-    if (latDeg < GLOBAL_HOLE_LAT_DEG) continue;
-    const lat = T.MathUtils.degToRad(latDeg);
-    const cosLat = Math.cos(lat);
-    const sinLat = Math.sin(lat);
-    const fade = latDeg <= GLOBAL_FADE_LAT_DEG
-      ? T.MathUtils.smoothstep(latDeg, GLOBAL_HOLE_LAT_DEG, GLOBAL_FADE_LAT_DEG)
-      : 1;
-    for (let ii = 0; ii < iCount; ii++) {
-      const i = iSamples[ii];
-      const lonDeg = lonWestDeg + (i + 0.5) / ppd;
-      const lon = T.MathUtils.degToRad(lonDeg);
-      const h = values[j * width + i] * metersPerUnit * fade;
-      // World frame matches globe picks: +Y through south pole, +X = 90°E, −Z = 0°E.
-      radial.set(
-        cosLat * Math.sin(lon),
-        -sinLat,
-        -cosLat * Math.cos(lon),
-      ).normalize();
-      const idx = vertexCount++;
-      lookup[jj * iCount + ii] = idx;
-      positions[idx * 3] = moonCenter.x + radial.x * (radius + h);
-      positions[idx * 3 + 1] = moonCenter.y + radial.y * (radius + h);
-      positions[idx * 3 + 2] = moonCenter.z + radial.z * (radius + h);
-    }
-  }
-  const triangles: number[] = [];
-  for (let jj = 0; jj < jCount - 1; jj++) {
-    for (let ii = 0; ii < iCount; ii++) {
-      const ii1 = (ii + 1) % iCount;
-      const a = lookup[jj * iCount + ii];
-      const b = lookup[jj * iCount + ii1];
-      const c = lookup[(jj + 1) * iCount + ii];
-      const d = lookup[(jj + 1) * iCount + ii1];
-      if (a < 0 || b < 0 || c < 0 || d < 0) continue;
-      triangles.push(a, c, b, b, c, d);
-    }
-  }
-  const geometry = new T.BufferGeometry();
-  geometry.setAttribute('position', new T.BufferAttribute(positions.subarray(0, vertexCount * 3), 3));
-  geometry.setIndex(triangles);
-  const mesh = new T.Mesh(geometry, material);
-  mesh.frustumCulled = false;
-  return mesh;
-}
-
-/**
- * Polar DEM mesh. `sampleStride` > 1 keeps full geographic extent (includes last
- * row/col) while thinning triangles for wireframe LOD — elevations stay real.
- */
-function meshFor(grid: Grid, material: T.Material, parent?: Grid, sampleStride = 1) {
-  const step = Math.max(1, sampleStride | 0);
-  const last = grid.width - 1;
-  const sample: number[] = [];
-  for (let i = 0; ; i++) {
-    const t = Math.min(i * step, last);
-    sample.push(t);
-    if (t >= last) break;
-  }
-  const width = sample.length;
+function meshFor(grid: Grid, material: T.Material, parent?: Grid) {
+  const width = grid.width;
   const positions = new Float32Array(width * width * 3);
   const colors = new Float32Array(positions.length);
   const projected = new Float32Array(width * width * 2);
@@ -195,16 +79,15 @@ function meshFor(grid: Grid, material: T.Material, parent?: Grid, sampleStride =
   const valid = new Uint8Array(width * width);
   const low = new T.Color('#234d70'), mid = new T.Color('#6aa4a2'), high = new T.Color('#e7d29c');
   const color = new T.Color();
-  const margin = Math.min(24, Math.max(2, Math.floor(width / 8)));
+  const margin = 24;
   for (let j = 0; j < width; j++) for (let i = 0; i < width; i++) {
-    const gi = sample[i], gj = sample[j];
     const idx = j * width + i;
-    const x = grid.x + gi * grid.spacing, y = grid.y - gj * grid.spacing;
+    const x = grid.x + i * grid.spacing, y = grid.y - j * grid.spacing;
     projected[idx * 2] = x;
     projected[idx * 2 + 1] = y;
     uv[idx * 2] = x / radius;
     uv[idx * 2 + 1] = y / radius;
-    const h = grid.values[gj * grid.width + gi];
+    const h = grid.values[idx];
     let renderHeight = h;
     // Fade the outer margin into the overview to keep the join continuous.
     if (parent) {
@@ -216,8 +99,9 @@ function meshFor(grid: Grid, material: T.Material, parent?: Grid, sampleStride =
     if (distanceToEdge < 0 || !Number.isFinite(renderHeight)) continue;
     // Bring the outer two kilometers back to the reference sphere at the globe join.
     renderHeight *= T.MathUtils.smoothstep(distanceToEdge, 650, 2650);
+    const point = world(x, y, renderHeight);
     valid[idx] = 1;
-    world(x, y, renderHeight).toArray(positions, idx * 3);
+    point.toArray(positions, idx * 3);
     const fraction = T.MathUtils.clamp((h + 8000) / 15000, 0, 1);
     color.copy(fraction < .5 ? low : mid).lerp(fraction < .5 ? mid : high, fraction < .5 ? fraction * 2 : fraction * 2 - 1);
     color.toArray(colors, idx * 3);
@@ -307,26 +191,18 @@ export async function startTerrain(): Promise<TerrainApi> {
   }
   polarSurface.onBeforeCompile = applyPolarImagery;
   polarSurface.customProgramCacheKey = () => 'polar-imagery';
+  // Materials of the lunar-surface and elevation layers (polar DEM meshes).
   const materials = {
     relief: polarSurface,
     elevation: new T.MeshBasicMaterial({vertexColors:true}),
-    mesh: new T.MeshBasicMaterial({color:0x89b6ba,wireframe:true}),
   };
-  const globalWireMaterial = new T.MeshBasicMaterial({
-    color: 0x89b6ba,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.72,
-    depthWrite: false,
-  });
-  // Start coarse; zoom LOD rebuilds to native 4 ppd when close enough.
-  let globalWireStep = 16;
-  let globalWire = meshFromGlobalLdem(globalLdem, globalWireMaterial, globalWireStep);
-  globalWire.visible = false;
-  globalWire.renderOrder = 1;
-  // Picks stay on the textured globe / polar DEM — wireframe is display-only.
-  globalWire.raycast = () => {};
-  scene.add(globalWire);
+  const solidLayer = (): keyof typeof materials => layer.value === 'elevation' ? 'elevation' : 'relief';
+  // Mesh layer: one height function and one quadtree cube-sphere for the whole
+  // Moon, drawn as an opaque fill with wire lines on top (see terrain/moonMesh.ts).
+  const heightField = createHeightField(radius, overview, globalLdem);
+  const moonMesh = createMoonMesh({radius, center: moonCenter, field: heightField});
+  moonMesh.group.visible = false;
+  scene.add(moonMesh.group);
   const cutout = {value:new T.Vector4()};
   const cap = {value:capRadius};
   const overviewMaterials = Object.fromEntries(Object.entries(materials).map(([key, material]) => {
@@ -350,8 +226,7 @@ export async function startTerrain(): Promise<TerrainApi> {
     };
     return [key,copy];
   })) as typeof materials;
-  let polarWireStride = 1;
-  let backdrop = meshFor(overview, overviewMaterials.relief);
+  const backdrop = meshFor(overview, overviewMaterials.relief);
   scene.add(backdrop);
   let detail: T.Mesh<T.BufferGeometry, T.Material> | undefined;
   let currentGrid: Grid | undefined;
@@ -370,119 +245,71 @@ export async function startTerrain(): Promise<TerrainApi> {
     orbit.mouseButtons.MIDDLE = T.MOUSE.PAN;
     orbit.screenSpacePanning = true;
     orbit.listenToKeyEvents(renderer.domElement);
-    orbit.addEventListener('change',()=> {nextUpdate = performance.now()+180;});
+    // Short defer before the next detail-window / badge refresh.
+    orbit.addEventListener('change',()=> {nextUpdate = performance.now()+70;});
     return orbit;
   }
   let controls = createControls();
 
-  /** Distance used for screen-space edge sizing (surface altitude, not center radius). */
-  function surfaceViewDistance(): number {
-    const toTarget = camera.position.distanceTo(controls.target);
-    const toCenter = camera.position.distanceTo(moonCenter);
-    return Math.max(25, Math.min(toTarget, Math.max(toCenter - radius, 25)));
-  }
-
-  /** World-space wire edge that subtends ~MESH_PIXELS_PER_EDGE on screen. */
-  function targetWireEdgeMeters(): number {
-    const dist = surfaceViewDistance();
-    const metersPerPixel = 2 * dist * Math.tan(T.MathUtils.degToRad(camera.fov) * 0.5)
-      / Math.max(1, viewport.clientHeight);
-    return metersPerPixel * MESH_PIXELS_PER_EDGE;
-  }
-
-  function formatLodMeters(meters: number): string {
-    if (meters >= 1000) return `${Math.round(meters / 1000)} KM`;
+  function formatMeters(meters: number): string {
+    if (meters >= 10000) return `${Math.round(meters / 1000)} KM`;
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} KM`;
     return `${Math.round(meters)} M`;
   }
 
-  function rebuildGlobalWire(step: number) {
-    if (step === globalWireStep && globalWire.parent) return;
-    scene.remove(globalWire);
-    globalWire.geometry.dispose();
-    globalWire = meshFromGlobalLdem(globalLdem, globalWireMaterial, step);
-    globalWire.visible = layer.value === 'mesh';
-    globalWire.renderOrder = 1;
-    globalWire.raycast = () => {};
-    scene.add(globalWire);
-    globalWireStep = step;
-  }
-
-  function rebuildPolarBackdrop(stride: number, materialKey: keyof typeof materials) {
-    const keepCutout = cutout.value.clone();
-    scene.remove(backdrop);
-    backdrop.geometry.dispose();
-    backdrop = meshFor(overview, overviewMaterials[materialKey], undefined, stride);
-    scene.add(backdrop);
-    cutout.value.copy(keepCutout);
-    polarWireStride = stride;
-  }
-
-  /**
-   * Zoom-adaptive triangulation for mesh mode: far → coarse (readable lines),
-   * close → finer but capped so edges stay ≥ ~MESH_PIXELS_PER_EDGE on screen.
-   */
-  function updateMeshLod() {
-    if (layer.value !== 'mesh') return;
-    const edge = targetWireEdgeMeters();
-    // Polar 320 m LOLA: stride so spacing*stride ≈ target edge (max 128 ≈ 40 km).
-    const polarStride = snapStride(edge / overview.spacing, 128);
-    // Global 4 ppd (~7.6 km): same pixel budget (max 32 ≈ 240 km / ~20°).
-    const globalStep = snapStride(edge / GLOBAL_NATIVE_M, 32);
-    if (polarStride !== polarWireStride) rebuildPolarBackdrop(polarStride, 'mesh');
-    rebuildGlobalWire(globalStep);
-    // Keep detail-window badge while a local tile is loaded.
-    if (!currentKey) setOverviewModeLabel();
-  }
-
-  /**
-   * Mesh/wireframe: overview + global remesh by zoom; detail windows only when
-   * close, stride from screen-edge budget (never finer than 20 m / stride 4).
-   * Relief/elevation keep fine 5–20 m windows.
-   */
+  /** Relief/elevation: fine 5–20 m polar detail windows near the view centre. */
   function detailPolicy(distance: number): { maxDistance: number; stride: number } {
-    if (layer.value === 'mesh') {
-      const edge = targetWireEdgeMeters();
-      const stride = Math.max(4, snapStride(edge / 5, 32));
-      return { maxDistance: 5500, stride };
-    }
     if (distance < 1000) return { maxDistance: 6300, stride: 1 };
     if (distance < 2300) return { maxDistance: 6300, stride: 2 };
     return { maxDistance: 6300, stride: 4 };
   }
 
+  const viewRay = new T.Ray();
+  const referenceSphere = new T.Sphere(moonCenter, radius);
+  const viewCentre = new T.Vector3();
+  /** Direction from the Moon's centre to the surface in the middle of the view. */
+  function viewCentreDirection(): T.Vector3 {
+    viewRay.origin.copy(camera.position);
+    camera.getWorldDirection(viewRay.direction);
+    if (!viewRay.intersectSphere(referenceSphere, viewCentre)) viewCentre.copy(camera.position);
+    return viewCentre.sub(moonCenter).normalize();
+  }
+
+  /** Mesh badge: the grid and the data actually drawn at the view centre. */
+  function meshModeLabel(): string {
+    const d = viewCentreDirection();
+    const level = Math.max(0, moonMesh.levelAt(d.x, d.y, d.z));
+    const cell = moonMesh.cellMeters(level);
+    const source = heightField.source(d.x, d.y, d.z);
+    const native = source === 'ldem' ? heightField.ldemSpacingM : heightField.lolaSpacingM;
+    const data = source === 'lola' ? `LOLA ${formatMeters(native)}`
+      : source === 'ldem' ? `GLOBAL LDEM ${formatMeters(native)}`
+      : 'LOLA + LDEM BLEND';
+    // Cells finer than the data only resample it; say so.
+    const resampled = cell < native * 0.75 ? ' INTERPOLATED' : '';
+    return `MESH LOD ${level}/${MOON_MESH_MAX_LEVEL} · ~${formatMeters(cell)} CELLS · ${data}${resampled}`;
+  }
+
   function setOverviewModeLabel() {
-    if (layer.value === 'mesh') {
-      const polarM = overview.spacing * polarWireStride;
-      const globalM = GLOBAL_NATIVE_M * globalWireStep;
-      element('mode-label').textContent =
-        `POLAR ~${formatLodMeters(polarM)} LOLA · GLOBAL ~${formatLodMeters(globalM)} LDEM`;
-      return;
-    }
-    element('mode-label').textContent = '87°S–90°S · 320 M OVERVIEW';
+    const text = layer.value === 'mesh' ? meshModeLabel() : '87°S–90°S · 320 M OVERVIEW';
+    const label = element('mode-label');
+    if (label.textContent !== text) label.textContent = text;
   }
 
   function setLayer() {
-    const key = layer.value as keyof typeof materials;
-    element('legend').hidden = key !== 'elevation';
-    const meshOn = key === 'mesh';
-    globalWire.visible = meshOn;
-    // Dim the solid globe under the outside-cap wireframe so shells don't fight.
-    lunarSurface.transparent = meshOn;
-    lunarSurface.opacity = meshOn ? 0.34 : 1;
-    lunarSurface.depthWrite = !meshOn;
-    lunarSurface.needsUpdate = true;
-    // Mesh vs relief use different stride caps — drop the current window so LOD reloads uniformly.
+    const meshOn = layer.value === 'mesh';
+    // The elevation ramp also applies to the mesh layer's faint fill tint.
+    element('legend').hidden = layer.value === 'relief';
+    // Detail windows belong to the surface layers; the mesh layer never uses them.
     request?.abort();
     removeDetail();
-    if (meshOn) {
-      polarWireStride = -1; // force rebuild at current zoom
-      globalWireStep = -1;
-      updateMeshLod();
-    } else {
-      rebuildPolarBackdrop(1, key);
-      if (detail) detail.material = materials[key];
-      setOverviewModeLabel();
-    }
+    // The mesh layer is its own complete surface, so the textured globe and
+    // polar DEM are hidden under it (and the other way round). Its LOD is
+    // refreshed every frame by the render loop.
+    moonMesh.group.visible = meshOn;
+    globe.visible = backdrop.visible = !meshOn;
+    if (!meshOn) backdrop.material = overviewMaterials[solidLayer()];
+    setOverviewModeLabel();
     nextUpdate = performance.now();
   }
   layer.onchange = setLayer;
@@ -500,21 +327,18 @@ export async function startTerrain(): Promise<TerrainApi> {
   }
   function showDetail(grid: Grid, key: string) {
     removeDetail();
-    detail = meshFor(grid, materials.relief, overview);
+    const matKey = solidLayer();
+    detail = meshFor(grid, materials[matKey], overview);
     currentGrid = grid;
     currentKey = key;
     const span = (size-1)*grid.spacing;
-    // Cut overview under a fully valid window so detail + base don't z-fight
-    // (double shells / intersecting tops). Mesh uses zoom-capped strides only.
+    // Cut overview under a fully valid window so detail + base don't z-fight.
     if (grid.values.every(Number.isFinite) &&
         [grid.x,grid.x+span].every(x=>Math.hypot(x,grid.y) < capRadius && Math.hypot(x,grid.y-span) < capRadius)) {
       cutout.value.set(grid.x+3,grid.y-span+3,grid.x+span-3,grid.y-3);
     }
     scene.add(detail);
-    // Apply materials without invalidating the window we just loaded.
-    const matKey = layer.value as keyof typeof materials;
     backdrop.material = overviewMaterials[matKey];
-    detail.material = materials[matKey];
     element('legend').hidden = matKey !== 'elevation';
     if (!flight && focusedPoint && controls.target.distanceTo(focusedPoint.target)<1) {
       const {x,y} = focusedPoint;
@@ -530,6 +354,16 @@ export async function startTerrain(): Promise<TerrainApi> {
   }
 
   function updateDetail() {
+    // Mesh layer: the whole-Moon mesh is the surface; no detail windows.
+    if (layer.value === 'mesh') {
+      if (currentKey || detail) {
+        request?.abort();
+        removeDetail();
+        setOverviewModeLabel();
+      }
+      status.textContent = '';
+      return;
+    }
     const distance = camera.position.distanceTo(controls.target);
     const [x,y] = projection(controls.target);
     const { maxDistance, stride } = detailPolicy(distance);
@@ -667,7 +501,7 @@ export async function startTerrain(): Promise<TerrainApi> {
     controls = createControls();
     controls.target.copy(target);
     controls.update();
-    nextUpdate = performance.now()+180;
+    nextUpdate = performance.now()+70;
   }
   type Flight = {
     start: number; fromHeight: number; toHeight: number; direction: T.Vector3;
@@ -695,7 +529,14 @@ export async function startTerrain(): Promise<TerrainApi> {
     };
     controls.enabled = false;
   }
+  /**
+   * Height of the surface the active layer draws at polar (x, y), for the
+   * close-focus camera. NaN where close focus is not offered (outside the cap).
+   */
   function groundHeight(x: number,y: number) {
+    if (layer.value === 'mesh') {
+      return Math.hypot(x,y) <= capRadius*1.05 ? heightField.heightAtPolar(x,y) : NaN;
+    }
     if (currentGrid) {
       const h = heightAt(currentGrid,x,y);
       if (Number.isFinite(h)) {
@@ -760,7 +601,9 @@ export async function startTerrain(): Promise<TerrainApi> {
         -Math.sin(lat),
         -Math.cos(lat) * Math.cos(east),
       ).normalize();
-      const target = moonCenter.clone().add(local.clone().multiplyScalar(radius));
+      // Aim at the surface that is drawn: the displaced mesh, or the smooth globe.
+      const surface = layer.value === 'mesh' ? heightField.height(local.x, local.y, local.z) : 0;
+      const target = moonCenter.clone().add(local.clone().multiplyScalar(radius + surface));
       const offset = local.clone().multiplyScalar(radius * 1.35).add(new T.Vector3(0, -radius * 0.15, 0));
       flyTo(target, offset, new T.Vector3(0, -1, 0));
       return;
@@ -815,30 +658,45 @@ export async function startTerrain(): Promise<TerrainApi> {
         return;
       }
     }
+    // A click outside the polar cap: report it, or fly to a regional view.
+    const globeHit = (point: T.Vector3) => {
+      if (pickMode && pickCallback) {
+        const ll = latLonFromGlobeHit(point);
+        pickCallback(ll.latitudeDeg, ll.longitudeEastDeg);
+        return;
+      }
+      focusedPoint = undefined;
+      element('details').replaceChildren();
+      const radial = point.clone().sub(moonCenter).normalize();
+      flyTo(point,radial.multiplyScalar(410000),new T.Vector3(0,-1,0));
+    };
+    // A click inside the polar cap: report it and fly to the close focus view.
+    const polarHit = (x: number, y: number) => {
+      if (pickMode && pickCallback) {
+        const ll = latLonFromPolarXY(x, y);
+        pickCallback(ll.latitudeDeg, ll.longitudeEastDeg);
+      }
+      focusTerrain(x, y);
+    };
+    if (layer.value === 'mesh') {
+      // The mesh layer is one surface: hit the patches that are on screen.
+      const point = moonMesh.intersect(ray);
+      if (!point) return;
+      const [x,y] = projection(point);
+      if (Math.hypot(x,y) <= capRadius) polarHit(x,y);
+      else globeHit(point);
+      return;
+    }
     const bounds = cutout.value;
     const candidates = detail ? [detail,backdrop,globe] : [backdrop,globe];
     for (const hit of ray.intersectObjects(candidates,false)) {
       if (hit.object === globe) {
-        if (pickMode && pickCallback) {
-          const ll = latLonFromGlobeHit(hit.point);
-          pickCallback(ll.latitudeDeg, ll.longitudeEastDeg);
-          break;
-        }
-        focusedPoint = undefined;
-        element('details').replaceChildren();
-        const radial = hit.point.clone().sub(moonCenter).normalize();
-        flyTo(hit.point,radial.multiplyScalar(410000),new T.Vector3(0,-1,0));
+        globeHit(hit.point);
         break;
       }
       const [x,y] = projection(hit.point);
       if (hit.object === backdrop && x>bounds.x && x<bounds.z && y>bounds.y && y<bounds.w) continue;
-      if (pickMode && pickCallback) {
-        const ll = latLonFromPolarXY(x, y);
-        pickCallback(ll.latitudeDeg, ll.longitudeEastDeg);
-        focusTerrain(x, y);
-        break;
-      }
-      focusTerrain(x,y);
+      polarHit(x,y);
       break;
     }
   });
@@ -861,15 +719,20 @@ export async function startTerrain(): Promise<TerrainApi> {
     } else {
       controls.update();
     }
+    const meshOn = layer.value === 'mesh';
+    // Mesh LOD follows the camera every frame, including during flights. It
+    // only does work when the camera moved, and only builds uncached patches.
+    if (meshOn) moonMesh.update(camera, viewport.clientHeight);
     if (now >= nextUpdate) {
-      nextUpdate = now + 200;
-      // Remesh wire density while flying so Whole Moon never flashes solid blue.
-      if (layer.value === 'mesh') updateMeshLod();
+      nextUpdate = now + 90;
+      if (meshOn) setOverviewModeLabel();
       if (!flight) updateDetail();
     }
     for (const m of liveMarkers) {
+      // Markers sit on the surface the active layer draws.
       const local = currentGrid ? heightAt(currentGrid, m.x, m.y) : NaN;
-      const h = Number.isFinite(local) ? local : heightAt(overview, m.x, m.y);
+      const h = meshOn ? heightField.heightAtPolar(m.x, m.y)
+        : Number.isFinite(local) ? local : heightAt(overview, m.x, m.y);
       const lift = m.spec.category === 'chosen' ? 18 : m.spec.category === 'compare' ? 14 : 10;
       const base = Number.isFinite(h) ? h : 0;
       m.mesh.position.copy(world(m.x, m.y, base + lift));
@@ -885,6 +748,16 @@ export async function startTerrain(): Promise<TerrainApi> {
   if (layer.querySelector('option[value="mesh"]')) {
     layer.value = 'mesh';
     setLayer();
+  }
+
+  if (import.meta.env.DEV) {
+    // Dev-server only inspection hook (stripped from production builds).
+    Object.assign(window, {__terrainDebug: {
+      renderer, scene, camera, moonMesh, heightField, world, projection,
+      controls: () => controls,
+      markers: () => liveMarkers,
+      ray,
+    }});
   }
 
   return {

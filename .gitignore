@@ -1,0 +1,15 @@
+# Large lunar data — download via script, never commit
+data/
+*.bsp
+*.bpc
+*.tls
+*.tf
+*.img
+*.tif
+*.IMG
+# Python / Node
+__pycache__/
+.venv/
+node_modules/
+dist/
+.env

@@ -77,6 +77,13 @@ h3 { font-size: 0.9rem; color: var(--muted); margin-bottom: 8px; font-weight: 60
 }
 .learn-panel p { color: var(--muted); margin-top: 8px; }
 .learn-panel strong { color: #edf4ff; }
+.learn-tip {
+  margin-top: 12px !important;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: rgba(125, 228, 212, 0.06);
+  border-radius: 0 8px 8px 0;
+}
 .guided-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 
 .workspace { margin-top: 20px; }

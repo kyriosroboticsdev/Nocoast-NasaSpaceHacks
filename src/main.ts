@@ -160,6 +160,29 @@ export async function startTerrain(): Promise<TerrainApi> {
   globe.position.copy(moonCenter);
   scene.add(globe);
 
+  /**
+   * Coarse reference-sphere wireframe for latitudes outside the 87°S–90°S LOLA overview.
+   * Same hole/orientation as the textured globe so the polar DEM owns the cap; ~10° cells
+   * stay readable (not a solid-blue shell). No DEM displacement — honesty via mode-label.
+   */
+  const outerShellShape = new T.SphereGeometry(radius * 1.0012, 36, 18, 0, Math.PI * 2, 0, Math.PI - seam);
+  outerShellShape.rotateX(Math.PI);
+  outerShellShape.rotateY(Math.PI / 2);
+  const outerShell = new T.Mesh(
+    outerShellShape,
+    new T.MeshBasicMaterial({
+      color: 0x89b6ba,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.62,
+      depthWrite: false,
+    }),
+  );
+  outerShell.position.copy(moonCenter);
+  outerShell.renderOrder = 1;
+  outerShell.visible = false;
+  scene.add(outerShell);
+
   const overviewBody = await fetchAsset('terrain/polar-overview.bin').then(r => r.arrayBuffer());
   const header = new DataView(overviewBody);
   const overview: Grid = {
@@ -232,9 +255,9 @@ export async function startTerrain(): Promise<TerrainApi> {
   }
   let controls = createControls();
   /**
-   * Relief/elevation stream local DEM windows. Mesh/wireframe stays on the full
-   * 87°S–90°S 320 m overview — crater-local detail punches a hole in that base and
-   * reads as a tiny solid-blue patch (never reintroduce stride 1–2 for mesh).
+   * Relief/elevation stream local DEM windows. Mesh/wireframe keeps the full
+   * 87°S–90°S 320 m overview plus a coarse global sphere shell outside that cap —
+   * never reintroduce stride 1–2 crater-local wireframe (solid-blue density).
    */
   function detailPolicy(distance: number): { maxDistance: number; stride: number } | null {
     if (layer.value === 'mesh') return null;
@@ -243,14 +266,26 @@ export async function startTerrain(): Promise<TerrainApi> {
     return { maxDistance: 6300, stride: 4 };
   }
 
+  function setOverviewModeLabel() {
+    element('mode-label').textContent = layer.value === 'mesh'
+      ? 'POLAR 320 M LOLA · OUTSIDE · ~10° SPHERE GRID'
+      : '87°S–90°S · 320 M OVERVIEW';
+  }
+
   function setLayer() {
     const key = layer.value as keyof typeof materials;
     backdrop.material = overviewMaterials[key];
     if (detail) detail.material = materials[key];
     element('legend').hidden = key !== 'elevation';
+    const meshOn = key === 'mesh';
+    outerShell.visible = meshOn;
+    lunarSurface.transparent = meshOn;
+    lunarSurface.opacity = meshOn ? 0.38 : 1;
+    lunarSurface.needsUpdate = true;
     // Mesh vs relief use different stride caps — drop the current window so LOD reloads uniformly.
     request?.abort();
     removeDetail();
+    setOverviewModeLabel();
     nextUpdate = performance.now();
   }
   layer.onchange = setLayer;
@@ -305,7 +340,7 @@ export async function startTerrain(): Promise<TerrainApi> {
     if (!policy || distance > policy.maxDistance || Math.hypot(x,y) > capRadius) {
       request?.abort();
       removeDetail();
-      element('mode-label').textContent = '87°S–90°S · 320 M OVERVIEW';
+      setOverviewModeLabel();
       status.textContent = '';
       return;
     }

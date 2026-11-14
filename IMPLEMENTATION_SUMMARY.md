@@ -25,7 +25,7 @@ End-to-end **find / compare / decide** navigator on the Vite / TypeScript / Thre
 | Ephemeris | Bundled JPL for CR1/SR1 (extend via `science:ephemeris` when online); **no clamp past series end** (uncovered hours = unknown); calibrated analytic fallback (badged) |
 | Assessment | Exact `[start,end]` sampling; sun/shadow/**unknown** hours; windows with transition midpoints; power = 0 when not sunlit |
 | Ranking | Tiered authority: LOLA 5 m+JPL → overview → sphere/analytic (hard tier sort + score penalties); provenance badges |
-| Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play**; mesh stays on full-cap 320 m overview (no crater-local dense wireframe) |
+| Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play**; mesh = polar 320 m LOLA overview + coarse **global** ~10° sphere wireframe outside 87°S (no crater-local dense wireframe) |
 | Markers | Three categories on mesh: **catalog** (teal ●), **search** (amber ◆), **chosen** (coral ■) + Site B **compare** (violet ◎) |
 | Adopt → 3D | Site A changes / Adopt / map pick / custom apply **always** re-focus camera + chosen marker (no mystery CR1 snap) |
 | Compare | Side-by-side Site A / Site B with compare marker |
@@ -59,7 +59,8 @@ Full requirements mapping: `REQUIREMENTS_AUDIT.md`.
 ### Mesh LOD (preview)
 
 - Default layer remains **mesh**.  
-- Mesh/wireframe **always** uses the full-cap **320 m LOLA overview** (87°S–90°S / bundled DEM footprint) — no crater-local detail windows and no overview cutout, so the wireframe stays wide and readable.  
+- Mesh/wireframe uses the full-cap **320 m LOLA overview** (87°S–90°S / ~91 km stereographic disc) **plus** a coarse **global reference-sphere wireframe** (~10° lat/lon cells) outside that cap, so catalog sites beyond 87°S sit on readable geometry (not texture-only globe). Badge: `POLAR 320 M LOLA · OUTSIDE · ~10° SPHERE GRID`.  
+- Outside-cap shell is not DEM-displaced (honest label); polar region stays LOLA-accurate. No crater-local mesh windows / no overview cutout.  
 - Relief / elevation still stream 5–20 m detail near the view center; mesh never reintroduces stride 1–2 solid-blue density.
 
 ## Key files

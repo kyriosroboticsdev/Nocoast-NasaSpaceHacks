@@ -107,7 +107,13 @@ async function elevationWindow(req, res, next) {
   }
 }
 
+// Person 2 science API (FastAPI, `python -m uvicorn backend.app:app --port 8765`).
+const api = {'/api': {target: process.env.SCIENCE_API ?? 'http://127.0.0.1:8765', changeOrigin: true}};
+
 export default defineConfig({
+  server: {proxy: api},
+  preview: {proxy: api},
+  build: {rollupOptions: {input: {main: 'index.html', terrain: 'terrain.html'}}},
   plugins: [{
     name: 'polar-elevation-windows',
     configureServer(server) { server.middlewares.use(elevationWindow); },

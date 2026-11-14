@@ -1,38 +1,221 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0a111a">
-  <title>Lunar Shadow Lab · Terrain explorer</title>
+  <title>Lunar Navigator</title>
+  <link rel="stylesheet" href="/src/dashboard/style.css">
 </head>
 <body>
-  <main>
-    <header><p class="eyebrow">LUNAR SHADOW LAB / SOUTH POLE</p><h1>Terrain explorer</h1>
-      <p>Explore the Moon and zoom into the detailed south-pole terrain.</p></header>
+<header class="topbar">
+  <div class="brand">
+    <span class="moon-icon"></span>
+    <div>
+      <div class="title">Lunar Navigator</div>
+      <div class="tagline" data-t="tagline"></div>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button data-tab="overview" class="active" data-t="tabOverview"></button>
+    <button data-tab="compare" data-t="tabCompare"></button>
+    <button data-tab="dates" data-t="tabDates"></button>
+    <button data-tab="terrain" data-t="tabTerrain"></button>
+  </nav>
+  <label class="mode-switch" title="Show technical terms and extra detail">
+    <span data-t="modeLabel"></span>
+    <input type="checkbox" id="advanced">
+    <span class="switch"></span>
+  </label>
+</header>
+
+<section class="controls">
+  <div class="control">
+    <label data-t="ctlSite"></label>
+    <select id="site"></select>
+  </div>
+  <div class="control simple-only">
+    <label data-t="ctlLanding"></label>
+    <input type="date" id="land-date">
+  </div>
+  <div class="control simple-only">
+    <label data-t="ctlLength"></label>
+    <select id="length">
+      <option value="7">1 week</option>
+      <option value="14">2 weeks</option>
+      <option value="30" selected>30 days</option>
+      <option value="60">60 days</option>
+    </select>
+  </div>
+  <div class="control adv-only">
+    <label>Start (UTC)</label>
+    <input type="datetime-local" id="start" step="600">
+  </div>
+  <div class="control adv-only">
+    <label>End (UTC, exclusive)</label>
+    <input type="datetime-local" id="end" step="600">
+  </div>
+  <div class="control adv-only small">
+    <label>Antenna min. elevation (°)</label>
+    <input type="number" id="antenna" step="0.5" min="-5" max="60">
+  </div>
+  <div id="status" class="status"></div>
+</section>
+
+<main>
+  <!-- ============ OVERVIEW ============ -->
+  <section id="tab-overview" class="tab-page">
     <div class="layout">
-      <section id="viewport" aria-label="Interactive 3D lunar terrain">
-        <div class="badge" id="mode-label">87°S–90°S</div>
-        <div class="hint" id="hint">Click to fly to a spot · Drag to orbit · Middle-drag to pan · Scroll or pinch to zoom</div>
-      </section>
-      <aside>
-        <label for="site">Study point</label>
-        <select id="site" disabled></select>
-        <div class="buttons">
-          <button id="focus" disabled>Zoom to site</button>
-          <button id="reset" disabled>Full polar cap</button>
-          <button id="globe" disabled>Whole Moon</button>
+      <div class="visuals">
+        <div class="card verdict" id="verdict"></div>
+
+        <div class="card now">
+          <div class="now-row" id="now-sun"></div>
+          <div class="now-row" id="now-earth"></div>
         </div>
-        <label for="layer">Terrain layer</label>
-        <select id="layer" disabled><option value="relief">Lunar surface</option><option value="elevation">Elevation</option><option value="mesh">Mesh wireframe</option></select>
-        <div id="legend" hidden><div class="ramp"></div><div class="range"><span>−8,000 m</span><span>7,000 m</span></div><small>Radial elevation above the reference sphere</small></div>
-        <p id="status" role="status">Loading terrain…</p>
-        <dl id="details"></dl>
-        <p class="source"><a href="https://pgda.gsfc.nasa.gov/products/81">NASA 5 m LOLA mosaic</a> · <a href="https://pgda.gsfc.nasa.gov/products/90">Polar overview</a> · <a href="https://svs.gsfc.nasa.gov/4720/">NASA SVS Moon imagery</a></p>
-        <div class="coverage"><strong>Science coverage</strong><p>Sun and Earth terrain visibility are unknown. The lunar surface layer uses NASA imagery and fixed display lighting.</p></div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 data-t="skyTitle"></h2>
+            <p class="help" data-t="skyHelp"></p>
+          </div>
+          <div class="sky-tools">
+            <div class="seg" id="sky-view">
+              <button data-v="3d" class="active" data-t="view3d"></button>
+              <button data-v="flat" data-t="viewFlat"></button>
+            </div>
+            <div class="seg sky3d-only" id="sky-mode">
+              <button data-m="lander" class="active" data-t="modeLander"></button>
+              <button data-m="bird" data-t="modeBird"></button>
+            </div>
+            <div class="sky3d-only tool-btns">
+              <button class="btn small" id="find-earth" data-t="findEarth"></button>
+              <button class="btn small" id="find-sun" data-t="findSun"></button>
+              <button class="btn small" id="reset-view" data-t="resetView"></button>
+            </div>
+          </div>
+          <div id="sky3d" class="sky3d"></div>
+          <canvas id="sky" class="sky" hidden></canvas>
+          <div class="sky-legend">
+            <span><i class="dot sun"></i><span data-t="legSun"></span></span>
+            <span><i class="dot earth"></i><span data-t="legEarth"></span></span>
+            <span><i class="dash"></i><span data-t="legHidden"></span></span>
+          </div>
+          <div class="player">
+            <button id="play" aria-label="Play">▶</button>
+            <input type="range" id="t" min="0" max="1000" value="0">
+            <div id="t-label" class="t-label"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 data-t="tlTitle"></h2>
+            <p class="help" data-t="tlHelp"></p>
+          </div>
+          <canvas id="timeline" class="timeline"></canvas>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 data-t="pwrTitle"></h2>
+            <p class="help" data-t="pwrHelp"></p>
+          </div>
+          <canvas id="power-chart" class="power-chart"></canvas>
+          <p id="power-note" class="help" hidden></p>
+        </div>
+
+        <div class="card">
+          <div class="card-head row-between">
+            <h2 data-t="schedTitle"></h2>
+            <button id="export" class="adv-only btn">⬇ Export for Quest (JSON)</button>
+          </div>
+          <div id="schedule"></div>
+        </div>
+      </div>
+
+      <aside class="numbers card">
+        <div id="numbers"></div>
+        <div id="needs-box" class="panel-box"></div>
+        <div id="panel-box" class="panel-box"></div>
       </aside>
     </div>
-  </main>
-  <script type="module" src="/src/main.ts"></script>
+  </section>
+
+  <!-- ============ COMPARE ============ -->
+  <section id="tab-compare" class="tab-page" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h2 data-t="cmpTitle"></h2>
+        <p class="help" data-t="cmpHelp"></p>
+      </div>
+      <div id="compare-grid" class="compare-grid"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h2 data-t="tlTitle"></h2>
+      </div>
+      <canvas id="cmp-timeline" class="timeline"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h2 data-t="mapTitle"></h2>
+        <p class="help" data-t="mapHelp"></p>
+      </div>
+      <div class="map-layout">
+        <div id="map-wrap">
+          <img id="map" src="/api/polar_map.png" alt="Shaded terrain map of the lunar south pole">
+          <svg id="map-overlay"></svg>
+        </div>
+        <div id="custom-list" class="custom-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BEST LANDING DAYS ============ -->
+  <section id="tab-dates" class="tab-page" hidden>
+    <div class="layout">
+      <div class="visuals">
+        <div class="card">
+          <div class="card-head row-between">
+            <div>
+              <h2 data-t="calTitle"></h2>
+              <p class="help" data-t="calHelp"></p>
+            </div>
+            <select id="cal-metric"></select>
+          </div>
+          <div id="calendar"></div>
+          <div id="cal-legend" class="cal-legend"></div>
+        </div>
+      </div>
+      <aside class="numbers card">
+        <h2 data-t="delayTitle"></h2>
+        <p class="help" data-t="delayHelp"></p>
+        <input type="range" id="delay" min="0" max="30" value="0">
+        <div id="delay-label" class="delay-label"></div>
+        <div id="delay-result"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ 3D TERRAIN (Person 1 explorer, fed with Person 2 Sun/Earth data) ============ -->
+  <section id="tab-terrain" class="tab-page" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h2 data-t="t3Title"></h2>
+        <p class="help" data-t="t3Help"></p>
+      </div>
+      <div class="player">
+        <button id="play3" aria-label="Play">▶</button>
+        <input type="range" id="t3" min="0" max="1000" value="0">
+        <div id="t3-label" class="t-label"></div>
+      </div>
+      <div class="sky-legend" id="t3-status"></div>
+      <iframe id="terrain-frame" class="terrain-frame" title="3D lunar terrain explorer" loading="lazy"></iframe>
+    </div>
+  </section>
+</main>
+
+<div id="tooltip"></div>
+<script type="module" src="/src/dashboard/app.js"></script>
 </body>
 </html>

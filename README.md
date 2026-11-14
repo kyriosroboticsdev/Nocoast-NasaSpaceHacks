@@ -1,4 +1,19 @@
-# Lunar Shadow Lab terrain explorer
+# Lunar Navigator
+
+One website that combines the team's workstreams:
+
+| Page | What | Owner |
+|---|---|---|
+| `/` (`index.html`, `src/dashboard/`) | Dashboard: Sun, Earth & comms windows, site comparison, landing days and delays, plus a **3D terrain** tab | Person 2 |
+| `/terrain.html` (`src/main.ts`) | 3D polar terrain explorer (also embedded in the dashboard; receives computed Sun/Earth directions) | Person 1 |
+| `/api/*` (`backend/`) | Python science API: ephemeris, horizons, visibility, Quest export. See [docs/PERSON2_COMMS.md](docs/PERSON2_COMMS.md) | Person 2 |
+
+**Run everything (Windows):** `./run.ps1`, then open http://127.0.0.1:5173.
+On first run it creates the Python venv, downloads about 250 MB of NASA data into `data/`, and runs `npm ci`.
+
+---
+
+## Terrain explorer (Person 1)
 
 Explore the lunar south polar cap from 87°S to 90°S in Three.js. Right-drag to pan and scroll or pinch to zoom. Select Connecting Ridge CR1 or Shackleton Rim SR1 and use **Zoom to site** to return to the published coordinates.
 

@@ -13,8 +13,10 @@ const focus = element<HTMLButtonElement>('focus');
 const reset = element<HTMLButtonElement>('reset');
 const size = 257;
 const moonCenter = new T.Vector3(0,-radius,0);
+// Embedded in the team dashboard: hide the page header so the viewer fills the frame.
+if (new URLSearchParams(location.search).has('embed')) document.documentElement.classList.add('embed');
 
-type Site = {name: string; latitudeDeg: number; longitudeEastDeg: number; surfaceElevationM: number};
+type Site = {siteId: string; name: string; latitudeDeg: number; longitudeEastDeg: number; surfaceElevationM: number};
 type Grid = {x: number; y: number; width: number; spacing: number; values: Float32Array};
 
 // World axes at the pole: +X points along 90°E, -Z along 0°E, +Y radially up.
@@ -313,6 +315,48 @@ async function start() {
     scene.add(sprite);
     return sprite;
   });
+  // ---- Sun/Earth directions from the comms workstream (Person 2), posted by the dashboard.
+  // Unit vectors arrive in the site's local East-North-Up basis (team contract localVectorBasis).
+  type Sky = {type:'lunar-sky'; siteId:string; timeUtc:string; sunEnu:number[]; earthEnu:number[];
+    sunVisible:boolean|null; earthVisible:boolean|null};
+  let sky: Sky | undefined;
+  const skyArrows = {sun:new T.ArrowHelper(new T.Vector3(1,0,0),new T.Vector3(),1,0xffc83d),
+    earth:new T.ArrowHelper(new T.Vector3(1,0,0),new T.Vector3(),1,0x4fb8ff)};
+  for (const arrow of Object.values(skyArrows)) {
+    arrow.visible = false;
+    arrow.renderOrder = 5;
+    for (const part of [arrow.line, arrow.cone]) {
+      const material = part.material as T.Material;
+      material.transparent = true;
+      material.depthTest = false;
+    }
+    scene.add(arrow);
+  }
+  function enuToWorld(enu: number[], site: (typeof sites)[number]) {
+    // Local basis at the site in viewer axes (+X = 90°E, -Z = 0°E, +Y up at the pole).
+    const lon = T.MathUtils.degToRad(site.longitudeEastDeg);
+    const up = world(site.x,site.y,0).sub(moonCenter).normalize();
+    const north = new T.Vector3(Math.sin(lon),0,-Math.cos(lon)).projectOnPlane(up).normalize();
+    const east = new T.Vector3(Math.cos(lon),0,Math.sin(lon)).projectOnPlane(up).normalize();
+    return east.multiplyScalar(enu[0]).add(north.multiplyScalar(enu[1])).add(up.multiplyScalar(enu[2])).normalize();
+  }
+  addEventListener('message', event => {
+    if (event.origin !== location.origin || event.data?.type !== 'lunar-sky') return;
+    sky = event.data as Sky;
+    const index = sites.findIndex(site => site.siteId === sky!.siteId);
+    if (index < 0) return;
+    if (selector.selectedIndex !== index || !focusedPoint) {
+      selector.selectedIndex = index;
+      goToSite();
+    }
+    // Illustrative lighting from the computed Sun direction (no cast shadows).
+    light.position.copy(enuToWorld(sky.sunEnu,sites[index]));
+    const visible = (value: boolean|null) => value === true ? 'visible' : value === false ? 'blocked by terrain' : 'unknown';
+    const note = document.querySelector('.coverage p');
+    if (note) note.textContent = `${sky.timeUtc}: Sun ${visible(sky.sunVisible)}, Earth ${visible(sky.earthVisible)} ` +
+      '(computed numerical horizon). Arrows show directions; lighting is illustrative and casts no shadows.';
+  });
+  if (parent !== window) parent.postMessage({type:'lunar-sky-ready'}, location.origin);
   const resize = () => {
     const {clientWidth:w,clientHeight:h} = viewport;
     renderer.setSize(w,h,false);
@@ -473,6 +517,22 @@ async function start() {
       const h = Number.isFinite(local) ? local : heightAt(overview,site.x,site.y);
       markers[i].position.copy(world(site.x,site.y,h+8));
       markers[i].scale.setScalar(T.MathUtils.clamp(camera.position.distanceTo(markers[i].position)*.013,3,12000));
+    }
+    if (sky) {
+      const index = sites.findIndex(site => site.siteId === sky!.siteId);
+      if (index >= 0) {
+        const origin = markers[index].position;
+        const length = T.MathUtils.clamp(camera.position.distanceTo(origin)*.35,30,250000);
+        for (const [key,arrow] of Object.entries(skyArrows)) {
+          const body = key === 'sun' ? sky.sunEnu : sky.earthEnu;
+          const shown = key === 'sun' ? sky.sunVisible : sky.earthVisible;
+          arrow.position.copy(origin);
+          arrow.setDirection(enuToWorld(body,sites[index]));
+          arrow.setLength(length,length*.12,length*.05);
+          for (const part of [arrow.line, arrow.cone]) (part.material as T.Material).opacity = shown ? 1 : .3;
+          arrow.visible = true;
+        }
+      }
     }
     renderer.render(scene,camera);
   });

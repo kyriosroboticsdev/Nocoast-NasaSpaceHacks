@@ -14,3 +14,4 @@ button,select{font:inherit;color:inherit;background:#18293b;border:1px solid #41
 .coverage{border:1px solid var(--line);border-radius:10px;padding:10px}.coverage p{color:var(--muted);margin-top:4px}
 .ramp{height:8px;border-radius:5px;background:linear-gradient(to right,#234d70,#6aa4a2,#e7d29c)}.range{display:flex;justify-content:space-between}
 @media(max-width:760px){.layout{grid-template-columns:1fr}#viewport{min-height:clamp(330px,60vh,550px)}}
+.embed header{display:none}.embed main{padding:0;max-width:none}.embed .layout{margin-top:0}.embed #viewport{min-height:680px}

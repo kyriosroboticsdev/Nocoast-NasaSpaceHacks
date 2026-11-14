@@ -96,17 +96,38 @@ function parseGlobalLdem(buffer: ArrayBuffer): GlobalLdem {
   return { width, height, ppd, lonWestDeg, latNorthDeg, metersPerUnit, values };
 }
 
+/** Equatorial cell size of the 4 ppd global LDEM (~7.58 km). */
+const GLOBAL_NATIVE_M = (2 * Math.PI * radius) / 1440;
+/** Aim for this many screen pixels between wireframe edges (readable, never solid fill). */
+const MESH_PIXELS_PER_EDGE = 14;
+
+/** Power-of-two stride so LOD rebuilds are stable under small zoom jitter. */
+function snapStride(ideal: number, maxStride: number): number {
+  const clamped = Math.min(maxStride, Math.max(1, ideal));
+  const snapped = 2 ** Math.round(Math.log2(clamped));
+  return Math.min(maxStride, Math.max(1, snapped));
+}
+
 /**
  * Displaced cylindrical LDEM wireframe with a south-polar hole so it never
  * intersects the 87°S–90°S LOLA overview (or its fade-to-sphere rim).
+ * `step` subsamples the DEM grid (1 = native 4 ppd) for zoom-adaptive density.
  */
-function meshFromGlobalLdem(dem: GlobalLdem, material: T.Material) {
+function meshFromGlobalLdem(dem: GlobalLdem, material: T.Material, step = 1) {
   const { width, height, ppd, lonWestDeg, latNorthDeg, metersPerUnit, values } = dem;
-  const positions = new Float32Array(width * height * 3);
-  const lookup = new Int32Array(width * height).fill(-1);
+  const stride = Math.max(1, step | 0);
+  const jSamples: number[] = [];
+  for (let j = 0; j < height; j += stride) jSamples.push(j);
+  const iSamples: number[] = [];
+  for (let i = 0; i < width; i += stride) iSamples.push(i);
+  const jCount = jSamples.length;
+  const iCount = iSamples.length;
+  const positions = new Float32Array(jCount * iCount * 3);
+  const lookup = new Int32Array(jCount * iCount).fill(-1);
   let vertexCount = 0;
   const radial = new T.Vector3();
-  for (let j = 0; j < height; j++) {
+  for (let jj = 0; jj < jCount; jj++) {
+    const j = jSamples[jj];
     const latDeg = latNorthDeg - (j + 0.5) / ppd;
     if (latDeg < GLOBAL_HOLE_LAT_DEG) continue;
     const lat = T.MathUtils.degToRad(latDeg);
@@ -115,7 +136,8 @@ function meshFromGlobalLdem(dem: GlobalLdem, material: T.Material) {
     const fade = latDeg <= GLOBAL_FADE_LAT_DEG
       ? T.MathUtils.smoothstep(latDeg, GLOBAL_HOLE_LAT_DEG, GLOBAL_FADE_LAT_DEG)
       : 1;
-    for (let i = 0; i < width; i++) {
+    for (let ii = 0; ii < iCount; ii++) {
+      const i = iSamples[ii];
       const lonDeg = lonWestDeg + (i + 0.5) / ppd;
       const lon = T.MathUtils.degToRad(lonDeg);
       const h = values[j * width + i] * metersPerUnit * fade;
@@ -126,20 +148,20 @@ function meshFromGlobalLdem(dem: GlobalLdem, material: T.Material) {
         -cosLat * Math.cos(lon),
       ).normalize();
       const idx = vertexCount++;
-      lookup[j * width + i] = idx;
+      lookup[jj * iCount + ii] = idx;
       positions[idx * 3] = moonCenter.x + radial.x * (radius + h);
       positions[idx * 3 + 1] = moonCenter.y + radial.y * (radius + h);
       positions[idx * 3 + 2] = moonCenter.z + radial.z * (radius + h);
     }
   }
   const triangles: number[] = [];
-  for (let j = 0; j < height - 1; j++) {
-    for (let i = 0; i < width; i++) {
-      const i1 = (i + 1) % width;
-      const a = lookup[j * width + i];
-      const b = lookup[j * width + i1];
-      const c = lookup[(j + 1) * width + i];
-      const d = lookup[(j + 1) * width + i1];
+  for (let jj = 0; jj < jCount - 1; jj++) {
+    for (let ii = 0; ii < iCount; ii++) {
+      const ii1 = (ii + 1) % iCount;
+      const a = lookup[jj * iCount + ii];
+      const b = lookup[jj * iCount + ii1];
+      const c = lookup[(jj + 1) * iCount + ii];
+      const d = lookup[(jj + 1) * iCount + ii1];
       if (a < 0 || b < 0 || c < 0 || d < 0) continue;
       triangles.push(a, c, b, b, c, d);
     }
@@ -152,63 +174,77 @@ function meshFromGlobalLdem(dem: GlobalLdem, material: T.Material) {
   return mesh;
 }
 
-function meshFor(grid: Grid, material: T.Material, parent?: Grid) {
-  const {values, width, spacing} = grid;
-  const positions = new Float32Array(values.length*3);
+/**
+ * Polar DEM mesh. `sampleStride` > 1 keeps full geographic extent (includes last
+ * row/col) while thinning triangles for wireframe LOD — elevations stay real.
+ */
+function meshFor(grid: Grid, material: T.Material, parent?: Grid, sampleStride = 1) {
+  const step = Math.max(1, sampleStride | 0);
+  const last = grid.width - 1;
+  const sample: number[] = [];
+  for (let i = 0; ; i++) {
+    const t = Math.min(i * step, last);
+    sample.push(t);
+    if (t >= last) break;
+  }
+  const width = sample.length;
+  const positions = new Float32Array(width * width * 3);
   const colors = new Float32Array(positions.length);
-  const projected = new Float32Array(values.length*2);
-  const uv = new Float32Array(values.length*2);
-  const valid = new Uint8Array(values.length);
+  const projected = new Float32Array(width * width * 2);
+  const uv = new Float32Array(width * width * 2);
+  const valid = new Uint8Array(width * width);
   const low = new T.Color('#234d70'), mid = new T.Color('#6aa4a2'), high = new T.Color('#e7d29c');
   const color = new T.Color();
-  for (let j=0; j<width; j++) for (let i=0; i<width; i++) {
-    const idx = j*width+i;
-    const x = grid.x+i*spacing, y = grid.y-j*spacing;
-    projected[idx*2] = x;
-    projected[idx*2+1] = y;
-    uv[idx*2] = x/radius;
-    uv[idx*2+1] = y/radius;
-    const h = values[idx];
+  const margin = Math.min(24, Math.max(2, Math.floor(width / 8)));
+  for (let j = 0; j < width; j++) for (let i = 0; i < width; i++) {
+    const gi = sample[i], gj = sample[j];
+    const idx = j * width + i;
+    const x = grid.x + gi * grid.spacing, y = grid.y - gj * grid.spacing;
+    projected[idx * 2] = x;
+    projected[idx * 2 + 1] = y;
+    uv[idx * 2] = x / radius;
+    uv[idx * 2 + 1] = y / radius;
+    const h = grid.values[gj * grid.width + gi];
     let renderHeight = h;
     // Fade the outer margin into the overview to keep the join continuous.
     if (parent) {
       const coarse = heightAt(parent, x, y);
-      const weight = T.MathUtils.smoothstep(Math.min(i,j,width-1-i,width-1-j), 0, 24);
+      const weight = T.MathUtils.smoothstep(Math.min(i, j, width - 1 - i, width - 1 - j), 0, margin);
       if (Number.isFinite(coarse)) renderHeight = T.MathUtils.lerp(coarse, h, weight);
     }
-    const distanceToEdge = capRadius-Math.hypot(x,y);
+    const distanceToEdge = capRadius - Math.hypot(x, y);
     if (distanceToEdge < 0 || !Number.isFinite(renderHeight)) continue;
     // Bring the outer two kilometers back to the reference sphere at the globe join.
     renderHeight *= T.MathUtils.smoothstep(distanceToEdge, 650, 2650);
     valid[idx] = 1;
-    world(x,y,renderHeight).toArray(positions, idx*3);
-    const fraction = T.MathUtils.clamp((h+8000)/15000, 0, 1);
-    color.copy(fraction < .5 ? low : mid).lerp(fraction < .5 ? mid : high, fraction < .5 ? fraction*2 : fraction*2-1);
-    color.toArray(colors, idx*3);
+    world(x, y, renderHeight).toArray(positions, idx * 3);
+    const fraction = T.MathUtils.clamp((h + 8000) / 15000, 0, 1);
+    color.copy(fraction < .5 ? low : mid).lerp(fraction < .5 ? mid : high, fraction < .5 ? fraction * 2 : fraction * 2 - 1);
+    color.toArray(colors, idx * 3);
   }
   const triangles: number[] = [];
-  for (let j=0; j<width-1; j++) for (let i=0; i<width-1; i++) {
-    const a = j*width+i, b=a+1, c=a+width, d=c+1;
-    if (valid[a] && valid[c] && valid[b]) triangles.push(a,c,b);
-    if (valid[b] && valid[c] && valid[d]) triangles.push(b,c,d);
+  for (let j = 0; j < width - 1; j++) for (let i = 0; i < width - 1; i++) {
+    const a = j * width + i, b = a + 1, c = a + width, d = c + 1;
+    if (valid[a] && valid[c] && valid[b]) triangles.push(a, c, b);
+    if (valid[b] && valid[c] && valid[d]) triangles.push(b, c, d);
   }
   const geometry = new T.BufferGeometry();
-  geometry.setAttribute('position', new T.BufferAttribute(positions,3));
-  geometry.setAttribute('color', new T.BufferAttribute(colors,3));
-  geometry.setAttribute('projectedXY', new T.BufferAttribute(projected,2));
-  geometry.setAttribute('uv', new T.BufferAttribute(uv,2));
+  geometry.setAttribute('position', new T.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new T.BufferAttribute(colors, 3));
+  geometry.setAttribute('projectedXY', new T.BufferAttribute(projected, 2));
+  geometry.setAttribute('uv', new T.BufferAttribute(uv, 2));
   geometry.setIndex(triangles);
   geometry.computeVertexNormals();
   const normals = geometry.getAttribute('normal');
   const normal = new T.Vector3();
   const radial = new T.Vector3();
-  for (let i=0; i<values.length; i++) {
+  for (let i = 0; i < width * width; i++) {
     if (!valid[i]) continue;
-    const edge = capRadius-Math.hypot(projected[i*2],projected[i*2+1]);
+    const edge = capRadius - Math.hypot(projected[i * 2], projected[i * 2 + 1]);
     if (edge >= 2650) continue;
-    radial.fromArray(positions,i*3).sub(moonCenter).normalize();
-    normal.fromBufferAttribute(normals,i).lerp(radial,1-T.MathUtils.smoothstep(edge,650,2650)).normalize();
-    normals.setXYZ(i,normal.x,normal.y,normal.z);
+    radial.fromArray(positions, i * 3).sub(moonCenter).normalize();
+    normal.fromBufferAttribute(normals, i).lerp(radial, 1 - T.MathUtils.smoothstep(edge, 650, 2650)).normalize();
+    normals.setXYZ(i, normal.x, normal.y, normal.z);
   }
   return new T.Mesh(geometry, material);
 }
@@ -276,16 +312,16 @@ export async function startTerrain(): Promise<TerrainApi> {
     elevation: new T.MeshBasicMaterial({vertexColors:true}),
     mesh: new T.MeshBasicMaterial({color:0x89b6ba,wireframe:true}),
   };
-  const globalWire = meshFromGlobalLdem(
-    globalLdem,
-    new T.MeshBasicMaterial({
-      color: 0x89b6ba,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.72,
-      depthWrite: false,
-    }),
-  );
+  const globalWireMaterial = new T.MeshBasicMaterial({
+    color: 0x89b6ba,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+  });
+  // Start coarse; zoom LOD rebuilds to native 4 ppd when close enough.
+  let globalWireStep = 16;
+  let globalWire = meshFromGlobalLdem(globalLdem, globalWireMaterial, globalWireStep);
   globalWire.visible = false;
   globalWire.renderOrder = 1;
   // Picks stay on the textured globe / polar DEM — wireframe is display-only.
@@ -314,7 +350,8 @@ export async function startTerrain(): Promise<TerrainApi> {
     };
     return [key,copy];
   })) as typeof materials;
-  const backdrop = meshFor(overview, overviewMaterials.relief);
+  let polarWireStride = 1;
+  let backdrop = meshFor(overview, overviewMaterials.relief);
   scene.add(backdrop);
   let detail: T.Mesh<T.BufferGeometry, T.Material> | undefined;
   let currentGrid: Grid | undefined;
@@ -337,15 +374,76 @@ export async function startTerrain(): Promise<TerrainApi> {
     return orbit;
   }
   let controls = createControls();
+
+  /** Distance used for screen-space edge sizing (surface altitude, not center radius). */
+  function surfaceViewDistance(): number {
+    const toTarget = camera.position.distanceTo(controls.target);
+    const toCenter = camera.position.distanceTo(moonCenter);
+    return Math.max(25, Math.min(toTarget, Math.max(toCenter - radius, 25)));
+  }
+
+  /** World-space wire edge that subtends ~MESH_PIXELS_PER_EDGE on screen. */
+  function targetWireEdgeMeters(): number {
+    const dist = surfaceViewDistance();
+    const metersPerPixel = 2 * dist * Math.tan(T.MathUtils.degToRad(camera.fov) * 0.5)
+      / Math.max(1, viewport.clientHeight);
+    return metersPerPixel * MESH_PIXELS_PER_EDGE;
+  }
+
+  function formatLodMeters(meters: number): string {
+    if (meters >= 1000) return `${Math.round(meters / 1000)} KM`;
+    return `${Math.round(meters)} M`;
+  }
+
+  function rebuildGlobalWire(step: number) {
+    if (step === globalWireStep && globalWire.parent) return;
+    scene.remove(globalWire);
+    globalWire.geometry.dispose();
+    globalWire = meshFromGlobalLdem(globalLdem, globalWireMaterial, step);
+    globalWire.visible = layer.value === 'mesh';
+    globalWire.renderOrder = 1;
+    globalWire.raycast = () => {};
+    scene.add(globalWire);
+    globalWireStep = step;
+  }
+
+  function rebuildPolarBackdrop(stride: number, materialKey: keyof typeof materials) {
+    const keepCutout = cutout.value.clone();
+    scene.remove(backdrop);
+    backdrop.geometry.dispose();
+    backdrop = meshFor(overview, overviewMaterials[materialKey], undefined, stride);
+    scene.add(backdrop);
+    cutout.value.copy(keepCutout);
+    polarWireStride = stride;
+  }
+
   /**
-   * Mesh/wireframe: far = full-cap 320 m overview; zoomed = coarse detail windows
-   * (stride 4/8 → 20–40 m over ~5–10 km). Never stride 1–2 (solid-blue density).
+   * Zoom-adaptive triangulation for mesh mode: far → coarse (readable lines),
+   * close → finer but capped so edges stay ≥ ~MESH_PIXELS_PER_EDGE on screen.
+   */
+  function updateMeshLod() {
+    if (layer.value !== 'mesh') return;
+    const edge = targetWireEdgeMeters();
+    // Polar 320 m LOLA: stride so spacing*stride ≈ target edge (max 128 ≈ 40 km).
+    const polarStride = snapStride(edge / overview.spacing, 128);
+    // Global 4 ppd (~7.6 km): same pixel budget (max 32 ≈ 240 km / ~20°).
+    const globalStep = snapStride(edge / GLOBAL_NATIVE_M, 32);
+    if (polarStride !== polarWireStride) rebuildPolarBackdrop(polarStride, 'mesh');
+    rebuildGlobalWire(globalStep);
+    // Keep detail-window badge while a local tile is loaded.
+    if (!currentKey) setOverviewModeLabel();
+  }
+
+  /**
+   * Mesh/wireframe: overview + global remesh by zoom; detail windows only when
+   * close, stride from screen-edge budget (never finer than 20 m / stride 4).
    * Relief/elevation keep fine 5–20 m windows.
    */
   function detailPolicy(distance: number): { maxDistance: number; stride: number } {
     if (layer.value === 'mesh') {
-      if (distance < 2200) return { maxDistance: 5500, stride: 4 };
-      return { maxDistance: 5500, stride: 8 };
+      const edge = targetWireEdgeMeters();
+      const stride = Math.max(4, snapStride(edge / 5, 32));
+      return { maxDistance: 5500, stride };
     }
     if (distance < 1000) return { maxDistance: 6300, stride: 1 };
     if (distance < 2300) return { maxDistance: 6300, stride: 2 };
@@ -353,15 +451,18 @@ export async function startTerrain(): Promise<TerrainApi> {
   }
 
   function setOverviewModeLabel() {
-    element('mode-label').textContent = layer.value === 'mesh'
-      ? 'POLAR 320 M LOLA · GLOBAL LDEM 4 PPD'
-      : '87°S–90°S · 320 M OVERVIEW';
+    if (layer.value === 'mesh') {
+      const polarM = overview.spacing * polarWireStride;
+      const globalM = GLOBAL_NATIVE_M * globalWireStep;
+      element('mode-label').textContent =
+        `POLAR ~${formatLodMeters(polarM)} LOLA · GLOBAL ~${formatLodMeters(globalM)} LDEM`;
+      return;
+    }
+    element('mode-label').textContent = '87°S–90°S · 320 M OVERVIEW';
   }
 
   function setLayer() {
     const key = layer.value as keyof typeof materials;
-    backdrop.material = overviewMaterials[key];
-    if (detail) detail.material = materials[key];
     element('legend').hidden = key !== 'elevation';
     const meshOn = key === 'mesh';
     globalWire.visible = meshOn;
@@ -373,7 +474,15 @@ export async function startTerrain(): Promise<TerrainApi> {
     // Mesh vs relief use different stride caps — drop the current window so LOD reloads uniformly.
     request?.abort();
     removeDetail();
-    setOverviewModeLabel();
+    if (meshOn) {
+      polarWireStride = -1; // force rebuild at current zoom
+      globalWireStep = -1;
+      updateMeshLod();
+    } else {
+      rebuildPolarBackdrop(1, key);
+      if (detail) detail.material = materials[key];
+      setOverviewModeLabel();
+    }
     nextUpdate = performance.now();
   }
   layer.onchange = setLayer;
@@ -396,7 +505,7 @@ export async function startTerrain(): Promise<TerrainApi> {
     currentKey = key;
     const span = (size-1)*grid.spacing;
     // Cut overview under a fully valid window so detail + base don't z-fight
-    // (double shells / intersecting tops). Mesh uses wide stride 4/8 windows only.
+    // (double shells / intersecting tops). Mesh uses zoom-capped strides only.
     if (grid.values.every(Number.isFinite) &&
         [grid.x,grid.x+span].every(x=>Math.hypot(x,grid.y) < capRadius && Math.hypot(x,grid.y-span) < capRadius)) {
       cutout.value.set(grid.x+3,grid.y-span+3,grid.x+span-3,grid.y-3);
@@ -752,9 +861,11 @@ export async function startTerrain(): Promise<TerrainApi> {
     } else {
       controls.update();
     }
-    if (!flight && now >= nextUpdate) {
-      nextUpdate = now+200;
-      updateDetail();
+    if (now >= nextUpdate) {
+      nextUpdate = now + 200;
+      // Remesh wire density while flying so Whole Moon never flashes solid blue.
+      if (layer.value === 'mesh') updateMeshLod();
+      if (!flight) updateDetail();
     }
     for (const m of liveMarkers) {
       const local = currentGrid ? heightAt(currentGrid, m.x, m.y) : NaN;

@@ -25,7 +25,7 @@ End-to-end **find / compare / decide** navigator on the Vite / TypeScript / Thre
 | Ephemeris | Bundled JPL for CR1/SR1 (extend via `science:ephemeris` when online); **no clamp past series end** (uncovered hours = unknown); calibrated analytic fallback (badged) |
 | Assessment | Exact `[start,end]` sampling; sun/shadow/**unknown** hours; windows with transition midpoints; power = 0 when not sunlit |
 | Ranking | Tiered authority: LOLA 5 m+JPL → overview → sphere/analytic (hard tier sort + score penalties); provenance badges |
-| Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play**; mesh = polar 320 m LOLA (+ LOD) + **global LDEM 4 ppd** outside 87°S |
+| Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play**; mesh = polar LOLA + **global LDEM** with **zoom-adaptive** wire density |
 | Markers | Three categories on mesh: **catalog** (teal ●), **search** (amber ◆), **chosen** (coral ■) + Site B **compare** (violet ◎) |
 | Adopt → 3D | Site A changes / Adopt / map pick / custom apply **always** re-focus camera + chosen marker (no mystery CR1 snap) |
 | Compare | Side-by-side Site A / Site B with compare marker |
@@ -56,22 +56,22 @@ Full requirements mapping: `REQUIREMENTS_AUDIT.md`.
 5. Hits plot as amber ◆ markers; **Adopt** sets custom Site A **and retains the overview LOLA horizon + elevation used for ranking** (not downgraded to sphere).  
 6. UI labels honesty: coarse ranking, not meter-perfect / not global optimum. Prefer CR1/SR1 for study-grade LOLA.
 
-### Mesh LOD (preview) — polar + global LDEM
+### Mesh LOD (preview) — zoom-adaptive triangulation
 
-**Outside-cap wireframe / real DEM — feasible at 4 ppd.**  
-NASA SVS CGI Moon Kit `ldem_4.tif` is only ~4 MB (1440×720 float km). Offline script `npm run terrain:global-ldem` downloads it (cached under `.cache/`) and writes `public/terrain/global-ldem-4ppd.bin` (~2.0 MB Int16 meters). In **mesh** mode the viewer shows:
-- **Polar cap:** existing **320 m LOLA** overview (+ dynamic LOD as below)
-- **Outside cap:** displaced **global LDEM 4 ppd** wireframe (real elevation, ~7.5 km/px)
+**Outside-cap wireframe / real DEM at 4 ppd source.**  
+NASA SVS CGI Moon Kit `ldem_4.tif` → `npm run terrain:global-ldem` → `public/terrain/global-ldem-4ppd.bin`. Mesh mode keeps real elevations; density is **resampled by zoom**, not fixed full-grid tessellation.
 
-**Overlap avoided:** global mesh hard-clips south of **87°S** (`GLOBAL_HOLE_LAT_DEG`), fades heights to the reference sphere from **−86° → −87°**, and dims the textured globe (`opacity` + `depthWrite` off) while mesh is on — no flat sphere shell, no double-shell poke-through with the polar disc.
+**How density is chosen:** target world edge ≈ `metersPerPixel × 14` from camera surface distance, FOV, and viewport height. Strides snap to powers of two (stable under orbit jitter).
 
-**Badge:** `POLAR 320 M LOLA · GLOBAL LDEM 4 PPD`
+| View | Polar LOLA (native 320 m) | Global LDEM (native ~7.6 km) |
+| --- | --- | --- |
+| Whole Moon / far | coarse (up to stride 128 ≈ 40 km) | coarse (up to step 32 ≈ 240 km) |
+| Mid / polar overview | medium strides | medium steps |
+| Close | finer, still ≥ ~14 px/edge; detail tiles never finer than **20 m** (stride ≥ 4) | down to native 4 ppd |
 
-**Polar dynamic LOD (restored):**  
-- Far / overview: full-cap **320 m LOLA** wireframe.  
-- Zoomed (camera distance &lt; ~5.5 km to target): stream detail windows at **stride 8 (~40 m)** then **stride 4 (~20 m)** when closer — readable density, not solid blue.  
-- **Never** mesh stride 1–2 (5–10 m). Relief/elevation still use 5–20 m.  
-- When a fully valid detail window loads, the overview is **cut out under it** (same as relief) so tops/bottoms do not intersect. Edge fade into overview via `meshFor(..., parent)` keeps the join continuous.
+**Overlap avoided:** global mesh hard-clips south of **87°S**, fades −86°→−87°, dims globe under wireframe — no z-fight at the polar hole.
+
+**Badge:** live `POLAR ~… LOLA · GLOBAL ~… LDEM` reflecting current LOD.
 
 ## Key files
 
@@ -113,7 +113,7 @@ Regenerate search grid: `npm.cmd run science:search`
 
 - [x] `npm.cmd run build` succeeds (tsc + vite)  
 - [ ] `npm.cmd run dev` loads; terrain opens in **mesh** by default  
-- [ ] Whole Moon mesh shows real LDEM relief at Apollo latitudes; polar still 320 m LOLA; badge `POLAR 320 M LOLA · GLOBAL LDEM 4 PPD`  
+- [ ] Whole Moon mesh shows a **readable** LDEM grid (not solid blue); zoom densifies; polar hole clean; badge shows live `POLAR ~… · GLOBAL ~…`  
 
 ### Decision loop
 

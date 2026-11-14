@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "0.1",
+  "schemaVersion": "0.2",
   "artifactId": "lola-local-terrain-v1",
   "generatedAtUtc": "2026-11-14T17:19:10Z",
   "frameId": "MOON_ME_DE421",
@@ -43,7 +43,11 @@
         1949.7816162109375,
         1949.1575927734375
       ],
-      "horizonStatus": "horizon_missing"
+      "horizonStatus": "ready",
+      "horizonModel": "lola_terrain",
+      "horizonUrl": "science/horizons/connecting-ridge-cr1.json",
+      "horizonSpacingDeg": 0.25,
+      "horizonNotes": "Near-field 5 m focus + 320 m overview to 400 km; airless geometric"
     },
     {
       "siteId": "shackleton-rim-sr1",
@@ -72,7 +76,11 @@
         1735.3544921875,
         1735.216796875
       ],
-      "horizonStatus": "horizon_missing"
+      "horizonStatus": "ready",
+      "horizonModel": "lola_terrain",
+      "horizonUrl": "science/horizons/shackleton-rim-sr1.json",
+      "horizonSpacingDeg": 0.25,
+      "horizonNotes": "Near-field 5 m focus + 320 m overview to 400 km; airless geometric"
     }
   ]
 }

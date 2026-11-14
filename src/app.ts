@@ -18,19 +18,24 @@ import {
   toggleTechnicalDetails,
 } from './scenario/state';
 import type { ScenarioState } from './scenario/types';
+import { loadHorizonProfile } from './horizon/load';
+import type { HorizonProfile } from './horizon/types';
+import { renderSkyline } from './viz/skyline';
 import {
   dateInputToUtcIso,
   localDateInputValue,
 } from './ui/format';
 
+const base = import.meta.env.BASE_URL;
 const el = <E extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as E;
 
 let terrain: TerrainApi | undefined;
+let horizonA: HorizonProfile | undefined;
 
 function fillSiteSelect(select: HTMLSelectElement, selected: string) {
   select.replaceChildren();
   const groups = [
-    { label: 'Study points', filter: (s: (typeof SITE_CATALOG)[0]) => s.category === 'study' },
+    { label: 'Study points (LOLA horizons)', filter: (s: (typeof SITE_CATALOG)[0]) => s.category === 'study' },
     { label: 'Curated catalog', filter: (s: (typeof SITE_CATALOG)[0]) => s.category === 'curated' },
   ];
   for (const group of groups) {
@@ -42,6 +47,17 @@ function fillSiteSelect(select: HTMLSelectElement, selected: string) {
     select.append(optgroup);
   }
   select.append(new Option('Custom lat/lon (sphere horizon)', 'custom', false, selected === 'custom'));
+}
+
+async function refreshHorizon(state: ScenarioState) {
+  const coords = resolveSiteCoords(state.primary.siteId, state.primary.customLatDeg, state.primary.customLonEastDeg);
+  horizonA = await loadHorizonProfile(state.primary.siteId, base, coords.latitudeDeg, coords.longitudeEastDeg);
+  renderSkyline(el<HTMLCanvasElement>('skyline'), horizonA);
+  el('horizon-flag-a').textContent = horizonA.model === 'lola_terrain'
+    ? `Horizon model: LOLA terrain · ${horizonA.bins.length} bins @ ${horizonA.spacingDeg}°`
+    : '⚠ Horizon model: optimistic sphere — terrain unknown / upper-bound visibility';
+  el('metrics-a-title').textContent = coords.label;
+  el('viability-a').textContent = 'Skyline ready · Sun/Earth markers arrive with ephemeris';
 }
 
 function syncControlsFromState(state: ScenarioState) {
@@ -70,18 +86,13 @@ function syncControlsFromState(state: ScenarioState) {
   scrub.max = String(state.durationHours);
   const hoursFromStart = (Date.parse(state.scrubUtc) - Date.parse(state.startUtc)) / 3600_000;
   scrub.value = String(Math.max(0, Math.min(state.durationHours, hoursFromStart)));
-  el('scrub-label').textContent = `${state.scrubUtc.replace('.000Z', 'Z')} · scenario shell`;
+  el('scrub-label').textContent = `${state.scrubUtc.replace('.000Z', 'Z')}`;
   el<HTMLInputElement>('min-earth-el').value = String(state.thresholds.minEarthElevationDeg);
   el<HTMLInputElement>('panel-area').value = String(state.thresholds.panelAreaM2);
   el<HTMLInputElement>('panel-eff').value = String(state.thresholds.panelEfficiency);
   el<HTMLInputElement>('battery-floor').value = String(state.thresholds.batteryFloorW);
   el<HTMLInputElement>('tech-details').checked = state.showTechnicalDetails;
-  el('metrics-a-title').textContent = resolveSiteCoords(
-    state.primary.siteId, state.primary.customLatDeg, state.primary.customLonEastDeg,
-  ).label;
-  el('viability-a').textContent = 'Assessment modules load in later phases';
-  el('metric-grid-a').replaceChildren();
-  el('horizon-flag-a').textContent = 'Shared scenario state active · Planner/Learn modes share one engine';
+  void refreshHorizon(state);
   syncUrl();
 }
 
@@ -164,17 +175,19 @@ function wireUi() {
     };
   });
   el('copy-link').onclick = async () => {
-    const url = location.href;
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(location.href);
       el('share-status').textContent = 'Link copied.';
     } catch {
-      el('share-status').textContent = url;
+      el('share-status').textContent = location.href;
     }
   };
   el('export-json').onclick = () => {
     el('share-status').textContent = 'Time-series export arrives with assessment phases.';
   };
+  window.addEventListener('resize', () => {
+    if (horizonA) renderSkyline(el<HTMLCanvasElement>('skyline'), horizonA);
+  });
 }
 
 async function boot() {

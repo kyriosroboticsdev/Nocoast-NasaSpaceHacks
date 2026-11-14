@@ -146,8 +146,25 @@ export type EphemerisProvider = {
   series: Partial<Record<BodyId, EphemerisSeries>>;
 };
 
+/** True when mission start falls inside the bundled sample span (not just file exists). */
+function seriesCoversStart(series: EphemerisSeries, startUtc: string): boolean {
+  if (!series.samples.length) return false;
+  const t0 = Date.parse(series.samples[0].utc);
+  const t1 = Date.parse(series.samples[series.samples.length - 1].utc);
+  const start = Date.parse(startUtc);
+  return Number.isFinite(start) && start >= t0 && start <= t1;
+}
+
+function seriesEndClipped(series: EphemerisSeries, startUtc: string, durationHours: number): boolean {
+  if (!series.samples.length) return false;
+  const t1 = Date.parse(series.samples[series.samples.length - 1].utc);
+  const end = Date.parse(startUtc) + durationHours * 3600_000;
+  return end > t1 + 3600_000;
+}
+
 /**
- * Resolve ephemeris for a site: bundled → live Horizons (optional) → analytic.
+ * Resolve ephemeris for a site: bundled (if start in coverage) → live Horizons (optional) → analytic.
+ * Avoids silently clamping CR1/SR1 to Jan 2027 when the mission start is outside the bundle.
  */
 export async function createEphemerisProvider(options: {
   siteId: string;
@@ -164,9 +181,11 @@ export async function createEphemerisProvider(options: {
 
   for (const body of ['sun', 'earth'] as BodyId[]) {
     const bundled = await loadBundledSeries(body, options.siteId, options.baseUrl);
-    if (bundled) {
+    if (bundled && seriesCoversStart(bundled, options.startUtc)) {
       series[body] = bundled;
-      sourceLabel = 'bundled Horizons';
+      sourceLabel = seriesEndClipped(bundled, options.startUtc, options.durationHours)
+        ? 'bundled Horizons (end clipped)'
+        : 'bundled Horizons';
       continue;
     }
     if (options.allowLive) {
@@ -197,7 +216,12 @@ export async function createEphemerisProvider(options: {
       options.durationHours,
       1,
     );
-    if (sourceLabel === 'analytic') sourceLabel = 'analytic fallback';
+    if (sourceLabel === 'analytic' || sourceLabel.startsWith('bundled')) {
+      // Prefer an honest label when sun/earth disagree; last body wins for mixed paths.
+      sourceLabel = bundled && !seriesCoversStart(bundled, options.startUtc)
+        ? 'analytic fallback (outside bundled range)'
+        : 'analytic fallback';
+    }
   }
 
   return {

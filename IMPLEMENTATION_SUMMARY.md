@@ -59,6 +59,21 @@ No Cursor `Co-authored-by` trailers were included on pushed commits.
 - **Replay tour** (header) clears the flag and restarts the walkthrough.
 - Dev reset: `localStorage.removeItem('llsn-tour-v1')` then reload.
 
+## How to use this for decisions
+
+This tool **evaluates a scenario you specify**; it does not search for the best landing site or date.
+
+1. **Pick Site A** (prefer CR1/SR1 for LOLA terrain horizons). Optionally enable compare and set Site B.
+2. **Set mission start + duration** — that window is what GO / RISKY / NO-GO grades (sunlight %, Earth LOS %, blackouts, power proxy).
+3. **Scrub** only to inspect *when* Sun/Earth are clear inside that window (skyline markers, elev, time-to-sunset/Earthset). Scrub does **not** change the viability badge.
+4. **Change the start date** (or use Learn → Launch slip +14 days) or switch sites to see schedule/location sensitivity.
+5. Tune **thresholds** if your antenna/power assumptions differ; share via **Copy link** or **Export JSON**.
+
+**Planner:** treat the window grade + timeline bars as the decision artifacts; use scrub for ops timing.  
+**Educator:** Learn mode + guided scenarios teach why small site/date moves matter; same engine as Planner.
+
+Full requirements mapping and gap analysis: see `REQUIREMENTS_AUDIT.md`.
+
 ## How to run
 
 ```powershell

@@ -42,7 +42,7 @@ const STEPS: TourStep[] = [
   {
     id: 'time',
     title: 'Mission time',
-    body: 'Set the mission start and length, then scrub through the window. The scrubber sits next to the skyline so you can watch Sun and Earth move as time changes. Press Next to continue.',
+    body: 'Set mission start and length first — those define the window being graded. Then scrub inside the window to watch Sun and Earth move. Scrub does not change GO / RISKY / NO-GO; changing start, duration, or site does.',
     target: 'time',
   },
   {
@@ -60,7 +60,7 @@ const STEPS: TourStep[] = [
   {
     id: 'viability',
     title: 'Viability grade',
-    body: 'GO / RISKY / NO-GO summarizes sunlight, Earth LOS, blackouts, and power proxy for the current scenario. Site B metrics appear when compare is enabled.',
+    body: 'GO / RISKY / NO-GO grades the whole mission window (availability %, blackouts, power proxy) — not the scrub instant. Change start date or site to recompute; Site B appears when compare is on.',
     target: 'viability',
   },
   {

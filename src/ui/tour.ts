@@ -6,82 +6,68 @@ export type TourStep = {
   body: string;
   /** data-tour attribute value on the highlighted region */
   target: string;
-  /** Advance automatically when the user interacts with the target */
-  advanceOn?: 'change' | 'input' | 'click';
-  /** Prefer Next when interaction isn't natural */
-  preferNext?: boolean;
 };
 
 const STEPS: TourStep[] = [
   {
     id: 'welcome',
     title: 'Welcome',
-    body: 'This tool compares lunar south-pole landing sites for solar power and Earth communications. We’ll walk through the main controls — interact with the highlighted area, or tap Next.',
+    body: 'This tool compares lunar south-pole landing sites for solar power and Earth communications. We’ll walk through the main controls — tap Next to continue.',
     target: 'mode',
-    preferNext: true,
   },
   {
     id: 'mode',
     title: 'Planner vs Learn',
-    body: 'Planner is the dense assessment workspace. Learn adds a short narrative and guided scenarios using the same science engine. Try switching modes, or press Next.',
+    body: 'Planner is the dense assessment workspace. Learn adds a short narrative and guided scenarios using the same science engine. Press Next when you’re ready.',
     target: 'mode',
-    advanceOn: 'click',
   },
   {
     id: 'site',
     title: 'Pick a landing site',
     body: 'Site A drives the 3D map, skyline, and primary metrics. Study points (CR1 / SR1) use LOLA terrain horizons; other sites fall back to an optimistic sphere.',
     target: 'site',
-    advanceOn: 'change',
   },
   {
     id: 'map',
     title: 'Explore the terrain',
     body: 'Orbit, pan, and zoom the polar cap. Use Zoom to site A / Full polar cap / Whole Moon beside the map. The 3D lighting is illustrative — viability comes from the assessment below.',
     target: 'map',
-    preferNext: true,
   },
   {
     id: 'compare',
     title: 'Compare Site B',
     body: 'Enable side-by-side compare to grade a second site over the same UTC window. Timeline bars stack A and B when compare is on.',
     target: 'compare',
-    advanceOn: 'change',
   },
   {
     id: 'time',
     title: 'Mission time',
-    body: 'Set the mission start and length, then scrub through the window. The scrubber sits next to the skyline so you can watch Sun and Earth move as time changes.',
+    body: 'Set the mission start and length, then scrub through the window. The scrubber sits next to the skyline so you can watch Sun and Earth move as time changes. Press Next to continue.',
     target: 'time',
-    advanceOn: 'input',
   },
   {
     id: 'skyline',
     title: '360° skyline',
     body: 'The jagged profile is local terrain elevation vs azimuth. Sun and Earth markers update with the scrubber — clear means above the horizon for that sample.',
     target: 'skyline',
-    preferNext: true,
   },
   {
     id: 'timeline',
     title: 'Mission timeline',
     body: 'Bars show sunlight, Earth line-of-sight, and simultaneous windows across the mission. The vertical marker tracks the scrubber.',
     target: 'timeline',
-    preferNext: true,
   },
   {
     id: 'viability',
     title: 'Viability grade',
     body: 'GO / RISKY / NO-GO summarizes sunlight, Earth LOS, blackouts, and power proxy for the current scenario. Site B metrics appear when compare is enabled.',
     target: 'viability',
-    preferNext: true,
   },
   {
     id: 'thresholds',
     title: 'Assessment settings',
     body: 'Planner thresholds (Earth elevation floor, panel size/efficiency, battery floor) sit beside the metrics they affect. In Learn mode, use “Show technical details” instead.',
     target: 'thresholds',
-    preferNext: true,
   },
 ];
 
@@ -153,7 +139,6 @@ export function createTour(root: HTMLElement): TourController {
   let index = 0;
   let active = false;
   let targetEl: HTMLElement | null = null;
-  let advanceHandler: ((e: Event) => void) | null = null;
   let resizeObs: ResizeObserver | null = null;
 
   const spotlight = document.createElement('div');
@@ -168,17 +153,7 @@ export function createTour(root: HTMLElement): TourController {
 
   root.append(spotlight, card);
 
-  function detachAdvance() {
-    if (targetEl && advanceHandler) {
-      targetEl.removeEventListener('change', advanceHandler, true);
-      targetEl.removeEventListener('input', advanceHandler, true);
-      targetEl.removeEventListener('click', advanceHandler, true);
-    }
-    advanceHandler = null;
-  }
-
   function clearTarget() {
-    detachAdvance();
     if (targetEl) targetEl.classList.remove('tour-target-active');
     targetEl = null;
   }
@@ -235,27 +210,16 @@ export function createTour(root: HTMLElement): TourController {
     targetEl.classList.add('tour-target-active');
     targetEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 
-    const showNext = step.preferNext || !step.advanceOn;
     card.innerHTML = `
       <div class="tour-step">STEP ${index + 1} / ${STEPS.length}</div>
       <h2 id="tour-title">${step.title}</h2>
       <p>${step.body}</p>
       <div class="tour-actions">
         ${index > 0 ? '<button type="button" data-tour-act="back">Back</button>' : ''}
-        ${showNext ? '<button type="button" data-tour-act="next">Next</button>' : '<button type="button" data-tour-act="next">Next</button>'}
+        <button type="button" data-tour-act="next">Next</button>
         <button type="button" class="tour-skip" data-tour-act="skip">Skip</button>
       </div>
     `;
-
-    if (step.advanceOn) {
-      advanceHandler = (e: Event) => {
-        // Ignore clicks on tour chrome
-        if ((e.target as HTMLElement).closest?.('.tour-card')) return;
-        if (!targetEl?.contains(e.target as Node)) return;
-        window.setTimeout(() => go(index + 1), 80);
-      };
-      targetEl.addEventListener(step.advanceOn, advanceHandler, true);
-    }
 
     layout();
   }

@@ -20,6 +20,7 @@ import {
 } from './scenario/state';
 import type { ScenarioState } from './scenario/types';
 import { loadHorizonProfile } from './horizon/load';
+import type { HorizonProfile } from './horizon/types';
 import { createEphemerisProvider } from './ephemeris/horizons';
 import { assessMission, type MissionAssessment } from './assess/windows';
 import { renderSkyline } from './viz/skyline';
@@ -41,8 +42,12 @@ const el = <E extends HTMLElement = HTMLElement>(id: string) => document.getElem
 let terrain: TerrainApi | undefined;
 let assessA: MissionAssessment | undefined;
 let assessB: MissionAssessment | undefined;
+let cachedHorizon: HorizonProfile | undefined;
 let lastKey = '';
+let lastUiState: ScenarioState | undefined;
 let recomputeTimer = 0;
+let scrubPaintRaf = 0;
+let urlSyncTimer = 0;
 
 function fillSiteSelect(select: HTMLSelectElement, selected: string) {
   select.replaceChildren();
@@ -128,7 +133,26 @@ async function computeSlot(state: ScenarioState, slot: 'A' | 'B'): Promise<Missi
   });
 }
 
-function paintAssessment(state: ScenarioState) {
+function nearestSample(a: MissionAssessment, scrubIso: string) {
+  return a.samples.reduce((best, s) =>
+    Math.abs(Date.parse(s.utc) - Date.parse(scrubIso)) < Math.abs(Date.parse(best.utc) - Date.parse(scrubIso)) ? s : best,
+  a.samples[0]);
+}
+
+function scheduleUrlSync() {
+  window.clearTimeout(urlSyncTimer);
+  urlSyncTimer = window.setTimeout(() => syncUrl(), 150);
+}
+
+function paintSkyline(instant: ReturnType<typeof nearestSample> | undefined) {
+  if (!cachedHorizon) return;
+  renderSkyline(el<HTMLCanvasElement>('skyline'), cachedHorizon, instant ? {
+    sunAz: instant.sunAz, sunEl: instant.sunEl, sunClear: instant.sunlit,
+    earthAz: instant.earthAz, earthEl: instant.earthEl, earthClear: instant.earthLos,
+  } : undefined);
+}
+
+function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = {}) {
   if (!assessA) return;
   el('metrics-a-title').textContent = assessA.siteLabel;
   const viabA = el('viability-a');
@@ -153,16 +177,8 @@ function paintAssessment(state: ScenarioState) {
     el('metrics-b').hidden = true;
   }
 
-  const instant = assessA.samples.reduce((best, s) =>
-    Math.abs(Date.parse(s.utc) - Date.parse(state.scrubUtc)) < Math.abs(Date.parse(best.utc) - Date.parse(state.scrubUtc)) ? s : best,
-  assessA.samples[0]);
-  void loadHorizonProfile(state.primary.siteId, base, state.primary.customLatDeg, state.primary.customLonEastDeg)
-    .then(horizon => {
-      renderSkyline(el<HTMLCanvasElement>('skyline'), horizon, instant ? {
-        sunAz: instant.sunAz, sunEl: instant.sunEl, sunClear: instant.sunlit,
-        earthAz: instant.earthAz, earthEl: instant.earthEl, earthClear: instant.earthLos,
-      } : undefined);
-    });
+  const instant = nearestSample(assessA, state.scrubUtc);
+  paintSkyline(instant);
   el('scrub-label').textContent = `${state.scrubUtc.replace('.000Z', 'Z')} · ${assessA.ephemerisSource}`;
   renderTimeline(
     el<HTMLCanvasElement>('timeline'),
@@ -170,7 +186,49 @@ function paintAssessment(state: ScenarioState) {
     state.scrubUtc,
     state.compareEnabled ? assessB : null,
   );
-  syncUrl();
+  if (opts.syncUrlNow) syncUrl();
+  else scheduleUrlSync();
+}
+
+/** Scrub-only refresh: update derived scrub metrics + viz in place (no control shell rebuild). */
+function paintScrubOnly(state: ScenarioState) {
+  if (!assessA) return;
+  assessA = {
+    ...assessA,
+    hoursToSunset: hoursUntil(assessA, state.scrubUtc, 'sun'),
+    hoursToEarthset: hoursUntil(assessA, state.scrubUtc, 'earth'),
+  };
+  if (assessB) {
+    assessB = {
+      ...assessB,
+      hoursToSunset: hoursUntil(assessB, state.scrubUtc, 'sun'),
+      hoursToEarthset: hoursUntil(assessB, state.scrubUtc, 'earth'),
+    };
+  }
+  paintAssessment(state);
+}
+
+function scheduleScrubPaint(state: ScenarioState) {
+  if (scrubPaintRaf) cancelAnimationFrame(scrubPaintRaf);
+  scrubPaintRaf = requestAnimationFrame(() => {
+    scrubPaintRaf = 0;
+    paintScrubOnly(state);
+  });
+}
+
+function isScrubOnlyChange(prev: ScenarioState | undefined, next: ScenarioState): boolean {
+  if (!prev) return false;
+  return (
+    prev.scrubUtc !== next.scrubUtc
+    && prev.mode === next.mode
+    && prev.compareEnabled === next.compareEnabled
+    && prev.showTechnicalDetails === next.showTechnicalDetails
+    && prev.startUtc === next.startUtc
+    && prev.durationHours === next.durationHours
+    && prev.primary === next.primary
+    && prev.secondary === next.secondary
+    && prev.thresholds === next.thresholds
+  );
 }
 
 async function recompute(state: ScenarioState) {
@@ -179,19 +237,7 @@ async function recompute(state: ScenarioState) {
     hours: state.durationHours, th: state.thresholds, compare: state.compareEnabled,
   });
   if (key === lastKey && assessA) {
-    assessA = {
-      ...assessA,
-      hoursToSunset: hoursUntil(assessA, state.scrubUtc, 'sun'),
-      hoursToEarthset: hoursUntil(assessA, state.scrubUtc, 'earth'),
-    };
-    if (assessB) {
-      assessB = {
-        ...assessB,
-        hoursToSunset: hoursUntil(assessB, state.scrubUtc, 'sun'),
-        hoursToEarthset: hoursUntil(assessB, state.scrubUtc, 'earth'),
-      };
-    }
-    paintAssessment(state);
+    paintScrubOnly(state);
     return;
   }
   lastKey = key;
@@ -199,7 +245,10 @@ async function recompute(state: ScenarioState) {
   try {
     assessA = await computeSlot(state, 'A');
     assessB = state.compareEnabled ? await computeSlot(state, 'B') : undefined;
-    paintAssessment(state);
+    cachedHorizon = await loadHorizonProfile(
+      state.primary.siteId, base, state.primary.customLatDeg, state.primary.customLonEastDeg,
+    );
+    paintAssessment(state, { syncUrlNow: true });
     el('status').textContent = '';
   } catch (error) {
     console.error(error);
@@ -208,6 +257,15 @@ async function recompute(state: ScenarioState) {
 }
 
 function syncControlsFromState(state: ScenarioState) {
+  const scrubOnly = isScrubOnlyChange(lastUiState, state);
+  lastUiState = state;
+
+  if (scrubOnly) {
+    // Keep the range input under user control while dragging; only paint linked viz.
+    scheduleScrubPaint(state);
+    return;
+  }
+
   document.body.classList.toggle('mode-learn', state.mode === 'learn');
   document.body.classList.toggle('mode-planner', state.mode === 'planner');
   document.body.classList.toggle('show-tech', state.showTechnicalDetails || state.mode === 'planner');
@@ -229,8 +287,11 @@ function syncControlsFromState(state: ScenarioState) {
   el<HTMLInputElement>('duration').value = String(state.durationHours);
   const scrub = el<HTMLInputElement>('scrub');
   scrub.max = String(state.durationHours);
-  scrub.value = String(Math.max(0, Math.min(state.durationHours,
-    (Date.parse(state.scrubUtc) - Date.parse(state.startUtc)) / 3600_000)));
+  // Don't fight an active drag — the input already holds the live value.
+  if (document.activeElement !== scrub) {
+    scrub.value = String(Math.max(0, Math.min(state.durationHours,
+      (Date.parse(state.scrubUtc) - Date.parse(state.startUtc)) / 3600_000)));
+  }
   el<HTMLInputElement>('min-earth-el').value = String(state.thresholds.minEarthElevationDeg);
   el<HTMLInputElement>('panel-area').value = String(state.thresholds.panelAreaM2);
   el<HTMLInputElement>('panel-eff').value = String(state.thresholds.panelEfficiency);

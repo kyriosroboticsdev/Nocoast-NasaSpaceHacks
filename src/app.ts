@@ -22,6 +22,7 @@ import type { ScenarioState } from './scenario/types';
 import { loadHorizonProfile } from './horizon/load';
 import type { HorizonProfile } from './horizon/types';
 import { createEphemerisProvider } from './ephemeris/horizons';
+import { backendEphemerisProvider, backendHorizonProfile, fetchBackendAnalysis } from './science/backend';
 import { assessMission, type MissionAssessment } from './assess/windows';
 import {
   DATE_SLIP_OFFSETS_DAYS,
@@ -70,6 +71,9 @@ let terrain: TerrainApi | undefined;
 let assessA: MissionAssessment | undefined;
 let assessB: MissionAssessment | undefined;
 let cachedHorizon: HorizonProfile | undefined;
+/** The exact horizon profile used for the current (no-override) Site A assessment, so the skyline always
+ * matches the metrics it's painted from — including when that horizon came from the Person 2 backend. */
+let lastPrimaryHorizon: HorizonProfile | undefined;
 let lastKey = '';
 let lastUiState: ScenarioState | undefined;
 let lastFocusKey = '';
@@ -124,6 +128,7 @@ function clearAdoptedSearchHorizon() {
 
 function horizonFlagText(a: MissionAssessment): string {
   const badge = authorityBadge(a.horizonModel, a.ephemerisSource);
+  if (a.ephemerisSource.startsWith('Person 2 backend')) return `Horizon: LOLA live (Person 2 backend) · ${badge}`;
   if (a.horizonModel === 'lola_terrain') return `Horizon: LOLA 5 m study · ${badge} · ${a.ephemerisSource}`;
   if (a.horizonModel === 'lola_overview_coarse') return `Horizon: LOLA overview (adopted search) · ${badge}`;
   return `⚠ Horizon: optimistic sphere · ${badge}`;
@@ -239,9 +244,36 @@ async function computeSlot(state: ScenarioState, slot: 'A' | 'B', override?: {
   const startUtc = override?.startUtc ?? state.startUtc;
   const coords = resolveSiteCoords(sc.siteId, sc.customLatDeg, sc.customLonEastDeg);
   const useAdopted = sc.siteId === 'custom' && matchesAdoptedSearch(coords.latitudeDeg, coords.longitudeEastDeg);
+
+  // Person 2 backend (live Skyfield + JPL DE421 + real PGDA/LOLA DEM) — tried first for south-polar points,
+  // where it actually has terrain data. Fails soft to the bundled/sphere chain below when unreachable (no
+  // local backend running), out of its supported mission window, or outside its DEM coverage.
+  if (!useAdopted && coords.latitudeDeg <= -75) {
+    const endUtc = new Date(Date.parse(startUtc) + state.durationHours * 3600_000).toISOString();
+    const backend = await fetchBackendAnalysis(
+      coords.latitudeDeg, coords.longitudeEastDeg, startUtc, endUtc, state.thresholds.minEarthElevationDeg, base,
+    );
+    const backendHorizon = backend ? backendHorizonProfile(backend, sc.siteId) : null;
+    if (backend && backendHorizon) {
+      if (slot === 'A' && !override) lastPrimaryHorizon = backendHorizon;
+      return assessMission({
+        siteId: sc.siteId,
+        siteLabel: coords.label,
+        horizonModel: backendHorizon.model,
+        provider: backendEphemerisProvider(sc.siteId, backend),
+        horizon: backendHorizon,
+        startUtc,
+        durationHours: state.durationHours,
+        scrubUtc: override?.startUtc ?? state.scrubUtc,
+        thresholds: state.thresholds,
+      });
+    }
+  }
+
   const horizon = useAdopted && adoptedSearchHorizon
     ? adoptedSearchHorizon
     : await loadHorizonProfile(sc.siteId, base, coords.latitudeDeg, coords.longitudeEastDeg);
+  if (slot === 'A' && !override) lastPrimaryHorizon = horizon;
   const elevationM = useAdopted && adoptedSearchElevationM != null
     ? adoptedSearchElevationM
     : coords.elevationM;
@@ -564,6 +596,10 @@ async function recompute(state: ScenarioState) {
       && adoptedSearchHorizon
     ) {
       cachedHorizon = adoptedSearchHorizon;
+    } else if (lastPrimaryHorizon) {
+      // Keep the skyline in sync with whatever horizon nextA's assessment actually used (bundled, sphere,
+      // or the Person 2 backend) — computeSlot() already resolved this; don't re-derive it independently.
+      cachedHorizon = lastPrimaryHorizon;
     } else {
       cachedHorizon = await loadHorizonProfile(
         state.primary.siteId, base, state.primary.customLatDeg, state.primary.customLonEastDeg,

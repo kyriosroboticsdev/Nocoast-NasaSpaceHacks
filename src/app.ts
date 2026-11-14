@@ -33,6 +33,7 @@ import {
   localDateInputValue,
   viabilityClass,
 } from './ui/format';
+import { createTour } from './ui/tour';
 
 const base = import.meta.env.BASE_URL;
 const el = <E extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as E;
@@ -352,6 +353,10 @@ async function boot() {
   wireUi();
   syncControlsFromState(getScenario());
   subscribeScenario(syncControlsFromState);
+
+  const tour = createTour(el('tour-root'));
+  el('replay-tour').onclick = () => tour.start(true);
+
   try {
     terrain = await startTerrain();
     const s = getScenario();
@@ -361,6 +366,9 @@ async function boot() {
     el('status').textContent = 'Could not open the polar terrain viewer.';
     console.error(error);
   }
+
+  // Defer tour until after first paint / terrain boot so targets have layout
+  window.setTimeout(() => tour.start(false), 700);
 }
 
 void boot();

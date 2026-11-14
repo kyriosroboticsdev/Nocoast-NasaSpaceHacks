@@ -17,6 +17,8 @@ End-to-end extension of the existing Vite / TypeScript / Three.js polar terrain 
 | Assessment | Sunlight / Earth LOS windows, simultaneous ∩, blackouts, availability %, power proxy, sunset/Earthset countdowns, GO/RISKY/NO-GO |
 | Viz | Existing 3D terrain + 360° skyline (Sun/Earth markers) + mission timeline (Gantt) |
 | Compare | Side-by-side Site A / Site B with shared UTC window |
+| UX layout | Related controls co-located with their viz: sites↔3D map, time scrubber↔skyline/timeline, thresholds↔metrics |
+| Onboarding | First-visit spotlight tour (`src/ui/tour.ts`); completion in `localStorage` key `llsn-tour-v1`; **Replay tour** in header |
 | Share / export | URL query state (`?mode=&site=&siteB=&date=&hours=&compare=`); JSON time-series export |
 | Offline demo | Bundled `public/science/**` horizons + ephemeris |
 
@@ -31,21 +33,31 @@ End-to-end extension of the existing Vite / TypeScript / Three.js polar terrain 
 | 4 | feat: assess sunlight, Earth LOS, blackouts, and power proxy |
 | 5 | feat: add A/B compare timeline and curated catalog flags |
 | 6 | feat: polish Learn mode narrative, guided scenarios, and disclosure |
-| 7 | (this) demo hardening + README + implementation summary |
+| 7 | docs: harden demo runbook and add implementation validation summary |
+| 8 | feat: co-locate controls with viz and add first-visit tour |
 
 No Cursor `Co-authored-by` trailers were included on pushed commits.
 
 ## Key files
 
-- `src/app.ts` — shell + science orchestration
+- `src/app.ts` — shell + science orchestration + tour boot
+- `src/ui/tour.ts` — coach-mark / spotlight onboarding
 - `src/main.ts` — terrain viewer (`startTerrain` API)
 - `src/scenario/*` — shared state, catalog, URL sync
 - `src/horizon/*`, `scripts/compute-horizons.mjs`, `public/science/horizons/*`
 - `src/ephemeris/*`, `scripts/fetch-horizons.mjs`, `public/science/ephemeris/*`
 - `src/assess/windows.ts` — mission assessment
 - `src/viz/skyline.ts`, `src/viz/timeline.ts`
+- `index.html` / `src/style.css` — clustered layout (map / assess / time-sky)
 - `public/terrain/sites.json` — `horizonStatus: ready`
 - `RUNBOOK.md`, `README.md`
+
+## UX tour (re-run)
+
+- Auto-starts once for first-time visitors (unless `localStorage.llsn-tour-v1 === 'done'`).
+- Skip or finish marks the tour complete.
+- **Replay tour** (header) clears the flag and restarts the walkthrough.
+- Dev reset: `localStorage.removeItem('llsn-tour-v1')` then reload.
 
 ## How to run
 
@@ -69,16 +81,16 @@ Build check: `npm.cmd run build`
 
 ### Smoke
 
-- [ ] `npm.cmd ci` succeeds
-- [ ] `npm.cmd run build` succeeds (tsc + vite)
-- [ ] `npm.cmd run dev` loads without console errors; terrain globe appears
+- [x] `npm.cmd ci` succeeds
+- [x] `npm.cmd run build` succeeds (tsc + vite)
+- [x] `npm.cmd run dev` loads without console errors; terrain globe appears 
 
 ### Planner P0
 
-- [ ] Default load shows CR1 as Site A and SR1 as Site B with compare on
-- [ ] Zoom to site A flies into Connecting Ridge; markers visible
-- [ ] 360° skyline draws terrain profile (not flat) for CR1/SR1
-- [ ] UTC scrubber moves Sun/Earth markers; scrub label shows ephemeris source (bundled Horizons preferred)
+- [x] Default load shows CR1 as Site A and SR1 as Site B with compare on
+- [x] Zoom to site A flies into Connecting Ridge; markers visible
+- [x] 360° skyline draws terrain profile (not flat) for CR1/SR1
+- [x] UTC scrubber moves Sun/Earth markers; scrub label shows ephemeris source (bundled Horizons preferred)
 - [ ] Metrics show sunlight %, Earth LOS %, simultaneous %, power proxy, blackouts, sunset/Earthset countdowns
 - [ ] Viability badge shows GO / RISKY / NO-GO with a reason
 - [ ] Timeline shows sunlight / Earth / both bars; scrubber line tracks

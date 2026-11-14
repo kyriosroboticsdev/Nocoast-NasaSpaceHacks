@@ -8,19 +8,22 @@
 </head>
 <body>
   <main>
-    <header class="app-header">
+    <header class="app-header" data-tour="mode">
       <div>
         <p class="eyebrow">NOCOAST · NASA SPACE APPS · SOUTH POLE</p>
         <h1>Lunar Landing Site Navigator</h1>
         <p class="tagline" id="mode-tagline">Compare sites and dates for solar power and direct-to-Earth communications.</p>
       </div>
-      <div class="mode-toggle" role="group" aria-label="Application mode">
-        <button type="button" id="mode-planner" class="mode-btn active" aria-pressed="true">Planner</button>
-        <button type="button" id="mode-learn" class="mode-btn" aria-pressed="false">Learn</button>
+      <div class="header-actions">
+        <div class="mode-toggle" role="group" aria-label="Application mode">
+          <button type="button" id="mode-planner" class="mode-btn active" aria-pressed="true">Planner</button>
+          <button type="button" id="mode-learn" class="mode-btn" aria-pressed="false">Learn</button>
+        </div>
+        <button type="button" id="replay-tour" class="tour-replay" title="Replay the guided tour">Replay tour</button>
       </div>
     </header>
 
-    <section id="learn-panel" class="learn-panel" hidden>
+    <section id="learn-panel" class="learn-panel" hidden data-tour="learn">
       <article>
         <h2>Why the south pole is hard</h2>
         <p>Near 90°S, the Sun stays low and skims a jagged horizon. Ridges a few kilometers away can block sunlight for days, and Earth may sit just above or below the local terrain — so power and communications rise and fall together with landing site and date.</p>
@@ -39,14 +42,10 @@
     </section>
 
     <div class="workspace">
-      <div class="layout">
-        <section id="viewport" aria-label="Interactive 3D lunar terrain">
-          <div class="badge" id="mode-label">87°S–90°S</div>
-          <div class="hint" id="hint">Click to fly · Drag to orbit · Middle-drag to pan · Scroll or pinch to zoom</div>
-        </section>
-
-        <aside class="controls">
-          <div class="slot-block">
+      <!-- Site selection + 3D map stay together -->
+      <section class="cluster map-cluster" aria-label="Landing site and 3D terrain">
+        <aside class="controls map-controls">
+          <div class="slot-block" data-tour="site">
             <label for="site">Site A</label>
             <select id="site"></select>
             <div class="custom-coords" id="custom-a" hidden>
@@ -58,7 +57,7 @@
             </div>
           </div>
 
-          <div class="slot-block" id="site-b-block">
+          <div class="slot-block" id="site-b-block" data-tour="compare">
             <label for="site-b">Site B (compare)</label>
             <select id="site-b"></select>
             <label class="check">
@@ -92,33 +91,6 @@
             <small>Radial elevation above the reference sphere</small>
           </div>
 
-          <label for="start-utc">Mission start (UTC)</label>
-          <input id="start-utc" type="datetime-local">
-
-          <label for="duration">Mission length (Earth hours)</label>
-          <input id="duration" type="number" min="6" max="720" step="6" value="168">
-
-          <label for="scrub">Time scrubber (UTC)</label>
-          <input id="scrub" type="range" min="0" max="168" step="1" value="0">
-          <p class="scrub-readout" id="scrub-label">—</p>
-
-          <details class="thresholds" id="thresholds-box">
-            <summary>Planner thresholds</summary>
-            <label for="min-earth-el">Min Earth elevation °</label>
-            <input id="min-earth-el" type="number" min="0" max="30" step="0.5" value="5">
-            <label for="panel-area">Panel area m²</label>
-            <input id="panel-area" type="number" min="0.1" max="50" step="0.1" value="2">
-            <label for="panel-eff">Panel efficiency</label>
-            <input id="panel-eff" type="number" min="0.05" max="0.45" step="0.01" value="0.28">
-            <label for="battery-floor">Battery floor W</label>
-            <input id="battery-floor" type="number" min="0" max="500" step="5" value="40">
-          </details>
-
-          <label class="check" id="tech-details-label">
-            <input type="checkbox" id="tech-details">
-            Show technical details
-          </label>
-
           <p id="status" role="status">Loading terrain…</p>
           <dl id="details"></dl>
           <p class="source">
@@ -128,10 +100,16 @@
             <a href="https://quickmap.lroc.asu.edu/">Quickmap</a>
           </p>
         </aside>
-      </div>
 
-      <section class="science-pane" aria-label="Power and communications assessment">
-        <div class="metrics" id="metrics-a">
+        <section id="viewport" aria-label="Interactive 3D lunar terrain" data-tour="map">
+          <div class="badge" id="mode-label">87°S–90°S</div>
+          <div class="hint" id="hint">Click to fly · Drag to orbit · Middle-drag to pan · Scroll or pinch to zoom</div>
+        </section>
+      </section>
+
+      <!-- Metrics + thresholds stay together -->
+      <section class="cluster assess-cluster" aria-label="Power and communications assessment">
+        <div class="metrics" id="metrics-a" data-tour="viability">
           <h2 id="metrics-a-title">Site A</h2>
           <div class="viability" id="viability-a">—</div>
           <div class="metric-grid" id="metric-grid-a"></div>
@@ -143,33 +121,72 @@
           <div class="metric-grid" id="metric-grid-b"></div>
           <p class="horizon-flag" id="horizon-flag-b"></p>
         </div>
+        <aside class="controls assess-controls" data-tour="thresholds">
+          <h3>Assessment settings</h3>
+          <details class="thresholds" id="thresholds-box" open>
+            <summary>Planner thresholds</summary>
+            <label for="min-earth-el">Min Earth elevation °</label>
+            <input id="min-earth-el" type="number" min="0" max="30" step="0.5" value="5">
+            <label for="panel-area">Panel area m²</label>
+            <input id="panel-area" type="number" min="0.1" max="50" step="0.1" value="2">
+            <label for="panel-eff">Panel efficiency</label>
+            <input id="panel-eff" type="number" min="0.05" max="0.45" step="0.01" value="0.28">
+            <label for="battery-floor">Battery floor W</label>
+            <input id="battery-floor" type="number" min="0" max="500" step="5" value="40">
+          </details>
+          <label class="check" id="tech-details-label">
+            <input type="checkbox" id="tech-details">
+            Show technical details
+          </label>
+        </aside>
+      </section>
 
-        <div class="viz-block">
-          <h3>360° skyline · Site A</h3>
-          <canvas id="skyline" width="800" height="140" aria-label="Horizon skyline with Sun and Earth"></canvas>
-        </div>
-        <div class="viz-block">
-          <h3>Mission timeline</h3>
-          <canvas id="timeline" width="800" height="100" aria-label="Sunlight and Earth LOS timeline"></canvas>
-        </div>
+      <!-- Time scrubber + skyline/timeline stay together -->
+      <section class="cluster time-sky-cluster" aria-label="Mission time and skyline">
+        <aside class="controls time-controls" data-tour="time">
+          <h3>Mission time</h3>
+          <label for="start-utc">Mission start (UTC)</label>
+          <input id="start-utc" type="datetime-local">
 
-        <div class="provenance" id="provenance">
-          <h3>Provenance &amp; limits</h3>
-          <ul>
-            <li>Horizons: bundled JPL observer az/el for CR1/SR1 (Jan 2027); live API or analytic fallback otherwise.</li>
-            <li>Horizons (terrain): LOLA 5 m near-field + 320 m overview; gaps never invented.</li>
-            <li>Custom / curated non-study sites use an optimistic sphere horizon — labeled explicitly.</li>
-            <li>3D display lighting ≠ authoritative observer Sun/Earth status.</li>
-          </ul>
-          <div class="share-row">
-            <button type="button" id="copy-link">Copy shareable link</button>
-            <button type="button" id="export-json">Export time series JSON</button>
-            <span id="share-status" role="status"></span>
+          <label for="duration">Mission length (Earth hours)</label>
+          <input id="duration" type="number" min="6" max="720" step="6" value="168">
+
+          <label for="scrub">Time scrubber (UTC)</label>
+          <input id="scrub" type="range" min="0" max="168" step="1" value="0">
+          <p class="scrub-readout" id="scrub-label">—</p>
+          <p class="control-hint">Scrub to move Sun and Earth on the skyline and the marker on the timeline.</p>
+        </aside>
+
+        <div class="viz-stack">
+          <div class="viz-block" data-tour="skyline">
+            <h3>360° skyline · Site A</h3>
+            <canvas id="skyline" width="800" height="140" aria-label="Horizon skyline with Sun and Earth"></canvas>
           </div>
+          <div class="viz-block" data-tour="timeline">
+            <h3>Mission timeline</h3>
+            <canvas id="timeline" width="800" height="100" aria-label="Sunlight and Earth LOS timeline"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="provenance" id="provenance">
+        <h3>Provenance &amp; limits</h3>
+        <ul>
+          <li>Horizons: bundled JPL observer az/el for CR1/SR1 (Jan 2027); live API or analytic fallback otherwise.</li>
+          <li>Horizons (terrain): LOLA 5 m near-field + 320 m overview; gaps never invented.</li>
+          <li>Custom / curated non-study sites use an optimistic sphere horizon — labeled explicitly.</li>
+          <li>3D display lighting ≠ authoritative observer Sun/Earth status.</li>
+        </ul>
+        <div class="share-row">
+          <button type="button" id="copy-link">Copy shareable link</button>
+          <button type="button" id="export-json">Export time series JSON</button>
+          <span id="share-status" role="status"></span>
         </div>
       </section>
     </div>
   </main>
+
+  <div id="tour-root" class="tour-root" hidden aria-live="polite"></div>
   <script type="module" src="/src/app.ts"></script>
 </body>
 </html>

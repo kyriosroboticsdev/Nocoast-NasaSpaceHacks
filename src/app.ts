@@ -19,10 +19,12 @@ import {
 } from './scenario/state';
 import type { ScenarioState } from './scenario/types';
 import { loadHorizonProfile } from './horizon/load';
-import type { HorizonProfile } from './horizon/types';
+import { horizonElevationAt, type HorizonProfile } from './horizon/types';
+import { createEphemerisProvider, type EphemerisProvider } from './ephemeris/horizons';
 import { renderSkyline } from './viz/skyline';
 import {
   dateInputToUtcIso,
+  fmtDeg,
   localDateInputValue,
 } from './ui/format';
 
@@ -31,6 +33,8 @@ const el = <E extends HTMLElement = HTMLElement>(id: string) => document.getElem
 
 let terrain: TerrainApi | undefined;
 let horizonA: HorizonProfile | undefined;
+let providerA: EphemerisProvider | undefined;
+let lastEphemKey = '';
 
 function fillSiteSelect(select: HTMLSelectElement, selected: string) {
   select.replaceChildren();
@@ -49,15 +53,65 @@ function fillSiteSelect(select: HTMLSelectElement, selected: string) {
   select.append(new Option('Custom lat/lon (sphere horizon)', 'custom', false, selected === 'custom'));
 }
 
-async function refreshHorizon(state: ScenarioState) {
+function paintSkyline(state: ScenarioState) {
+  if (!horizonA || !providerA) return;
+  const sun = providerA.get('sun', state.scrubUtc);
+  const earth = providerA.get('earth', state.scrubUtc);
+  const sunH = horizonElevationAt(horizonA, sun.azimuthDeg);
+  const earthH = horizonElevationAt(horizonA, earth.azimuthDeg);
+  const sunClear = sunH == null ? null : sun.elevationDeg - sunH;
+  const earthClear = earthH == null ? null : earth.elevationDeg - earthH;
+  renderSkyline(el<HTMLCanvasElement>('skyline'), horizonA, {
+    sunAz: sun.azimuthDeg,
+    sunEl: sun.elevationDeg,
+    sunClear: sunClear == null ? null : sunClear > 0,
+    earthAz: earth.azimuthDeg,
+    earthEl: earth.elevationDeg,
+    earthClear: earthClear == null ? null : earthClear > 0,
+  });
+  el('metric-grid-a').replaceChildren();
+  const rows: Array<[string, string]> = [
+    ['Sun az / el', `${fmtDeg(sun.azimuthDeg)} / ${fmtDeg(sun.elevationDeg)}`],
+    ['Sun vs terrain', sunClear == null ? '—' : `${fmtDeg(sunClear)} clear`],
+    ['Earth az / el', `${fmtDeg(earth.azimuthDeg)} / ${fmtDeg(earth.elevationDeg)}`],
+    ['Earth vs terrain', earthClear == null ? '—' : `${fmtDeg(earthClear)} clear`],
+  ];
+  for (const [label, value] of rows) {
+    const div = document.createElement('div');
+    div.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+    el('metric-grid-a').append(div);
+  }
+  el('scrub-label').textContent = `${state.scrubUtc.replace('.000Z', 'Z')} · ${providerA.sourceLabel}`;
+  el('viability-a').textContent = 'Ephemeris + terrain obstruction live · full windows next';
+}
+
+async function refreshScience(state: ScenarioState) {
   const coords = resolveSiteCoords(state.primary.siteId, state.primary.customLatDeg, state.primary.customLonEastDeg);
+  const key = JSON.stringify({
+    site: state.primary, start: state.startUtc, hours: state.durationHours,
+  });
   horizonA = await loadHorizonProfile(state.primary.siteId, base, coords.latitudeDeg, coords.longitudeEastDeg);
-  renderSkyline(el<HTMLCanvasElement>('skyline'), horizonA);
-  el('horizon-flag-a').textContent = horizonA.model === 'lola_terrain'
-    ? `Horizon model: LOLA terrain · ${horizonA.bins.length} bins @ ${horizonA.spacingDeg}°`
-    : '⚠ Horizon model: optimistic sphere — terrain unknown / upper-bound visibility';
+  if (key !== lastEphemKey || !providerA) {
+    lastEphemKey = key;
+    el('status').textContent = 'Loading Sun/Earth ephemeris…';
+    providerA = await createEphemerisProvider({
+      siteId: state.primary.siteId,
+      latDeg: coords.latitudeDeg,
+      lonEastDeg: coords.longitudeEastDeg,
+      altitudeKm: (coords.elevationM + coords.observerHeightM) / 1000,
+      startUtc: state.startUtc,
+      durationHours: state.durationHours,
+      baseUrl: base,
+      allowLive: false,
+    });
+    el('status').textContent = '';
+  }
   el('metrics-a-title').textContent = coords.label;
-  el('viability-a').textContent = 'Skyline ready · Sun/Earth markers arrive with ephemeris';
+  el('horizon-flag-a').textContent = horizonA.model === 'lola_terrain'
+    ? `Horizon model: LOLA terrain · ephemeris ${providerA.sourceLabel}`
+    : `⚠ Sphere horizon (optimistic) · ephemeris ${providerA.sourceLabel}`;
+  paintSkyline(state);
+  syncUrl();
 }
 
 function syncControlsFromState(state: ScenarioState) {
@@ -86,14 +140,12 @@ function syncControlsFromState(state: ScenarioState) {
   scrub.max = String(state.durationHours);
   const hoursFromStart = (Date.parse(state.scrubUtc) - Date.parse(state.startUtc)) / 3600_000;
   scrub.value = String(Math.max(0, Math.min(state.durationHours, hoursFromStart)));
-  el('scrub-label').textContent = `${state.scrubUtc.replace('.000Z', 'Z')}`;
   el<HTMLInputElement>('min-earth-el').value = String(state.thresholds.minEarthElevationDeg);
   el<HTMLInputElement>('panel-area').value = String(state.thresholds.panelAreaM2);
   el<HTMLInputElement>('panel-eff').value = String(state.thresholds.panelEfficiency);
   el<HTMLInputElement>('battery-floor').value = String(state.thresholds.batteryFloorW);
   el<HTMLInputElement>('tech-details').checked = state.showTechnicalDetails;
-  void refreshHorizon(state);
-  syncUrl();
+  void refreshScience(state);
 }
 
 function wireUi() {
@@ -183,11 +235,9 @@ function wireUi() {
     }
   };
   el('export-json').onclick = () => {
-    el('share-status').textContent = 'Time-series export arrives with assessment phases.';
+    el('share-status').textContent = 'Time-series export arrives with assessment phase.';
   };
-  window.addEventListener('resize', () => {
-    if (horizonA) renderSkyline(el<HTMLCanvasElement>('skyline'), horizonA);
-  });
+  window.addEventListener('resize', () => paintSkyline(getScenario()));
 }
 
 async function boot() {
@@ -200,7 +250,6 @@ async function boot() {
     const s = getScenario();
     const coords = resolveSiteCoords(s.primary.siteId, s.primary.customLatDeg, s.primary.customLonEastDeg);
     terrain.focusLatLon(coords.latitudeDeg, coords.longitudeEastDeg);
-    el('status').textContent = '';
   } catch (error) {
     el('status').textContent = 'Could not open the polar terrain viewer.';
     console.error(error);

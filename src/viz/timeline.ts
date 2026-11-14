@@ -32,15 +32,15 @@ export function renderTimeline(
     ? [
         { label: `${assessment.siteLabel} sun`, windows: assessment.sunlightWindows, color: '#e6b84d' },
         { label: `${assessment.siteLabel} Earth`, windows: assessment.earthWindows, color: '#5aa8e6' },
-        { label: `${assessment.siteLabel} ∩`, windows: assessment.simultaneousWindows, color: '#7de4d4' },
+        { label: `${assessment.siteLabel} both`, windows: assessment.simultaneousWindows, color: '#7de4d4' },
         { label: `${secondary.siteLabel} sun`, windows: secondary.sunlightWindows, color: '#c49a3c' },
         { label: `${secondary.siteLabel} Earth`, windows: secondary.earthWindows, color: '#3f87c4' },
-        { label: `${secondary.siteLabel} ∩`, windows: secondary.simultaneousWindows, color: '#5bb8aa' },
+        { label: `${secondary.siteLabel} both`, windows: secondary.simultaneousWindows, color: '#5bb8aa' },
       ]
     : [
         { label: 'Sunlight', windows: assessment.sunlightWindows, color: '#e6b84d' },
-        { label: 'Earth LOS', windows: assessment.earthWindows, color: '#5aa8e6' },
-        { label: 'Sun ∩ Earth', windows: assessment.simultaneousWindows, color: '#7de4d4' },
+        { label: 'Earth contact', windows: assessment.earthWindows, color: '#5aa8e6' },
+        { label: 'Both at once', windows: assessment.simultaneousWindows, color: '#7de4d4' },
       ];
 
   const t0 = Date.parse(assessment.samples[0]?.utc ?? scrubUtc);
@@ -93,7 +93,7 @@ export function renderTimeline(
     ctx.fillStyle = '#7de4d4';
     ctx.font = '10px system-ui, sans-serif';
     const kindLabel =
-      best.kind === 'simultaneous' ? 'Best ∩' :
+      best.kind === 'simultaneous' ? 'Best both' :
       best.kind === 'sunlight' ? 'Best sun' :
       best.kind === 'earth' ? 'Best Earth' : '';
     if (kindLabel) {

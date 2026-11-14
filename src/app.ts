@@ -55,7 +55,9 @@ import {
   fmtPower,
   localDateInputValue,
   viabilityClass,
+  viabilityIcon,
 } from './ui/format';
+import { plainConsequence, plainSummary, simpleCards } from './ui/plain';
 import { createTour } from './ui/tour';
 import {
   POWER_COMMS_PRIMER,
@@ -167,12 +169,12 @@ function renderMetricGrid(target: HTMLElement, a: MissionAssessment, scrubIso: s
   const rows: Row[] = [
     { kind: 'group', label: '— Mission window —' },
     { kind: 'metric', label: 'Sunlight availability', value: fmtPct(a.sunlightPct), help: 'sunlight' },
-    { kind: 'metric', label: 'Earth LOS availability', value: fmtPct(a.earthLosPct), help: 'earthLos' },
-    { kind: 'metric', label: 'Sun ∩ Earth windows', value: fmtPct(a.simultaneousPct), help: 'sunEarth' },
-    { kind: 'metric', label: 'Mean power proxy', value: meanVsFloor, help: 'meanPower' },
-    { kind: 'metric', label: 'Peak power proxy', value: fmtPower(a.peakPowerW), help: 'peakPower', tech: true },
-    { kind: 'metric', label: 'Longest sun blackout', value: fmtHours(a.longestSunBlackoutHours), help: 'sunBlackout' },
-    { kind: 'metric', label: 'Longest Earth blackout', value: fmtHours(a.longestEarthBlackoutHours), help: 'earthBlackout' },
+    { kind: 'metric', label: 'Can see Earth', value: fmtPct(a.earthLosPct), help: 'earthLos' },
+    { kind: 'metric', label: 'Sun + Earth together', value: fmtPct(a.simultaneousPct), help: 'sunEarth' },
+    { kind: 'metric', label: 'Average solar power', value: meanVsFloor, help: 'meanPower' },
+    { kind: 'metric', label: 'Peak solar power', value: fmtPower(a.peakPowerW), help: 'peakPower', tech: true },
+    { kind: 'metric', label: 'Longest darkness', value: fmtHours(a.longestSunBlackoutHours), help: 'sunBlackout' },
+    { kind: 'metric', label: 'Longest Earth-contact gap', value: fmtHours(a.longestEarthBlackoutHours), help: 'earthBlackout' },
   ];
   if ((a.unknownHours ?? 0) > 0.05) {
     rows.push({
@@ -183,12 +185,12 @@ function renderMetricGrid(target: HTMLElement, a: MissionAssessment, scrubIso: s
     });
   }
   rows.push(
-    { kind: 'group', label: '— At scrub time —' },
+    { kind: 'group', label: '— At slider time —' },
     { kind: 'metric', label: 'Time to sunset', value: fmtHours(a.hoursToSunset), help: 'timeSunset' },
-    { kind: 'metric', label: 'Time to Earthset', value: fmtHours(a.hoursToEarthset), help: 'timeEarthset' },
-    { kind: 'metric', label: 'Sun elev (scrub)', value: fmtDeg(instant?.sunEl), help: 'sunElev', tech: true },
+    { kind: 'metric', label: 'Time until Earth sets', value: fmtHours(a.hoursToEarthset), help: 'timeEarthset' },
+    { kind: 'metric', label: 'Sun elevation (slider)', value: fmtDeg(instant?.sunEl), help: 'sunElev', tech: true },
     { kind: 'metric', label: 'Sun clear elev', value: fmtDeg(instant?.sunClearEl), help: 'sunClear', tech: true },
-    { kind: 'metric', label: 'Earth elev (scrub)', value: fmtDeg(instant?.earthEl), help: 'earthElev', tech: true },
+    { kind: 'metric', label: 'Earth elevation (slider)', value: fmtDeg(instant?.earthEl), help: 'earthElev', tech: true },
     { kind: 'metric', label: 'Earth clear elev', value: fmtDeg(instant?.earthClearEl), help: 'earthClear', tech: true },
   );
 
@@ -210,6 +212,31 @@ function renderMetricGrid(target: HTMLElement, a: MissionAssessment, scrubIso: s
     const strong = document.createElement('strong');
     strong.textContent = row.value;
     div.append(span, strong);
+    target.append(div);
+  }
+}
+
+/** Big icon cards — the simple layer's main reading surface. */
+function renderSimpleCards(target: HTMLElement, a: MissionAssessment) {
+  const cards = simpleCards(a, getScenario().thresholds);
+  target.replaceChildren();
+  for (const card of cards) {
+    const div = document.createElement('div');
+    div.className = `simple-card tone-${card.tone}`;
+    const icon = document.createElement('span');
+    icon.className = 'sc-icon';
+    icon.textContent = card.icon;
+    icon.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.className = 'sc-label';
+    label.textContent = card.label;
+    const value = document.createElement('strong');
+    value.className = 'sc-value';
+    value.textContent = card.value;
+    const note = document.createElement('span');
+    note.className = 'sc-note';
+    note.textContent = card.note;
+    div.append(icon, label, value, note);
     target.append(div);
   }
 }
@@ -340,9 +367,9 @@ function paintNogoPrompt(a: MissionAssessment) {
   prompt.hidden = false;
   const action =
     a.viability === 'NO-GO'
-      ? 'Try Rank sites, Suggest better dates, or slip ±7/14 days — or enable compare with Site B.'
-      : 'Consider a date slip or Site B compare if margins look tight.';
-  prompt.textContent = `${explainVerdict(a)} ${action}`;
+      ? 'Try “Rank known sites”, “Suggest better dates”, or the ±7/14-day buttons — the tool will hunt for a combination that works.'
+      : 'A nearby week or site may be safer — try “Suggest better dates” or compare with Site B.';
+  prompt.textContent = `${plainConsequence(a, getScenario().thresholds)} ${action}`;
 }
 
 function paintBestWindowLabel(a: MissionAssessment) {
@@ -353,9 +380,9 @@ function paintBestWindowLabel(a: MissionAssessment) {
     return;
   }
   const kind =
-    best.kind === 'simultaneous' ? 'Best sun ∩ Earth' :
-    best.kind === 'sunlight' ? 'Best sunlight (no ∩)' :
-    'Best Earth LOS (no ∩)';
+    best.kind === 'simultaneous' ? 'Best sun + Earth stretch' :
+    best.kind === 'sunlight' ? 'Best sunlight stretch (never both)' :
+    'Best Earth-contact stretch (never both)';
   label.textContent = `${kind}: ${best.window.hours.toFixed(1)} h · ${best.window.startUtc.slice(0, 16)}Z → ${best.window.endUtc.slice(0, 16)}Z (highlighted on timeline)`;
 }
 
@@ -364,7 +391,7 @@ function paintLearnTip(a: MissionAssessment, b?: MissionAssessment) {
   if (!tip) return;
   let text = explainVerdict(a);
   if (b) {
-    text += ` Compared with ${b.siteLabel}: ${b.viability} (∩ ${b.simultaneousPct.toFixed(0)}% vs ${a.simultaneousPct.toFixed(0)}%).`;
+    text += ` Compared with ${b.siteLabel}: ${b.viability} (sun + Earth together ${b.simultaneousPct.toFixed(0)}% vs ${a.simultaneousPct.toFixed(0)}%).`;
   }
   tip.textContent = text;
 }
@@ -377,18 +404,20 @@ function paintMetricPrimers(a: MissionAssessment, slot: 'a' | 'b') {
   const bothH = a.simultaneousHours.toFixed(1);
   const unk = (a.unknownHours ?? 0) > 0.05 ? ` · ~${a.unknownHours.toFixed(1)} h unknown (not blackout)` : '';
   primer.textContent =
-    `Comms: Earth LOS ${fmtPct(a.earthLosPct)} (~${earthH} h DTE-up); longest Earth blackout ${fmtHours(a.longestEarthBlackoutHours)}. ` +
-    `Power: sunlight ${fmtPct(a.sunlightPct)} (~${sunH} h); mean ${fmtPower(a.meanPowerW)} vs floor ${fmtPower(getScenario().thresholds.batteryFloorW)}; longest sun blackout ${fmtHours(a.longestSunBlackoutHours)}. ` +
-    `Sun ∩ Earth ${fmtPct(a.simultaneousPct)} (~${bothH} h) — recharge while talking to Earth, no relay.${unk}`;
+    `Comms: Earth in view ${fmtPct(a.earthLosPct)} (~${earthH} h direct-to-Earth); longest contact gap ${fmtHours(a.longestEarthBlackoutHours)}. ` +
+    `Power: sunlight ${fmtPct(a.sunlightPct)} (~${sunH} h); average ${fmtPower(a.meanPowerW)} vs floor ${fmtPower(getScenario().thresholds.batteryFloorW)}; longest darkness ${fmtHours(a.longestSunBlackoutHours)}. ` +
+    `Sun + Earth together ${fmtPct(a.simultaneousPct)} (~${bothH} h) — recharge while talking to Earth, no relay.${unk}`;
 }
 
 function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = {}) {
   if (!assessA) return;
   el('metrics-a-title').textContent = assessA.siteLabel;
   const viabA = el('viability-a');
-  viabA.textContent = `${assessA.viability} · ${assessA.viabilityReason}`;
+  viabA.textContent = `${viabilityIcon(assessA.viability)} ${assessA.viability} · ${assessA.viabilityReason}`;
   viabA.className = `viability ${viabilityClass(assessA.viability)}`;
   paintInstantChip('instant-a', assessA, state.scrubUtc);
+  el('plain-summary-a').textContent = plainSummary(assessA, state.thresholds);
+  renderSimpleCards(el('simple-cards-a'), assessA);
   paintNogoPrompt(assessA);
   paintBestWindowLabel(assessA);
   renderMetricGrid(el('metric-grid-a'), assessA, state.scrubUtc);
@@ -399,9 +428,11 @@ function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = 
     el('metrics-b').hidden = false;
     el('metrics-b-title').textContent = assessB.siteLabel;
     const viabB = el('viability-b');
-    viabB.textContent = `${assessB.viability} · ${assessB.viabilityReason}`;
+    viabB.textContent = `${viabilityIcon(assessB.viability)} ${assessB.viability} · ${assessB.viabilityReason}`;
     viabB.className = `viability ${viabilityClass(assessB.viability)}`;
     paintInstantChip('instant-b', assessB, state.scrubUtc);
+    el('plain-summary-b').textContent = plainSummary(assessB, state.thresholds);
+    renderSimpleCards(el('simple-cards-b'), assessB);
     renderMetricGrid(el('metric-grid-b'), assessB, state.scrubUtc);
     paintMetricPrimers(assessB, 'b');
     el('horizon-flag-b').textContent = horizonFlagText(assessB);
@@ -643,7 +674,9 @@ function syncControlsFromState(state: ScenarioState) {
 
   document.body.classList.toggle('mode-learn', state.mode === 'learn');
   document.body.classList.toggle('mode-planner', state.mode === 'planner');
-  document.body.classList.toggle('show-tech', state.showTechnicalDetails || state.mode === 'planner');
+  // Simple view is the default everywhere; the expert checkbox reveals the full grids,
+  // thresholds, and provenance in both Planner and Learn.
+  document.body.classList.toggle('show-tech', state.showTechnicalDetails);
   document.body.classList.toggle('hide-b', !state.compareEnabled);
   el('mode-planner').classList.toggle('active', state.mode === 'planner');
   el('mode-learn').classList.toggle('active', state.mode === 'learn');
@@ -688,7 +721,7 @@ function renderRankList(rows: RankedSite[]) {
   const list = el('rank-list');
   list.replaceChildren();
   if (!rows.length) {
-    list.innerHTML = '<p class="empty-hint">Click “Rank sites for this window” to score the catalog (+ current custom Site A).</p>';
+    list.innerHTML = '<p class="empty-hint">Click “Rank known sites” to score every catalog site (+ current custom Site A) for this window.</p>';
     return;
   }
   rows.forEach((row, i) => {
@@ -701,7 +734,7 @@ function renderRankList(rows: RankedSite[]) {
       <span class="rank-pos">#${i + 1}</span>
       <span class="rank-body">
         <strong>${row.publishedLabel} · ${row.label}</strong>
-        <span class="rank-metrics">${row.viability} · ∩ ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)} · ${badge}</span>
+        <span class="rank-metrics">${row.viability} · both ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)} · ${badge}</span>
       </span>
       <span class="rank-adopt">Adopt</span>`;
     item.onclick = () => {
@@ -740,7 +773,7 @@ function renderSearchList(rows: SearchHit[]) {
       <span class="rank-pos">#${i + 1}</span>
       <span class="rank-body">
         <strong>${row.publishedLabel} · ${Math.abs(row.latitudeDeg).toFixed(3)}°S ${row.longitudeEastDeg.toFixed(2)}°E</strong>
-        <span class="rank-metrics">${row.viability} · ∩ ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)} · mean ${fmtPower(row.meanPowerW)} (floor ${fmtPower(getScenario().thresholds.batteryFloorW)}) · overview LOLA</span>
+        <span class="rank-metrics">${row.viability} · both ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)} · avg ${fmtPower(row.meanPowerW)} (needs ${fmtPower(getScenario().thresholds.batteryFloorW)}) · overview LOLA</span>
       </span>
       <span class="rank-adopt">Adopt</span>`;
     item.onclick = () => adoptSearchHit(row);
@@ -811,12 +844,12 @@ function renderDateList(rows: DateSuggestion[]) {
     item.className = `rank-item viability-${viabilityClass(row.viability)}`;
     item.setAttribute('role', 'listitem');
     const delta = row.deltaSimultaneousPct;
-    const deltaTxt = `${delta >= 0 ? '+' : ''}${delta.toFixed(0)}% ∩`;
+    const deltaTxt = `${delta >= 0 ? '+' : ''}${delta.toFixed(0)}% both`;
     item.innerHTML = `
       <span class="rank-pos">#${i + 1}</span>
       <span class="rank-body">
         <strong>${row.label}</strong>
-        <span class="rank-metrics">${row.startUtc.slice(0, 10)} · ${row.viability} · ∩ ${fmtPct(row.simultaneousPct)} (${deltaTxt})</span>
+        <span class="rank-metrics">${row.startUtc.slice(0, 10)} · ${row.viability} · both ${fmtPct(row.simultaneousPct)} (${deltaTxt})</span>
       </span>
       <span class="rank-adopt">Apply</span>`;
     item.onclick = () => {
@@ -1184,7 +1217,8 @@ async function boot() {
   subscribeScenario(syncControlsFromState);
 
   const tour = createTour(el('tour-root'));
-  el('replay-tour').onclick = () => tour.start(true);
+  el('replay-tour').onclick = () => tour.start(true, 'quick');
+  el('full-tour').onclick = () => tour.start(true, 'full');
 
   try {
     terrain = await startTerrain();

@@ -19,18 +19,19 @@
           <button type="button" id="mode-planner" class="mode-btn active" aria-pressed="true">Planner</button>
           <button type="button" id="mode-learn" class="mode-btn" aria-pressed="false">Learn</button>
         </div>
-        <button type="button" id="replay-tour" class="tour-replay" title="Replay the guided tour">Replay tour</button>
+        <button type="button" id="replay-tour" class="tour-replay" title="Replay the 4-step quick tour">Quick tour</button>
+        <button type="button" id="full-tour" class="tour-replay" title="Walk through every control">Full tour</button>
       </div>
     </header>
 
     <section id="learn-panel" class="learn-panel" hidden data-tour="learn">
       <article>
-        <h2>Why the south pole is hard</h2>
-        <p>Near 90°S, the Sun stays low and skims a jagged horizon. Ridges a few kilometers away can block sunlight for days, and Earth may sit just above or below the local terrain — so power and communications rise and fall together with landing site and date.</p>
-        <p>This Learn view uses the <strong>same scenario engine</strong> as Planner. Use <strong>Rank sites</strong> and <strong>Suggest better dates</strong> below to see why one site/date wins and another fails — then adopt with one click.</p>
-        <p class="learn-tip" id="learn-verdict-tip">Try CR1 vs SR1 on the same week, then slip the start — small date moves can flip which site looks healthier. Verdict grades the <strong>mission window</strong>; scrub explores <strong>instants</strong> inside it.</p>
-        <p class="learn-earth-analog" id="learn-earth-analog">On Earth, a clear day usually means continuous sunlight and radio. Near the lunar pole, sunlight and Earth line-of-sight can vanish for hours even when “day” should last — that is the engineering surprise this tool teaches.</p>
-        <p class="learn-power-comms" id="learn-power-comms">Communications need Earth above the terrain plus a min-elevation gate; power needs the Sun clear of ridges, then a rough panel proxy (area × efficiency × tilt) compared to a battery floor. The critical ops window is <strong>Sun ∩ Earth</strong> — hours you can recharge while talking to Earth with no relay. Use the <strong>?</strong> controls on Planner metrics for how each number is calculated.</p>
+        <h2>Why the Moon’s south pole is hard</h2>
+        <p>A lunar “day” lasts about a month: roughly two weeks of sunshine, then two weeks of night. And at the south pole the Sun never climbs overhead — it stays as low as a winter sunset on Earth, slowly circling the horizon.</p>
+        <p>Because the Sun sits so low, any ridge or crater rim a few kilometers away can block it for days. Earth — which a lander must see to call home — can hide behind the same skyline. Move the landing spot a little, or shift the date by a week, and a great site can turn into a dead one. That is why NASA mission planners agonize over <em>where</em> and <em>when</em>.</p>
+        <p class="learn-earth-analog" id="learn-earth-analog">Think of it like a remote cabin where the solar power and the phone line each cut out for days at a time, on their own schedules. Mission planning is picking the spot and the week where both stay on — this tool lets you try it yourself.</p>
+        <p class="learn-tip" id="learn-verdict-tip">Try CR1 vs SR1 on the same week, then slip the start date — small moves can flip which site survives. The verdict grades your whole <strong>mission window</strong>; the time slider explores <strong>moments</strong> inside it.</p>
+        <p class="learn-power-comms expert-only" id="learn-power-comms">Communications need Earth above the terrain plus a minimum-elevation margin; power needs the Sun clear of ridges, then a rough panel estimate (area × efficiency × tilt) compared to a battery floor. The critical window is <strong>Sun + Earth together</strong> — hours you can recharge while talking to Earth with no relay. Use the <strong>?</strong> controls on the metrics for how each number is calculated.</p>
       </article>
       <div class="guided">
         <h3>Guided scenarios</h3>
@@ -91,9 +92,9 @@
 
           <label for="layer">Terrain layer</label>
           <select id="layer">
-            <option value="mesh" selected>Mesh wireframe</option>
+            <option value="relief" selected>Lunar surface</option>
             <option value="elevation">Elevation</option>
-            <option value="relief">Lunar surface</option>
+            <option value="mesh">Mesh wireframe</option>
           </select>
           <div class="marker-legend" id="marker-legend" aria-label="Map marker categories">
             <span class="mk mk-chosen" title="Adopted Site A">■ Chosen</span>
@@ -136,13 +137,14 @@
         <div class="decision-panel" id="decision-panel">
           <div class="decision-header">
             <h2>Find · compare · decide</h2>
-            <p class="decision-lead">Grade the current mission window for <strong>solar power</strong> and <strong>direct-to-Earth communications</strong>, then rank other sites or slip the start date. Prefer high <strong>Sun ∩ Earth</strong> (power while talking to Earth, no relay), watch longest blackouts and mean watts vs battery floor, and treat unknown hours as coverage gaps — not outages. Adopt a row to jump the scenario.</p>
+            <p class="decision-lead">Not happy with your verdict? Let the tool hunt for something better: search the region for the best spot, rank every known site, or shift the launch date. Click <strong>Adopt</strong> or <strong>Apply</strong> on any result to make it your scenario.</p>
+            <p class="decision-lead expert-only">Prefer a high <strong>Sun + Earth together</strong> share (power while talking to Earth, no relay), watch longest gaps and average watts vs the battery floor, and treat unknown hours as coverage gaps — not outages.</p>
           </div>
           <div class="decision-actions">
             <button type="button" id="find-best-location">Find best location</button>
-            <button type="button" id="rank-sites">Rank catalog sites</button>
+            <button type="button" id="rank-sites">Rank known sites</button>
             <button type="button" id="suggest-dates">Suggest better dates</button>
-            <button type="button" id="jump-best-window">Jump scrub to best ∩</button>
+            <button type="button" id="jump-best-window">Jump to best stretch</button>
           </div>
           <div class="search-controls" id="search-controls">
             <label for="search-region">Search region</label>
@@ -155,7 +157,7 @@
             <label for="search-topn">Top N results</label>
             <input id="search-topn" type="number" min="3" max="25" step="1" value="8">
           </div>
-          <p class="neighborhood-note" id="neighborhood-note">
+          <p class="neighborhood-note expert-only" id="neighborhood-note">
             <strong>Find best location</strong> ranks a coarse ~10 km grid inside the polar cap using
             <strong>LOLA 320 m overview</strong> horizons (2° bins) + analytic ephemeris for the current mission window.
             It is <em>not</em> a meter-perfect global optimum — CR1/SR1 still use 5 m near-field LOLA for study-grade grades.
@@ -194,14 +196,16 @@
               <div class="viability" id="viability-a">—</div>
             </div>
             <div>
-              <p class="verdict-label has-metric-help" id="instant-help-a">At scrub time</p>
+              <p class="verdict-label has-metric-help" id="instant-help-a">At slider time</p>
               <div class="instant-chip" id="instant-a">—</div>
             </div>
           </div>
-          <p class="verdict-caption" id="verdict-caption-a">Window grade uses the full mission start→end (sunlight %, Earth LOS %, Sun ∩ Earth, mean power vs battery floor). Scrub only changes the instant chip, skyline, and time-to-set. Tap <strong>?</strong> on any metric for significance and calculation.</p>
+          <p class="plain-summary" id="plain-summary-a"></p>
+          <div class="simple-cards" id="simple-cards-a"></div>
+          <p class="verdict-caption" id="verdict-caption-a">The grade scores your <strong>whole mission window</strong>; the chip shows the single moment the time slider points at. Tap <strong>?</strong> on any number for what it means.</p>
           <p class="nogo-prompt" id="nogo-prompt-a" hidden></p>
-          <div class="metric-grid" id="metric-grid-a"></div>
-          <p class="metric-primer" id="metric-primer-a"></p>
+          <div class="metric-grid expert-only" id="metric-grid-a"></div>
+          <p class="metric-primer expert-only" id="metric-primer-a"></p>
           <p class="horizon-flag" id="horizon-flag-a"></p>
         </div>
         <div class="metrics" id="metrics-b">
@@ -212,18 +216,24 @@
               <div class="viability" id="viability-b">—</div>
             </div>
             <div>
-              <p class="verdict-label has-metric-help" id="instant-help-b">At scrub time</p>
+              <p class="verdict-label has-metric-help" id="instant-help-b">At slider time</p>
               <div class="instant-chip" id="instant-b">—</div>
             </div>
           </div>
-          <p class="verdict-caption" id="verdict-caption-b">Same shared UTC window as Site A. Compare ∩ %, blackouts, and mean power — not only the grade letter.</p>
-          <div class="metric-grid" id="metric-grid-b"></div>
-          <p class="metric-primer" id="metric-primer-b"></p>
+          <p class="plain-summary" id="plain-summary-b"></p>
+          <div class="simple-cards" id="simple-cards-b"></div>
+          <p class="verdict-caption expert-only" id="verdict-caption-b">Same shared UTC window as Site A. Compare the both-at-once %, gaps, and average power — not only the grade letter.</p>
+          <div class="metric-grid expert-only" id="metric-grid-b"></div>
+          <p class="metric-primer expert-only" id="metric-primer-b"></p>
           <p class="horizon-flag" id="horizon-flag-b"></p>
         </div>
         <aside class="controls assess-controls" data-tour="thresholds">
           <h3>Assessment settings</h3>
-          <details class="thresholds" id="thresholds-box" open>
+          <label class="check" id="tech-details-label">
+            <input type="checkbox" id="tech-details">
+            Expert view · all numbers &amp; settings
+          </label>
+          <details class="thresholds expert-only" id="thresholds-box" open>
             <summary>Planner thresholds</summary>
             <label for="min-earth-el" class="has-metric-help" id="help-min-earth-el">Min Earth elevation °</label>
             <input id="min-earth-el" type="number" min="0" max="30" step="0.5" value="5">
@@ -236,10 +246,6 @@
             <label for="battery-floor" class="has-metric-help" id="help-battery-floor">Battery floor W</label>
             <input id="battery-floor" type="number" min="0" max="500" step="5" value="40">
           </details>
-          <label class="check" id="tech-details-label">
-            <input type="checkbox" id="tech-details">
-            Show technical details
-          </label>
         </aside>
       </section>
 
@@ -260,9 +266,9 @@
             <button type="button" data-season="jan29">Late Jan 2027</button>
             <button type="button" data-season="lunar-day">~1 lunar day (708 h)</button>
           </div>
-          <p class="control-hint">Bundled JPL for CR1/SR1 covers the precomputed range (Jan–Mar 2027 when refreshed); uncovered hours are unknown. Analytic fallback is calibrated near the pole (~1° Sun az there) and always badged — not study-grade alone.</p>
+          <p class="control-hint expert-only">Bundled JPL for CR1/SR1 covers the precomputed range (Jan–Mar 2027 when refreshed); uncovered hours are unknown. Analytic fallback is calibrated near the pole (~1° Sun az there) and always badged — not study-grade alone.</p>
 
-          <label for="scrub">Time scrubber (UTC)</label>
+          <label for="scrub">Time slider (UTC)</label>
           <input id="scrub" type="range" min="0" max="168" step="0.1" value="0">
           <div class="play-row">
             <button type="button" id="play-scrub" aria-pressed="false">Play</button>
@@ -277,22 +283,24 @@
           </div>
           <p class="scrub-readout" id="scrub-label">—</p>
           <p class="best-window-label" id="best-window-label">—</p>
-          <p class="control-hint">Scrub explores instants inside the mission window (skyline, elev, time-to-set). GO / RISKY / NO-GO and availability % grade the whole window — change start, duration, or site to recompute them.</p>
+          <p class="control-hint">Drag the slider to live through the mission hour by hour — the skyline and “right now” readings follow it. The GO / RISKY / NO-GO grade judges the whole window and only changes with start, length, or site.</p>
         </aside>
 
         <div class="viz-stack">
           <div class="viz-block" data-tour="skyline">
-            <h3>360° skyline · Site A</h3>
+            <h3>360° skyline · Site A — the mountains a lander would see</h3>
             <canvas id="skyline" width="800" height="140" aria-label="Horizon skyline with Sun and Earth"></canvas>
           </div>
           <div class="viz-block" data-tour="timeline">
-            <h3>Mission timeline · sun ∩ Earth highlighted</h3>
-            <canvas id="timeline" width="800" height="120" aria-label="Sunlight and Earth LOS timeline"></canvas>
+            <h3>Mission timeline · when you have sun, Earth, or both</h3>
+            <canvas id="timeline" width="800" height="120" aria-label="Sunlight and Earth contact timeline"></canvas>
           </div>
         </div>
       </section>
 
       <section class="provenance" id="provenance">
+        <p class="provenance-plain">Built on real NASA data: LOLA laser-altimeter terrain and JPL Horizons Sun/Earth positions. Turn on <strong>Expert view</strong> for exact data sources and limits.</p>
+        <div class="expert-only">
         <h3>Provenance &amp; limits</h3>
         <ul>
           <li>Horizons: bundled JPL observer az/el for CR1/SR1 (Jan 2027); live API or analytic fallback otherwise — source labeled on scrub readout.</li>
@@ -303,6 +311,7 @@
           <li>3D markers: coral ■ chosen (Site A), amber ◆ search hits, teal ● catalog, violet ◎ Site B. Default terrain layer is mesh/wireframe.</li>
           <li>3D display lighting ≠ authoritative observer Sun/Earth status. Quest VR runtime is not shipped — export JSON for external viz.</li>
         </ul>
+        </div>
         <div class="share-row">
           <button type="button" id="copy-link">Copy shareable link</button>
           <button type="button" id="export-json">Export time series JSON</button>

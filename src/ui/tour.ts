@@ -8,7 +8,35 @@ export type TourStep = {
   target: string;
 };
 
-const STEPS: TourStep[] = [
+/** Default 4-step tour, framed as the questions a first-time visitor actually has. */
+const QUICK_STEPS: TourStep[] = [
+  {
+    id: 'q-where',
+    title: 'Where are you landing?',
+    body: 'Pick a landing site — Site A drives the 3D map and the verdicts below. Drag the map to orbit the Moon’s south pole, scroll to zoom.',
+    target: 'site',
+  },
+  {
+    id: 'q-when',
+    title: 'When are you going?',
+    body: 'Set the mission start and length, then drag the time slider to live through the mission hour by hour. At the lunar pole, the date changes everything.',
+    target: 'time',
+  },
+  {
+    id: 'q-power',
+    title: 'Will you have power?',
+    body: 'The big cards show sunlight and solar power for your chosen week, and GO / RISKY / NO-GO sums it all up. Tap ? on any number for what it means.',
+    target: 'viability',
+  },
+  {
+    id: 'q-phone',
+    title: 'Can you phone home?',
+    body: 'A lander also needs to see Earth to talk to it. If your verdict looks bad, use Rank known sites or Suggest better dates — the tool finds alternatives for you. Want every control explained? Press Full tour up top.',
+    target: 'decision',
+  },
+];
+
+const FULL_STEPS: TourStep[] = [
   {
     id: 'welcome',
     title: 'Welcome',
@@ -42,13 +70,13 @@ const STEPS: TourStep[] = [
   {
     id: 'decision',
     title: 'Find · compare · decide',
-    body: 'Use Rank sites to score the catalog for this UTC window, Suggest better dates to slip the start, and Jump scrub to best ∩ to inspect the longest simultaneous stretch. Adopt/Apply jumps the scenario in one click.',
+    body: 'Use Rank known sites to score the catalog for this UTC window, Suggest better dates to slip the start, and Jump to best stretch to inspect the longest sun-and-Earth stretch. Adopt/Apply jumps the scenario in one click.',
     target: 'decision',
   },
   {
     id: 'time',
     title: 'Mission time',
-    body: 'Set mission start and length first — those define the window being graded. Play animates the scrubber for education. Scrub does not change GO / RISKY / NO-GO; changing start, duration, or site does.',
+    body: 'Set mission start and length first — those define the window being graded. Play animates the time slider for education. The slider does not change GO / RISKY / NO-GO; changing start, duration, or site does.',
     target: 'time',
   },
   {
@@ -60,13 +88,13 @@ const STEPS: TourStep[] = [
   {
     id: 'timeline',
     title: 'Mission timeline',
-    body: 'Bars show sunlight, Earth LOS, and sun ∩ Earth. A dashed highlight marks the best simultaneous (or best single) window — use Jump scrub to best ∩ to land on it.',
+    body: 'Bars show sunlight, Earth contact, and both-at-once. A dashed highlight marks the best simultaneous (or best single) window — use Jump to best stretch to land on it.',
     target: 'timeline',
   },
   {
     id: 'viability',
-    title: 'Window grade vs scrub',
-    body: 'Mission window grade (GO / RISKY / NO-GO) scores the whole start→end span. Metric cards show sunlight, Earth LOS, Sun ∩ Earth (power while talking to Earth), mean watts vs battery floor, and blackouts — tap ? for how each is calculated. The “At scrub time” chip is a separate instant status.',
+    title: 'Window grade vs slider',
+    body: 'Mission window grade (GO / RISKY / NO-GO) scores the whole start→end span. Cards show sunlight, Earth contact, sun + Earth together (power while talking to Earth), average watts vs battery floor, and gaps — tap ? for how each is calculated. The “At slider time” chip is a separate instant status.',
     target: 'viability',
   },
   {
@@ -77,8 +105,10 @@ const STEPS: TourStep[] = [
   },
 ];
 
+export type TourVariant = 'quick' | 'full';
+
 type TourController = {
-  start: (force?: boolean) => void;
+  start: (force?: boolean, variant?: TourVariant) => void;
   destroy: () => void;
 };
 
@@ -143,6 +173,7 @@ function placeCard(card: HTMLElement, hole: ReturnType<typeof padRect>) {
 
 export function createTour(root: HTMLElement): TourController {
   let index = 0;
+  let steps: TourStep[] = QUICK_STEPS;
   let active = false;
   let targetEl: HTMLElement | null = null;
   let resizeObs: ResizeObserver | null = null;
@@ -190,13 +221,13 @@ export function createTour(root: HTMLElement): TourController {
   }
 
   function go(to: number) {
-    if (to >= STEPS.length) {
+    if (to >= steps.length) {
       finish();
       return;
     }
     if (to < 0) to = 0;
     index = to;
-    const step = STEPS[index];
+    const step = steps[index];
     clearTarget();
 
     const found = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
@@ -217,7 +248,7 @@ export function createTour(root: HTMLElement): TourController {
     targetEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 
     card.innerHTML = `
-      <div class="tour-step">STEP ${index + 1} / ${STEPS.length}</div>
+      <div class="tour-step">STEP ${index + 1} / ${steps.length}</div>
       <h2 id="tour-title">${step.title}</h2>
       <p>${step.body}</p>
       <div class="tour-actions">
@@ -243,10 +274,11 @@ export function createTour(root: HTMLElement): TourController {
   window.addEventListener('resize', onResize);
   window.addEventListener('scroll', onResize, true);
 
-  function start(force = false) {
+  function start(force = false, variant: TourVariant = 'quick') {
     if (active) return;
     if (!force && isComplete()) return;
     if (force) clearComplete();
+    steps = variant === 'full' ? FULL_STEPS : QUICK_STEPS;
     active = true;
     document.body.classList.add('tour-active');
     root.hidden = false;

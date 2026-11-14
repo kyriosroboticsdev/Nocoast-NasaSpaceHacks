@@ -543,18 +543,62 @@ label.has-metric-help {
 }
 #share-status { color: var(--muted); font-size: 0.8rem; }
 
-body.mode-learn .thresholds { display: none; }
-body.mode-learn.show-tech .thresholds { display: block; }
-body.mode-learn #tech-details-label { display: flex; }
-body.mode-planner #tech-details-label { display: none; }
 body.hide-b #metrics-b, body.hide-b #site-b-block select#site-b { opacity: 0.45; }
 body.hide-b #metrics-b { display: none; }
 body.hide-b .assess-cluster {
   grid-template-columns: 1fr minmax(220px, 280px);
 }
-body.mode-learn .assess-cluster .metrics .metric-grid .tech-only { display: none; }
-body.mode-learn.show-tech .assess-cluster .metrics .metric-grid .tech-only { display: block; }
-body.mode-learn .assess-controls h3 { display: none; }
+
+/* ---- Simple layer (plain-language default) vs Expert view ---- */
+/* Everything marked .expert-only stays hidden until the Expert view checkbox adds .show-tech. */
+body:not(.show-tech) .expert-only { display: none !important; }
+
+.plain-summary {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  margin: 2px 0 12px;
+}
+.simple-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.simple-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #0d1725;
+}
+.simple-card .sc-icon { font-size: 1.05rem; margin-right: 6px; }
+.simple-card .sc-label {
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.simple-card .sc-value {
+  display: block;
+  margin-top: 4px;
+  font: 700 1.2rem/1.2 "IBM Plex Mono", ui-monospace, monospace;
+}
+.simple-card .sc-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+.simple-card.tone-good { border-left: 3px solid var(--go); }
+.simple-card.tone-warn { border-left: 3px solid var(--risky); }
+.simple-card.tone-bad { border-left: 3px solid var(--nogo); }
+
+.provenance-plain {
+  color: var(--muted);
+  font-size: 0.86rem;
+  margin-bottom: 8px;
+}
+body.show-tech .provenance-plain { display: none; }
 
 /* ---- First-visit tour ---- */
 .tour-root {

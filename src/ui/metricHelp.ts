@@ -34,35 +34,35 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
       'Counted from hourly samples; transitions count as half-on. Missing ephemeris or horizon bearings are unknown — they do not count as night.',
   },
   earthLos: {
-    title: 'Earth LOS availability',
+    title: 'Can see Earth (radio contact)',
     body:
       'Share of the mission span with direct-to-Earth line of sight: Earth elevation above terrain must meet the Min Earth elevation threshold (default 5°). ' +
       'No lunar relay is modeled — this is DTE only. Unknown hours are gaps, not blackout.',
   },
   sunEarth: {
-    title: 'Sun ∩ Earth windows',
+    title: 'Sun + Earth together',
     body:
-      'Hours when the site is both sunlit and has Earth LOS at once. That is the ops sweet spot: solar panels can charge while you talk to Earth without a relay — power delivery and commanding together. ' +
-      'Outside ∩ you may have sunlight but no DTE (store data / wait for Earthrise) or Earth contact while in shadow (draw from battery). Percent is simultaneous hours ÷ mission length.',
+      'Hours when the site is both sunlit and in view of Earth at once. That is the ops sweet spot: solar panels can charge while you talk to Earth without a relay — power delivery and commanding together. ' +
+      'Outside those hours you may have sunlight but no Earth link (store data / wait for Earthrise) or Earth contact while in shadow (draw from battery). Percent is simultaneous hours ÷ mission length.',
   },
   meanPower: {
-    title: 'Mean power proxy',
+    title: 'Average solar power',
     body:
       'Average of the rough panel power at each known sample (unknown hours excluded). When sunlit: 1361 W/m² × panel area × efficiency × max(0, sin(sun elevation + tilt)); otherwise 0 W. ' +
       'This is a geometry proxy for comparing sites/dates — not a flight electrical model. GO also requires mean power ≥ battery floor.',
   },
   peakPower: {
-    title: 'Peak power proxy',
+    title: 'Peak solar power',
     body:
       'Highest sample power in the known window using the same proxy formula as mean power. Useful for sizing headroom; GO gates use the mean vs battery floor, not the peak.',
   },
   sunBlackout: {
-    title: 'Longest sun blackout',
+    title: 'Longest darkness stretch',
     body:
       'Longest contiguous stretch where sunlight is explicitly false (terrain-blocked or below horizon). Unknown samples stop a blackout run — gaps are not treated as night. Guides battery / eclipse sizing.',
   },
   earthBlackout: {
-    title: 'Longest Earth blackout',
+    title: 'Longest Earth-contact gap',
     body:
       'Longest contiguous stretch without Earth LOS (elevation below terrain + min-elevation gate). Unknown stops the run. Long blackouts mean no DTE until Earthrise or a relay.',
   },
@@ -109,9 +109,9 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
       'NO-GO: below those bars (sphere-only sites may be labeled terrain-unknown). Grades the full start→end window — not the scrub chip.',
   },
   instant: {
-    title: 'At scrub time',
+    title: 'At slider time',
     body:
-      'Ops status for the single scrub sample: BOTH (sun ∩ Earth), SUNLIT (power, no DTE), EARTH LOS (contact, no sun), BLACKOUT (neither), or UNKNOWN (gap). Independent of the window grade.',
+      'Status for the single moment the time slider points at: SUN + EARTH (both at once), SUN ONLY (power, no Earth link), EARTH ONLY (contact, in shadow), DARK (neither), or NO DATA (coverage gap). Independent of the window grade.',
   },
   batteryFloor: {
     title: 'Battery floor',
@@ -144,7 +144,7 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
 export const POWER_COMMS_PRIMER =
   'Communications: Earth LOS needs terrain clearance plus the min-elevation gate; availability % is DTE-up hours ÷ mission length; longest Earth blackout is the worst no-contact stretch; unknown hours are ephemeris/horizon gaps, not outages. ' +
   'Power: sunlight needs sun clearance > 0°; mean watts use area × efficiency × tilt incidence when sunlit (else 0) and are compared to the battery floor for GO. ' +
-  'Sun ∩ Earth is when both are true — the window you can recharge while talking to Earth with no relay.';
+  '“Sun + Earth together” is when both are true — the window you can recharge while talking to Earth with no relay.';
 
 export function attachMetricHelp(
   labelEl: HTMLElement,

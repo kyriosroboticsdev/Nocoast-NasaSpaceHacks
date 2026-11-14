@@ -744,9 +744,10 @@ export async function startTerrain(): Promise<TerrainApi> {
     renderer.render(scene,camera);
   });
 
-  // Prefer mesh/wireframe on load — geometry first; relief/elevation remain available.
-  if (layer.querySelector('option[value="mesh"]')) {
-    layer.value = 'mesh';
+  // Prefer the realistic lunar-surface layer on load — first impression should look like the
+  // Moon, not a wireframe; mesh/elevation remain available in the Terrain layer select.
+  if (layer.querySelector('option[value="relief"]')) {
+    layer.value = 'relief';
     setLayer();
   }
 

@@ -32,7 +32,8 @@ export function setScenario(patch: Partial<ScenarioState>) {
 }
 
 export function setMode(mode: AppMode) {
-  setScenario({ mode, showTechnicalDetails: mode === 'planner' ? state.showTechnicalDetails : false });
+  // Expert view is a global preference now — switching Planner ↔ Learn keeps it.
+  setScenario({ mode });
 }
 
 export function setPrimarySite(siteId: string) {

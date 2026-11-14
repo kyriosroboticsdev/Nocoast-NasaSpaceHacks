@@ -26,6 +26,13 @@ export function viabilityClass(v: string) {
   return 'nogo';
 }
 
+/** Icon so the grade never relies on color alone (color-blind safety). */
+export function viabilityIcon(v: string) {
+  if (v === 'GO') return '✓';
+  if (v === 'RISKY') return '⚠';
+  return '✗';
+}
+
 export function localDateInputValue(iso: string) {
   // datetime-local wants local wall without Z; we keep UTC semantics by showing UTC digits.
   return iso.slice(0, 16);

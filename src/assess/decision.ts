@@ -55,11 +55,11 @@ export function instantStatusFromSample(sample: {
 
 export function instantStatusLabel(status: InstantStatus): string {
   switch (status) {
-    case 'BOTH': return 'BOTH · sun ∩ Earth';
-    case 'SUNLIT': return 'SUNLIT · no Earth LOS';
-    case 'EARTH_LOS': return 'EARTH LOS · no sun';
-    case 'BLACKOUT': return 'BLACKOUT';
-    default: return 'UNKNOWN';
+    case 'BOTH': return 'SUN + EARTH ✓';
+    case 'SUNLIT': return 'SUN ONLY · no Earth link';
+    case 'EARTH_LOS': return 'EARTH ONLY · in shadow';
+    case 'BLACKOUT': return 'DARK · no contact';
+    default: return 'NO DATA';
   }
 }
 
@@ -207,36 +207,36 @@ export function explainVerdict(a: MissionAssessment): string {
   const parts: string[] = [];
   if (a.viability === 'GO') {
     parts.push(
-      `${a.siteLabel} looks viable over this window: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, Sun ∩ Earth ${a.simultaneousPct.toFixed(0)}% (power while talking to Earth), mean power ~${a.meanPowerW.toFixed(0)} W.`,
+      `${a.siteLabel} works for this window: sunlit ${a.sunlightPct.toFixed(0)}% of the time, in contact with Earth ${a.earthLosPct.toFixed(0)}%, and both at once ${a.simultaneousPct.toFixed(0)}% — enough to recharge while talking home (average ~${a.meanPowerW.toFixed(0)} W).`,
     );
   } else if (a.viability === 'RISKY') {
     parts.push(
-      `${a.siteLabel} is marginal: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, Sun ∩ Earth ${a.simultaneousPct.toFixed(0)}%. Storage, relay, or a date slip may be needed when ∩ is thin.`,
+      `${a.siteLabel} is borderline: sun ${a.sunlightPct.toFixed(0)}%, Earth contact ${a.earthLosPct.toFixed(0)}%, both at once only ${a.simultaneousPct.toFixed(0)}%. It may need bigger batteries, a relay satellite, or a different week.`,
     );
   } else {
     parts.push(
-      `${a.siteLabel} fails planning thresholds here: sunlight ${a.sunlightPct.toFixed(0)}%, Earth LOS ${a.earthLosPct.toFixed(0)}%, Sun ∩ Earth only ${a.simultaneousPct.toFixed(0)}%, mean power ~${a.meanPowerW.toFixed(0)} W.`,
+      `${a.siteLabel} does not work here: sun ${a.sunlightPct.toFixed(0)}%, Earth contact ${a.earthLosPct.toFixed(0)}%, both at once ${a.simultaneousPct.toFixed(0)}%, average power ~${a.meanPowerW.toFixed(0)} W.`,
     );
   }
   if (a.horizonModel === 'sphere_optimistic') {
-    parts.push('Horizon is an optimistic sphere — real terrain could worsen obstruction.');
+    parts.push('Terrain detail for this spot is not mapped in this tool — real ridges could make it worse.');
   } else if (a.horizonModel === 'lola_overview_coarse') {
-    parts.push('Horizon uses coarse LOLA 320 m overview (regional search grade, not 5 m study).');
+    parts.push('Terrain here uses the coarse regional map (not the high-detail study data).');
   } else {
-    parts.push('Horizon uses measured LOLA terrain for this study point.');
+    parts.push('Terrain uses high-detail NASA elevation data (LOLA) for this spot.');
   }
   if ((a.unknownHours ?? 0) > 0.5) {
-    parts.push(`About ${a.unknownHours.toFixed(1)} h lack ephemeris coverage (unknown, not blackout).`);
+    parts.push(`About ${a.unknownHours.toFixed(1)} h fall outside the precise data coverage (unknown, not necessarily dark).`);
   }
   if (/analytic/i.test(a.ephemerisSource)) {
-    parts.push('Ephemeris is analytic fallback — prefer bundled JPL when available.');
+    parts.push('Sun/Earth positions use a simplified fallback model here — exact JPL data is used where available.');
   }
   const best = findBestWindow(a);
   if (best.window) {
     const kind =
-      best.kind === 'simultaneous' ? 'sun ∩ Earth' :
-      best.kind === 'sunlight' ? 'sunlight' : 'Earth LOS';
-    parts.push(`Longest ${kind} stretch is ~${best.window.hours.toFixed(1)} h starting ${best.window.startUtc.slice(0, 16)}Z.`);
+      best.kind === 'simultaneous' ? 'sun + Earth together' :
+      best.kind === 'sunlight' ? 'sunlight' : 'Earth contact';
+    parts.push(`Longest stretch of ${kind} is ~${best.window.hours.toFixed(1)} h starting ${best.window.startUtc.slice(0, 16)}Z.`);
   }
   return parts.join(' ');
 }

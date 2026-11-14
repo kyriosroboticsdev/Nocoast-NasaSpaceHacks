@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "0.1",
+  "artifactId": "lola-local-terrain-v1",
+  "generatedAtUtc": "2026-11-14T17:19:10Z",
+  "frameId": "MOON_ME_DE421",
+  "referenceRadiusM": 1737400,
+  "meshAxes": [
+    "east",
+    "up",
+    "south"
+  ],
+  "units": {
+    "distance": "m",
+    "angles": "degrees"
+  },
+  "provenance": "NASA PGDA LOLA 5 m south pole landing site DEMs",
+  "samplingMethod": "Bilinear at fixed site; pixel-center stride for mesh; body-fixed Cartesian to local ENU",
+  "sites": [
+    {
+      "siteId": "connecting-ridge-cr1",
+      "name": "Connecting Ridge CR1",
+      "publishedLabel": "CR1",
+      "latitudeDeg": -89.4555,
+      "longitudeEastDeg": 222.6192,
+      "surfaceElevationM": 1949.6080773175818,
+      "observerHeightAboveGroundM": 2,
+      "observerAltitudeAboveReferenceSphereM": 1951.6080773175818,
+      "terrainUrl": "terrain/connecting-ridge-cr1/terrain.glb",
+      "sourceUrl": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site01/Site01_final_adj_5mpp_surf.tif",
+      "sourceSha256": "3ba7b97cb00a2bcf21189c3aeb535f65afc21207154ab9f0d43c5bdc1f7e747e",
+      "sourcePixelM": 5,
+      "meshSpacingM": 10,
+      "cropWidthM": 2500,
+      "triangles": 125000,
+      "omittedQuads": 0,
+      "sourcePixelCenterIndex": [
+        1563.480212594452,
+        1629.5184013976555
+      ],
+      "sourceElevationSamplesM": [
+        1950.0135498046875,
+        1949.451904296875,
+        1949.7816162109375,
+        1949.1575927734375
+      ],
+      "horizonStatus": "horizon_missing"
+    },
+    {
+      "siteId": "shackleton-rim-sr1",
+      "name": "Shackleton Rim SR1",
+      "publishedLabel": "SR1",
+      "latitudeDeg": -89.7742,
+      "longitudeEastDeg": 203.4952,
+      "surfaceElevationM": 1735.2179263340893,
+      "observerHeightAboveGroundM": 2,
+      "observerAltitudeAboveReferenceSphereM": 1737.2179263340893,
+      "terrainUrl": "terrain/shackleton-rim-sr1/terrain.glb",
+      "sourceUrl": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site04/Site04_final_adj_5mpp_surf.tif",
+      "sourceSha256": "38ff70dbdf2f066c2cfa94a646c3a59d653ce7f6b4528b15fc1b43ee397ce758",
+      "sourcePixelM": 5,
+      "meshSpacingM": 20,
+      "cropWidthM": 2500,
+      "triangles": 31250,
+      "omittedQuads": 0,
+      "sourcePixelCenterIndex": [
+        1253.5565291048774,
+        1455.371729865737
+      ],
+      "sourceElevationSamplesM": [
+        1735.1455078125,
+        1735.2119140625,
+        1735.3544921875,
+        1735.216796875
+      ],
+      "horizonStatus": "horizon_missing"
+    }
+  ]
+}

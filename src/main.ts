@@ -100,6 +100,10 @@ function parseGlobalLdem(buffer: ArrayBuffer): GlobalLdem {
 const GLOBAL_NATIVE_M = (2 * Math.PI * radius) / 1440;
 /** Aim for this many screen pixels between wireframe edges (readable, never solid fill). */
 const MESH_PIXELS_PER_EDGE = 14;
+/** Faint elevation colormap under mesh wireframe (polar solid underlay). */
+const MESH_UNDERLAY_OPACITY = 0.28;
+/** Quantize camera direction so lazy remesh is stable under tiny orbit jitter. */
+const VIEW_DIR_QUANT = 12;
 
 /** Power-of-two stride so LOD rebuilds are stable under small zoom jitter. */
 function snapStride(ideal: number, maxStride: number): number {
@@ -108,39 +112,64 @@ function snapStride(ideal: number, maxStride: number): number {
   return Math.min(maxStride, Math.max(1, snapped));
 }
 
-/**
- * Hide the diametric far hemisphere of elevation wireframes so dense near-side
- * edges stay open lines instead of looking filled by the opposite shell.
- * Works for MeshBasicMaterial wireframe (triangle edges as lines).
- */
-function applyNearHemisphereClip(shader: {
-  uniforms: Record<string, { value: unknown }>;
-  vertexShader: string;
-  fragmentShader: string;
-}) {
-  shader.uniforms.moonCenter = { value: moonCenter };
-  shader.vertexShader = 'varying vec3 vWireWorldPos;\n' + shader.vertexShader.replace(
-    '#include <project_vertex>',
-    `vWireWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-     #include <project_vertex>`,
-  );
-  shader.fragmentShader = 'uniform vec3 moonCenter; varying vec3 vWireWorldPos;\n' +
-    shader.fragmentShader.replace(
-      '#include <clipping_planes_fragment>',
-      `#include <clipping_planes_fragment>
-       vec3 radial = normalize(vWireWorldPos - moonCenter);
-       vec3 toCam = normalize(cameraPosition - moonCenter);
-       // Drop the far hemisphere; keep a thin limb band.
-       if (dot(radial, toCam) < 0.04) discard;`,
-    );
+/** Camera-facing + view-frustum cull for lazy wireframe tessellation. */
+type VisibilityCull = {
+  toCam: T.Vector3;
+  /** Keep samples with radial·toCam ≥ minDot (near-side / limb band). */
+  minDot: number;
+  frustum: T.Frustum;
+};
+
+const _cullPoint = new T.Vector3();
+const _cullRadial = new T.Vector3();
+const _projScreen = new T.Matrix4();
+const _viewFrustum = new T.Frustum();
+
+function visibilityCullFromCamera(camera: T.PerspectiveCamera): VisibilityCull {
+  const toCam = camera.position.clone().sub(moonCenter).normalize();
+  const dist = Math.max(camera.position.distanceTo(moonCenter), radius + 1);
+  // Geometric lunar limb from moon center; pad so a thin limb band still builds.
+  const limbDot = radius / dist;
+  const minDot = Math.max(0.02, limbDot - 0.08);
+  _projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  _viewFrustum.setFromProjectionMatrix(_projScreen);
+  return { toCam, minDot, frustum: _viewFrustum };
+}
+
+function isVisibleWorldPoint(x: number, y: number, z: number, cull: VisibilityCull): boolean {
+  _cullPoint.set(x, y, z);
+  _cullRadial.copy(_cullPoint).sub(moonCenter).normalize();
+  if (_cullRadial.dot(cull.toCam) < cull.minDot) return false;
+  // Slightly inflate: frustum test on a short radial segment covers elevated DEM.
+  if (cull.frustum.containsPoint(_cullPoint)) return true;
+  _cullPoint.copy(_cullRadial).multiplyScalar(radius * 1.002).add(moonCenter);
+  return cull.frustum.containsPoint(_cullPoint);
+}
+
+function viewCullKey(cull: VisibilityCull, polarStride: number, globalStep: number): string {
+  const q = VIEW_DIR_QUANT;
+  return [
+    Math.round(cull.toCam.x * q),
+    Math.round(cull.toCam.y * q),
+    Math.round(cull.toCam.z * q),
+    Math.round(cull.minDot * 40),
+    polarStride,
+    globalStep,
+  ].join(':');
 }
 
 /**
  * Displaced cylindrical LDEM wireframe with a south-polar hole so it never
  * intersects the 87°S–90°S LOLA overview (or its fade-to-sphere rim).
  * `step` subsamples the DEM grid (1 = native 4 ppd) for zoom-adaptive density.
+ * When `cull` is set, only the camera-facing / in-frustum patch is tessellated.
  */
-function meshFromGlobalLdem(dem: GlobalLdem, material: T.Material, step = 1) {
+function meshFromGlobalLdem(
+  dem: GlobalLdem,
+  material: T.Material,
+  step = 1,
+  cull?: VisibilityCull,
+) {
   const { width, height, ppd, lonWestDeg, latNorthDeg, metersPerUnit, values } = dem;
   const stride = Math.max(1, step | 0);
   const jSamples: number[] = [];
@@ -174,11 +203,15 @@ function meshFromGlobalLdem(dem: GlobalLdem, material: T.Material, step = 1) {
         -sinLat,
         -cosLat * Math.cos(lon),
       ).normalize();
+      const wx = moonCenter.x + radial.x * (radius + h);
+      const wy = moonCenter.y + radial.y * (radius + h);
+      const wz = moonCenter.z + radial.z * (radius + h);
+      if (cull && !isVisibleWorldPoint(wx, wy, wz, cull)) continue;
       const idx = vertexCount++;
       lookup[jj * iCount + ii] = idx;
-      positions[idx * 3] = moonCenter.x + radial.x * (radius + h);
-      positions[idx * 3 + 1] = moonCenter.y + radial.y * (radius + h);
-      positions[idx * 3 + 2] = moonCenter.z + radial.z * (radius + h);
+      positions[idx * 3] = wx;
+      positions[idx * 3 + 1] = wy;
+      positions[idx * 3 + 2] = wz;
     }
   }
   const triangles: number[] = [];
@@ -204,8 +237,15 @@ function meshFromGlobalLdem(dem: GlobalLdem, material: T.Material, step = 1) {
 /**
  * Polar DEM mesh. `sampleStride` > 1 keeps full geographic extent (includes last
  * row/col) while thinning triangles for wireframe LOD — elevations stay real.
+ * Optional `cull` drops occluded / out-of-view samples (lazy mesh mode).
  */
-function meshFor(grid: Grid, material: T.Material, parent?: Grid, sampleStride = 1) {
+function meshFor(
+  grid: Grid,
+  material: T.Material,
+  parent?: Grid,
+  sampleStride = 1,
+  cull?: VisibilityCull,
+) {
   const step = Math.max(1, sampleStride | 0);
   const last = grid.width - 1;
   const sample: number[] = [];
@@ -243,8 +283,10 @@ function meshFor(grid: Grid, material: T.Material, parent?: Grid, sampleStride =
     if (distanceToEdge < 0 || !Number.isFinite(renderHeight)) continue;
     // Bring the outer two kilometers back to the reference sphere at the globe join.
     renderHeight *= T.MathUtils.smoothstep(distanceToEdge, 650, 2650);
+    const point = world(x, y, renderHeight);
+    if (cull && !isVisibleWorldPoint(point.x, point.y, point.z, cull)) continue;
     valid[idx] = 1;
-    world(x, y, renderHeight).toArray(positions, idx * 3);
+    point.toArray(positions, idx * 3);
     const fraction = T.MathUtils.clamp((h + 8000) / 15000, 0, 1);
     color.copy(fraction < .5 ? low : mid).lerp(fraction < .5 ? mid : high, fraction < .5 ? fraction * 2 : fraction * 2 - 1);
     color.toArray(colors, idx * 3);
@@ -337,12 +379,12 @@ export async function startTerrain(): Promise<TerrainApi> {
   const materials = {
     relief: polarSurface,
     elevation: new T.MeshBasicMaterial({vertexColors:true}),
-    // Wireframe lines only (no filled faces). Far-hemi discard hides the opposite
-    // shell; depthWrite lets near lines occlude without opaque triangle fill.
+    // Wireframe lines only (no filled faces). Geometry is lazy-built for the
+    // visible patch; depthWrite lets near lines occlude without opaque fill.
     mesh: new T.MeshBasicMaterial({
       color: 0x89b6ba,
       wireframe: true,
-      side: T.DoubleSide,
+      side: T.FrontSide,
       depthTest: true,
       depthWrite: true,
       transparent: false,
@@ -351,12 +393,10 @@ export async function startTerrain(): Promise<TerrainApi> {
       polygonOffsetUnits: -1,
     }),
   };
-  materials.mesh.onBeforeCompile = applyNearHemisphereClip;
-  materials.mesh.customProgramCacheKey = () => 'mesh-wire-near-hemi';
   const globalWireMaterial = new T.MeshBasicMaterial({
     color: 0x89b6ba,
     wireframe: true,
-    side: T.DoubleSide,
+    side: T.FrontSide,
     depthTest: true,
     depthWrite: true,
     transparent: false,
@@ -364,13 +404,12 @@ export async function startTerrain(): Promise<TerrainApi> {
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
   });
-  globalWireMaterial.onBeforeCompile = applyNearHemisphereClip;
-  globalWireMaterial.customProgramCacheKey = () => 'global-wire-near-hemi';
   // Start coarse; zoom LOD rebuilds to native 4 ppd when close enough.
   let globalWireStep = 16;
+  let meshViewKey = '';
   let globalWire = meshFromGlobalLdem(globalLdem, globalWireMaterial, globalWireStep);
   globalWire.visible = false;
-  globalWire.renderOrder = 1;
+  globalWire.renderOrder = 2;
   // Picks stay on the textured globe / polar DEM — wireframe is display-only.
   globalWire.raycast = () => {};
   scene.add(globalWire);
@@ -378,12 +417,9 @@ export async function startTerrain(): Promise<TerrainApi> {
   const cap = {value:capRadius};
   const overviewMaterials = Object.fromEntries(Object.entries(materials).map(([key, material]) => {
     const copy = material.clone();
-    copy.customProgramCacheKey = () => key === 'mesh'
-      ? 'polar-overview-mesh-near-hemi'
-      : `polar-overview-${key}`;
+    copy.customProgramCacheKey = () => `polar-overview-${key}`;
     copy.onBeforeCompile = shader => {
       if (key === 'relief') applyPolarImagery(shader);
-      if (key === 'mesh') applyNearHemisphereClip(shader);
       shader.uniforms.detailBounds = cutout;
       shader.uniforms.capRadius = cap;
       shader.vertexShader = 'attribute vec2 projectedXY; varying vec2 polarXY;\n' + shader.vertexShader.replace('#include <begin_vertex>', `
@@ -400,9 +436,33 @@ export async function startTerrain(): Promise<TerrainApi> {
     };
     return [key,copy];
   })) as typeof materials;
+  // Faint elevation colormap under mesh wires (solid faces, low opacity).
+  const meshUnderlayMaterial = overviewMaterials.elevation.clone();
+  meshUnderlayMaterial.transparent = true;
+  meshUnderlayMaterial.opacity = MESH_UNDERLAY_OPACITY;
+  meshUnderlayMaterial.depthWrite = true;
+  meshUnderlayMaterial.customProgramCacheKey = () => 'polar-overview-mesh-underlay';
+  meshUnderlayMaterial.onBeforeCompile = shader => {
+    shader.uniforms.detailBounds = cutout;
+    shader.uniforms.capRadius = cap;
+    shader.vertexShader = 'attribute vec2 projectedXY; varying vec2 polarXY;\n' + shader.vertexShader.replace('#include <begin_vertex>', `
+      #include <begin_vertex>
+      polarXY = projectedXY;
+    `);
+    shader.fragmentShader = 'uniform vec4 detailBounds; uniform float capRadius; varying vec2 polarXY;\n' +
+      shader.fragmentShader.replace('#include <clipping_planes_fragment>', `
+        #include <clipping_planes_fragment>
+        if (length(polarXY) > capRadius) discard;
+        if (polarXY.x > detailBounds.x && polarXY.x < detailBounds.z &&
+            polarXY.y > detailBounds.y && polarXY.y < detailBounds.w) discard;
+      `);
+  };
+  const polarWireMaterial = materials.mesh.clone();
+  polarWireMaterial.customProgramCacheKey = () => 'polar-wire-lazy';
   let polarWireStride = 1;
   let backdrop = meshFor(overview, overviewMaterials.relief);
   scene.add(backdrop);
+  let polarWire: T.Mesh | undefined;
   let detail: T.Mesh<T.BufferGeometry, T.Material> | undefined;
   let currentGrid: Grid | undefined;
   let currentKey = '';
@@ -445,16 +505,35 @@ export async function startTerrain(): Promise<TerrainApi> {
     return `${Math.round(meters)} M`;
   }
 
-  function rebuildGlobalWire(step: number) {
-    if (step === globalWireStep && globalWire.parent) return;
+  function removePolarWire() {
+    if (!polarWire) return;
+    scene.remove(polarWire);
+    polarWire.geometry.dispose();
+    polarWire = undefined;
+  }
+
+  function rebuildGlobalWire(step: number, cull: VisibilityCull, force = false) {
+    if (!force && step === globalWireStep && globalWire.parent) return;
     scene.remove(globalWire);
     globalWire.geometry.dispose();
-    globalWire = meshFromGlobalLdem(globalLdem, globalWireMaterial, step);
+    globalWire = meshFromGlobalLdem(globalLdem, globalWireMaterial, step, cull);
     globalWire.visible = layer.value === 'mesh';
-    globalWire.renderOrder = 1;
+    globalWire.renderOrder = 2;
     globalWire.raycast = () => {};
     scene.add(globalWire);
     globalWireStep = step;
+  }
+
+  function rebuildPolarWire(stride: number, cull: VisibilityCull) {
+    const keepCutout = cutout.value.clone();
+    removePolarWire();
+    polarWire = meshFor(overview, polarWireMaterial, undefined, stride, cull);
+    polarWire.visible = layer.value === 'mesh';
+    polarWire.renderOrder = 2;
+    polarWire.raycast = () => {};
+    scene.add(polarWire);
+    cutout.value.copy(keepCutout);
+    polarWireStride = stride;
   }
 
   function rebuildPolarBackdrop(stride: number, materialKey: keyof typeof materials) {
@@ -464,22 +543,37 @@ export async function startTerrain(): Promise<TerrainApi> {
     backdrop = meshFor(overview, overviewMaterials[materialKey], undefined, stride);
     scene.add(backdrop);
     cutout.value.copy(keepCutout);
-    polarWireStride = stride;
+  }
+
+  /** Solid elevation underlay under mesh wires (full polar extent, no view cull). */
+  function ensureMeshUnderlay() {
+    const keepCutout = cutout.value.clone();
+    scene.remove(backdrop);
+    backdrop.geometry.dispose();
+    backdrop = meshFor(overview, meshUnderlayMaterial, undefined, 1);
+    backdrop.renderOrder = 0;
+    scene.add(backdrop);
+    cutout.value.copy(keepCutout);
   }
 
   /**
-   * Zoom-adaptive triangulation for mesh mode: far → coarse (readable lines),
-   * close → finer but capped so edges stay ≥ ~MESH_PIXELS_PER_EDGE on screen.
+   * Zoom-adaptive + lazy visibility triangulation for mesh mode:
+   * only the camera-facing / in-frustum patch is built (throttled via rAF budget).
    */
-  function updateMeshLod() {
+  function updateMeshLod(force = false) {
     if (layer.value !== 'mesh') return;
+    camera.updateMatrixWorld(true);
+    const cull = visibilityCullFromCamera(camera);
     const edge = targetWireEdgeMeters();
     // Polar 320 m LOLA: stride so spacing*stride ≈ target edge (max 128 ≈ 40 km).
     const polarStride = snapStride(edge / overview.spacing, 128);
     // Global 4 ppd (~7.6 km): same pixel budget (max 32 ≈ 240 km / ~20°).
     const globalStep = snapStride(edge / GLOBAL_NATIVE_M, 32);
-    if (polarStride !== polarWireStride) rebuildPolarBackdrop(polarStride, 'mesh');
-    rebuildGlobalWire(globalStep);
+    const key = viewCullKey(cull, polarStride, globalStep);
+    if (!force && key === meshViewKey) return;
+    meshViewKey = key;
+    rebuildPolarWire(polarStride, cull);
+    rebuildGlobalWire(globalStep, cull, true);
     // Keep detail-window badge while a local tile is loaded.
     if (!currentKey) setOverviewModeLabel();
   }
@@ -513,11 +607,13 @@ export async function startTerrain(): Promise<TerrainApi> {
 
   function setLayer() {
     const key = layer.value as keyof typeof materials;
-    element('legend').hidden = key !== 'elevation';
+    // Elevation legend also hints the faint mesh underlay colormap.
+    element('legend').hidden = key !== 'elevation' && key !== 'mesh';
     const meshOn = key === 'mesh';
     globalWire.visible = meshOn;
-    // Dim the solid globe under the outside-cap wireframe so shells don't fight.
-    // Keep depthWrite on so the near globe occludes the far hemisphere wires.
+    if (polarWire) polarWire.visible = meshOn;
+    // Dim the textured globe under outside-cap wires so relief context stays faint.
+    // Keep depthWrite on so the near globe occludes anything still behind the limb.
     lunarSurface.transparent = meshOn;
     lunarSurface.opacity = meshOn ? 0.34 : 1;
     lunarSurface.depthWrite = true;
@@ -526,10 +622,14 @@ export async function startTerrain(): Promise<TerrainApi> {
     request?.abort();
     removeDetail();
     if (meshOn) {
-      polarWireStride = -1; // force rebuild at current zoom
+      ensureMeshUnderlay();
+      meshViewKey = '';
+      polarWireStride = -1;
       globalWireStep = -1;
-      updateMeshLod();
+      updateMeshLod(true);
     } else {
+      removePolarWire();
+      meshViewKey = '';
       rebuildPolarBackdrop(1, key);
       if (detail) detail.material = materials[key];
       setOverviewModeLabel();
@@ -551,22 +651,31 @@ export async function startTerrain(): Promise<TerrainApi> {
   }
   function showDetail(grid: Grid, key: string) {
     removeDetail();
-    detail = meshFor(grid, materials.relief, overview);
+    const meshOn = layer.value === 'mesh';
+    detail = meshFor(grid, meshOn ? materials.mesh : materials.relief, overview);
     currentGrid = grid;
     currentKey = key;
     const span = (size-1)*grid.spacing;
     // Cut overview under a fully valid window so detail + base don't z-fight
-    // (double shells / intersecting tops). Mesh uses zoom-capped strides only.
-    if (grid.values.every(Number.isFinite) &&
+    // (double shells / intersecting tops). Mesh keeps the faint underlay continuous.
+    if (!meshOn &&
+        grid.values.every(Number.isFinite) &&
         [grid.x,grid.x+span].every(x=>Math.hypot(x,grid.y) < capRadius && Math.hypot(x,grid.y-span) < capRadius)) {
       cutout.value.set(grid.x+3,grid.y-span+3,grid.x+span-3,grid.y-3);
     }
     scene.add(detail);
     // Apply materials without invalidating the window we just loaded.
     const matKey = layer.value as keyof typeof materials;
-    backdrop.material = overviewMaterials[matKey];
-    detail.material = materials[matKey];
-    element('legend').hidden = matKey !== 'elevation';
+    if (meshOn) {
+      backdrop.material = meshUnderlayMaterial;
+      detail.material = materials.mesh;
+      detail.renderOrder = 2;
+      detail.raycast = () => {};
+    } else {
+      backdrop.material = overviewMaterials[matKey];
+      detail.material = materials[matKey];
+    }
+    element('legend').hidden = matKey !== 'elevation' && matKey !== 'mesh';
     if (!flight && focusedPoint && controls.target.distanceTo(focusedPoint.target)<1) {
       const {x,y} = focusedPoint;
       const h = groundHeight(x,y);

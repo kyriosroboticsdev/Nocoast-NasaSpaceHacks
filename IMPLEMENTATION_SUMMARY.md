@@ -71,6 +71,10 @@ NASA SVS CGI Moon Kit `ldem_4.tif` → `npm run terrain:global-ldem` → `public
 
 **Overlap avoided:** global mesh hard-clips south of **87°S**, fades −86°→−87°, dims globe under wireframe — no z-fight at the polar hole.
 
+**Lazy visibility:** polar + global wireframes tessellate only the camera-facing / view-frustum patch (quantized remesh on orbit, ~200 ms throttle). Far / occluded cells are never built, so tilt no longer stacks a full-globe shell.
+
+**Mesh underlay:** faint elevation colormap (polar) + dimmed LROC globe (outside cap) sit under the wires at low opacity; mesh stays line-default.
+
 **Badge:** live `POLAR ~… LOLA · GLOBAL ~… LDEM` reflecting current LOD.
 
 ## Key files

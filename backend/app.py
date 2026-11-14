@@ -40,22 +40,34 @@ def sites():
 def analyze(latitudeDeg: float = Query(..., ge=-90, le=90),
             longitudeEastDeg: float = Query(..., ge=-360, le=360),
             startUtc: str = TIME["defaultStartUtc"], endUtc: str = TIME["defaultEndUtc"],
-            antennaMinElevationDeg: float | None = Query(None, ge=-5, le=60)):
+            antennaMinElevationDeg: float | None = Query(None, ge=-5, le=60),
+            antennaBoresightAzimuthDeg: float | None = Query(None, ge=0, le=360),
+            antennaBoresightElevationDeg: float | None = Query(None, ge=-90, le=90),
+            antennaBeamwidthDeg: float = Query(analysis.DEFAULT_BEAMWIDTH_DEG, gt=0, le=180)):
     start, end = _times(startUtc, endUtc)
     try:
-        return analysis.analyze(latitudeDeg, longitudeEastDeg, start, end, antennaMinElevationDeg)
+        return analysis.analyze(latitudeDeg, longitudeEastDeg, start, end, antennaMinElevationDeg,
+                                antenna_boresight_az=antennaBoresightAzimuthDeg,
+                                antenna_boresight_el=antennaBoresightElevationDeg,
+                                antenna_beamwidth_deg=antennaBeamwidthDeg)
     except analysis.WindowError as e:
         raise HTTPException(400, str(e)) from e
 
 
 @app.get("/api/export/{site_id}")
 def export(site_id: str, startUtc: str = TIME["defaultStartUtc"], endUtc: str = TIME["defaultEndUtc"],
-           antennaMinElevationDeg: float | None = Query(None, ge=-5, le=60)):
+           antennaMinElevationDeg: float | None = Query(None, ge=-5, le=60),
+           antennaBoresightAzimuthDeg: float | None = Query(None, ge=0, le=360),
+           antennaBoresightElevationDeg: float | None = Query(None, ge=-90, le=90),
+           antennaBeamwidthDeg: float = Query(analysis.DEFAULT_BEAMWIDTH_DEG, gt=0, le=180)):
     """Quest-app time series for a contract site, as a downloadable JSON file."""
     s = _site(site_id)
     start, end = _times(startUtc, endUtc)
     try:
-        r = analysis.analyze(s["latitudeDeg"], s["longitudeEastDeg"], start, end, antennaMinElevationDeg)
+        r = analysis.analyze(s["latitudeDeg"], s["longitudeEastDeg"], start, end, antennaMinElevationDeg,
+                             antenna_boresight_az=antennaBoresightAzimuthDeg,
+                             antenna_boresight_el=antennaBoresightElevationDeg,
+                             antenna_beamwidth_deg=antennaBeamwidthDeg)
     except analysis.WindowError as e:
         raise HTTPException(400, str(e)) from e
     r["site"]["siteId"] = site_id

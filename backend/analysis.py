@@ -27,6 +27,29 @@ MARGIN = float(VISIBILITY["terrainClearanceMarginDeg"])
 ANTENNA_MIN = float(VISIBILITY["antennaMinElevationDeg"])
 
 UNKNOWN = -1   # state encoding: 1 visible, 0 not visible, -1 missing (serialised as null)
+DEFAULT_BEAMWIDTH_DEG = 20.0
+
+
+# ----------------------------------------------------------------------------- antenna pointing (extension)
+def antenna_link_quality(earth_az: np.ndarray, earth_el: np.ndarray, earth_vis: np.ndarray,
+                         boresight_az: float, boresight_el: float,
+                         beamwidth_deg: float) -> tuple[np.ndarray, np.ndarray]:
+    """Simplified fixed-mount directional antenna (extension, not in contract v0.1 — no gain pattern, no
+    multipath, no DSN scheduling, no real link budget; angles only).
+
+    `off_boresight` is the great-circle angle between Earth's actual direction and a fixed antenna boresight,
+    via the spherical law of cosines. `quality` is 1.0 on boresight, a raised-cosine rolloff to 0.0 at
+    `beamwidth_deg / 2` (the "half-power beamwidth" edge), and forced to 0.0 whenever Earth is below the
+    terrain/antenna-elevation gate (`earth_vis` is not 1) regardless of pointing.
+    """
+    b_az, b_el = np.radians(boresight_az), np.radians(boresight_el)
+    e_az, e_el = np.radians(earth_az), np.radians(earth_el)
+    cos_sep = np.sin(b_el) * np.sin(e_el) + np.cos(b_el) * np.cos(e_el) * np.cos(e_az - b_az)
+    off_boresight = np.degrees(np.arccos(np.clip(cos_sep, -1.0, 1.0)))
+    half_power = max(beamwidth_deg, 1e-6) / 2.0
+    rolloff = np.cos(np.radians(90.0 * np.minimum(off_boresight, half_power) / half_power)) ** 2
+    quality = np.where((off_boresight <= half_power) & (earth_vis == 1), rolloff, 0.0)
+    return off_boresight, quality
 
 
 class WindowError(ValueError):
@@ -105,7 +128,8 @@ def _summary(windows: list[dict], gaps: list[dict], unknown: list[dict], total_s
 
 # ----------------------------------------------------------------------------- main entry
 def analyze(lat: float, lon: float, start: datetime, end: datetime, antenna_min: float | None = None,
-            profile: dict | None = None) -> dict:
+            profile: dict | None = None, antenna_boresight_az: float | None = None,
+            antenna_boresight_el: float | None = None, antenna_beamwidth_deg: float = DEFAULT_BEAMWIDTH_DEG) -> dict:
     check_window(start, end)
     lon = lon % 360.0
     antenna_min = ANTENNA_MIN if antenna_min is None else float(antenna_min)
@@ -176,6 +200,32 @@ def analyze(lat: float, lon: float, start: datetime, end: datetime, antenna_min:
         "sunAndCommunication": {"windows": both["windows"], "unknown": both["unknown"],
                                 "summary": both["summary"]},
         "events": sorted(sun["events"] + comm["events"], key=lambda ev: ev["timeUtc"]),
+        "antenna": _antenna_block(base_t, base["earth_az"], base["earth_el"], base["earth_vis"],
+                                  antenna_boresight_az, antenna_boresight_el, antenna_beamwidth_deg),
+    }
+
+
+# extension (not in contract v0.1): simplified fixed-mount directional antenna pointing + link quality
+def _antenna_block(times: list[datetime], earth_az: np.ndarray, earth_el: np.ndarray, earth_vis: np.ndarray,
+                   boresight_az: float | None, boresight_el: float | None, beamwidth_deg: float) -> dict:
+    note = ("Simplified fixed-mount pointing + raised-cosine rolloff vs beamwidth edge; no gain pattern, "
+            "multipath, or DSN scheduling modelled. Not a real RF link budget.")
+    if boresight_az is None or boresight_el is None:
+        return {"modeled": False, "note": note}
+    off, quality = antenna_link_quality(earth_az, earth_el, earth_vis, boresight_az, boresight_el, beamwidth_deg)
+    visible_quality = quality[earth_vis == 1]
+    return {
+        "modeled": True,
+        "boresightAzimuthDeg": boresight_az, "boresightElevationDeg": boresight_el,
+        "beamwidthDeg": beamwidth_deg,
+        "onBoresightFractionOfCommWindow": float((quality > 0).sum() / max(int((earth_vis == 1).sum()), 1)),
+        "meanLinkQualityWhileVisible": float(visible_quality.mean()) if visible_quality.size else None,
+        "series": {
+            "timesUtc": [fmt_utc(t) for t in times],
+            "offBoresightDeg": [round(float(v), 3) for v in off],
+            "linkQuality": [round(float(v), 4) for v in quality],
+        },
+        "note": note,
     }
 
 

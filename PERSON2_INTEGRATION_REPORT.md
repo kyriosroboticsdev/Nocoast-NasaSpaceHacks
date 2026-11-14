@@ -319,9 +319,23 @@ vite.config.mjs               (modified) — /api proxy
 .gitignore                    (modified) — Python ignores
 ```
 
-## 9. What's still open
+## 9. Resync with upstream (`origin/preview` moved mid-session)
 
-- **Not pushed, no PR.** Explicitly left for review first.
+While this work was in progress, a teammate (`kyriolexy`) pushed 7 commits to `origin/preview` — a mesh
+rendering overhaul (`src/main.ts`, new `src/terrain/heightField.ts` + `src/terrain/moonMesh.ts`) plus two
+doc-line edits. Before combining anything, the file-level overlap was checked explicitly
+(`git diff --name-only` on both sides): zero shared files between their changes and this branch's. Merged
+`origin/preview` into `integration/person2-backend` (`git merge`, not rebase, to keep both histories
+honest) — it applied with **no conflicts**, exactly as the overlap check predicted. Re-ran the full
+validation after merging, not just before: `npm run build` (clean) and `pytest tests/` (**32/32 passed**)
+against the combined result.
+
+## 10. What's still open
+
+- **Not pushed, no PR.** The authenticated GitHub account (`Aeioujyot`) has `pull`-only access to
+  `kyriosroboticsdev/Nocoast-NasaSpaceHacks` — confirmed both via the repo permissions API and a real
+  `git push --dry-run`, which returned a 403. A collaborator invite may be pending; until it's accepted (or
+  a fork+PR path is chosen instead), everything in this report stays in the local clone only.
 - **No UI control for antenna pointing.** The backend supports boresight/beamwidth; nothing in the Planner
   exposes it yet. Pure front-end follow-up.
 - **Person 1's horizon-profile gap and Person 3's power/battery module** are not integrated (see §7) —

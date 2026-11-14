@@ -25,7 +25,7 @@ End-to-end **find / compare / decide** navigator on the Vite / TypeScript / Thre
 | Ephemeris | Bundled JPL for CR1/SR1 (extend via `science:ephemeris` when online); **no clamp past series end** (uncovered hours = unknown); calibrated analytic fallback (badged) |
 | Assessment | Exact `[start,end]` sampling; sun/shadow/**unknown** hours; windows with transition midpoints; power = 0 when not sunlit |
 | Ranking | Tiered authority: LOLA 5 m+JPL → overview → sphere/analytic (hard tier sort + score penalties); provenance badges |
-| Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play**; mesh LOD caps density (no 5 m wireframe) and prefers 320 m overview / 20–40 m wide windows |
+| Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play**; mesh stays on full-cap 320 m overview (no crater-local dense wireframe) |
 | Markers | Three categories on mesh: **catalog** (teal ●), **search** (amber ◆), **chosen** (coral ■) + Site B **compare** (violet ◎) |
 | Adopt → 3D | Site A changes / Adopt / map pick / custom apply **always** re-focus camera + chosen marker (no mystery CR1 snap) |
 | Compare | Side-by-side Site A / Site B with compare marker |
@@ -59,8 +59,8 @@ Full requirements mapping: `REQUIREMENTS_AUDIT.md`.
 ### Mesh LOD (preview)
 
 - Default layer remains **mesh**.  
-- Mesh mode never loads 5 m / 10 m detail windows (stride 1–2); caps at **20 m (stride 4)** when close and **40 m (stride 8)** mid-zoom (~5–10 km span).  
-- Farther out: full-cap **320 m overview** wireframe so geometry stays readable over the polar study area instead of a crater-sized dense blue patch.
+- Mesh/wireframe **always** uses the full-cap **320 m LOLA overview** (87°S–90°S / bundled DEM footprint) — no crater-local detail windows and no overview cutout, so the wireframe stays wide and readable.  
+- Relief / elevation still stream 5–20 m detail near the view center; mesh never reintroduces stride 1–2 solid-blue density.
 
 ## Key files
 

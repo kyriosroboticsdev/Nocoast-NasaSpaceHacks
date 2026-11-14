@@ -231,14 +231,13 @@ export async function startTerrain(): Promise<TerrainApi> {
     return orbit;
   }
   let controls = createControls();
-  /** Mesh/wireframe: cap density (never finer than 20 m) and prefer wide medium windows. */
-  function detailPolicy(distance: number): { maxDistance: number; stride: number } {
-    if (layer.value === 'mesh') {
-      // Prefer 320 m overview across the polar study area; detail only when close,
-      // and only stride 4/8 (20–40 m over ~5–10 km) — never 5 m solid-blue wireframe.
-      if (distance < 2200) return { maxDistance: 5500, stride: 4 };
-      return { maxDistance: 5500, stride: 8 };
-    }
+  /**
+   * Relief/elevation stream local DEM windows. Mesh/wireframe stays on the full
+   * 87°S–90°S 320 m overview — crater-local detail punches a hole in that base and
+   * reads as a tiny solid-blue patch (never reintroduce stride 1–2 for mesh).
+   */
+  function detailPolicy(distance: number): { maxDistance: number; stride: number } | null {
+    if (layer.value === 'mesh') return null;
     if (distance < 1000) return { maxDistance: 6300, stride: 1 };
     if (distance < 2300) return { maxDistance: 6300, stride: 2 };
     return { maxDistance: 6300, stride: 4 };
@@ -273,8 +272,10 @@ export async function startTerrain(): Promise<TerrainApi> {
     currentGrid = grid;
     currentKey = key;
     const span = (size-1)*grid.spacing;
-    // Only open the overview underneath a fully valid window.
-    if (grid.values.every(Number.isFinite) &&
+    // Relief/elevation: open overview under a fully valid window.
+    // Mesh never cuts the polar overview — wide base wireframe stays primary.
+    if (layer.value !== 'mesh' &&
+        grid.values.every(Number.isFinite) &&
         [grid.x,grid.x+span].every(x=>Math.hypot(x,grid.y) < capRadius && Math.hypot(x,grid.y-span) < capRadius)) {
       cutout.value.set(grid.x+3,grid.y-span+3,grid.x+span-3,grid.y-3);
     }
@@ -300,14 +301,15 @@ export async function startTerrain(): Promise<TerrainApi> {
   function updateDetail() {
     const distance = camera.position.distanceTo(controls.target);
     const [x,y] = projection(controls.target);
-    const { maxDistance, stride } = detailPolicy(distance);
-    if (distance > maxDistance || Math.hypot(x,y) > capRadius) {
+    const policy = detailPolicy(distance);
+    if (!policy || distance > policy.maxDistance || Math.hypot(x,y) > capRadius) {
       request?.abort();
       removeDetail();
       element('mode-label').textContent = '87°S–90°S · 320 M OVERVIEW';
       status.textContent = '';
       return;
     }
+    const { stride } = policy;
     const span = 256 * stride, step = 64 * stride;
     const column = Math.round(((x+100000)/5-span/2)/step)*step;
     const row = Math.round(((100000-y)/5-span/2)/step)*step;

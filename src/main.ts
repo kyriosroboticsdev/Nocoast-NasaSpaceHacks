@@ -1,20 +1,24 @@
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import './style.css';
 
 const radius = 1737400;
 const capRadius = 2 * radius * Math.tan(T.MathUtils.degToRad(1.5));
 const base = import.meta.env.BASE_URL;
 const element = <E extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as E;
 const status = element('status');
-const selector = element<HTMLSelectElement>('site');
 const layer = element<HTMLSelectElement>('layer');
 const focus = element<HTMLButtonElement>('focus');
 const reset = element<HTMLButtonElement>('reset');
 const size = 257;
 const moonCenter = new T.Vector3(0,-radius,0);
 
-type Site = {name: string; latitudeDeg: number; longitudeEastDeg: number; surfaceElevationM: number};
+type Site = {name: string; siteId?: string; latitudeDeg: number; longitudeEastDeg: number; surfaceElevationM: number};
+
+export type TerrainApi = {
+  focusLatLon: (latitudeDeg: number, longitudeEastDeg: number) => void;
+  showGlobe: (animate?: boolean) => void;
+  showPolarCap: () => void;
+};
 type Grid = {x: number; y: number; width: number; spacing: number; values: Float32Array};
 
 // World axes at the pole: +X points along 90°E, -Z along 0°E, +Y radially up.
@@ -107,7 +111,7 @@ async function fetchAsset(path: string) {
   return response;
 }
 
-async function start() {
+export async function startTerrain(): Promise<TerrainApi> {
   const renderer = new T.WebGLRenderer({antialias:true, logarithmicDepthBuffer:true});
   const viewport = element('viewport');
   viewport.append(renderer.domElement);
@@ -389,12 +393,13 @@ async function start() {
     row.append(term,value);
     element('details').replaceChildren(row);
   }
-  reset.onclick = () => {
+  function showPolarCap() {
     focusedPoint = undefined;
     element('details').replaceChildren();
     const ratio = Math.max(1, 1/camera.aspect);
     flyTo(new T.Vector3(),new T.Vector3(25000,200000,140000).multiplyScalar(ratio),new T.Vector3(0,1,0));
-  };
+  }
+  reset.onclick = () => showPolarCap();
   function showGlobe(animate: boolean) {
     focusedPoint = undefined;
     element('details').replaceChildren();
@@ -406,10 +411,22 @@ async function start() {
   }
   const globeButton = element<HTMLButtonElement>('globe');
   globeButton.onclick = () => showGlobe(true);
-  function goToSite() {
-    const site = sites[selector.selectedIndex];
-    focusTerrain(site.x,site.y);
+  function focusLatLon(latitudeDeg: number, longitudeEastDeg: number) {
+    const rho = 2*radius*Math.tan(T.MathUtils.degToRad((latitudeDeg+90)/2));
+    const lon = T.MathUtils.degToRad(longitudeEastDeg);
+    const x = rho*Math.sin(lon);
+    const y = rho*Math.cos(lon);
+    if (Math.hypot(x, y) > capRadius * 1.05) {
+      status.textContent = 'Site is outside the 87°S–90°S detailed cap — showing whole Moon.';
+      showGlobe(true);
+      return;
+    }
+    focusTerrain(x, y);
   }
+  focus.onclick = () => {
+    const selected = sites[0];
+    if (selected) focusLatLon(selected.latitudeDeg, selected.longitudeEastDeg);
+  };
   const ray = new T.Raycaster();
   let pressed: {id:number; x:number; y:number} | undefined;
   renderer.domElement.addEventListener('pointerdown', event => {
@@ -441,10 +458,7 @@ async function start() {
       break;
     }
   });
-  for (const site of sites) selector.add(new Option(site.name));
-  selector.onchange = goToSite;
-  focus.onclick = goToSite;
-  selector.disabled = focus.disabled = reset.disabled = layer.disabled = globeButton.disabled = false;
+  focus.disabled = reset.disabled = layer.disabled = globeButton.disabled = false;
   showGlobe(false);
   renderer.setAnimationLoop(now => {
     if (flight) {
@@ -476,9 +490,10 @@ async function start() {
     }
     renderer.render(scene,camera);
   });
-}
 
-void start().catch(error => {
-  status.textContent = 'Could not open the polar terrain viewer.';
-  console.error(error);
-});
+  return {
+    focusLatLon,
+    showGlobe: (animate = true) => showGlobe(animate),
+    showPolarCap,
+  };
+}

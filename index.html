@@ -4,35 +4,171 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a111a">
-  <title>Lunar Shadow Lab · Terrain explorer</title>
+  <title>Lunar Landing Site Navigator</title>
 </head>
 <body>
   <main>
-    <header><p class="eyebrow">LUNAR SHADOW LAB / SOUTH POLE</p><h1>Terrain explorer</h1>
-      <p>Explore the Moon and zoom into the detailed south-pole terrain.</p></header>
-    <div class="layout">
-      <section id="viewport" aria-label="Interactive 3D lunar terrain">
-        <div class="badge" id="mode-label">87°S–90°S</div>
-        <div class="hint" id="hint">Click to fly to a spot · Drag to orbit · Middle-drag to pan · Scroll or pinch to zoom</div>
-      </section>
-      <aside>
-        <label for="site">Study point</label>
-        <select id="site" disabled></select>
-        <div class="buttons">
-          <button id="focus" disabled>Zoom to site</button>
-          <button id="reset" disabled>Full polar cap</button>
-          <button id="globe" disabled>Whole Moon</button>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">NOCOAST · NASA SPACE APPS · SOUTH POLE</p>
+        <h1>Lunar Landing Site Navigator</h1>
+        <p class="tagline" id="mode-tagline">Compare sites and dates for solar power and direct-to-Earth communications.</p>
+      </div>
+      <div class="mode-toggle" role="group" aria-label="Application mode">
+        <button type="button" id="mode-planner" class="mode-btn active" aria-pressed="true">Planner</button>
+        <button type="button" id="mode-learn" class="mode-btn" aria-pressed="false">Learn</button>
+      </div>
+    </header>
+
+    <section id="learn-panel" class="learn-panel" hidden>
+      <article>
+        <h2>Why the south pole is hard</h2>
+        <p>Near 90°S, the Sun stays low and skims a jagged horizon. Ridges a few kilometers away can block sunlight for days, and Earth may sit just above or below the local terrain — so power and communications rise and fall together with landing site and date.</p>
+        <p>This Learn view uses the <strong>same scenario engine</strong> as Planner. Guided picks below jump to curated comparisons; open “Show technical details” for the raw thresholds.</p>
+      </article>
+      <div class="guided">
+        <h3>Guided scenarios</h3>
+        <div class="guided-actions">
+          <button type="button" data-guide="cr1-jan">CR1 · mid-January 2027</button>
+          <button type="button" data-guide="sr1-jan">SR1 · same week</button>
+          <button type="button" data-guide="compare">Compare CR1 vs SR1</button>
+          <button type="button" data-guide="slip">Launch slip +14 days</button>
         </div>
-        <label for="layer">Terrain layer</label>
-        <select id="layer" disabled><option value="relief">Lunar surface</option><option value="elevation">Elevation</option><option value="mesh">Mesh wireframe</option></select>
-        <div id="legend" hidden><div class="ramp"></div><div class="range"><span>−8,000 m</span><span>7,000 m</span></div><small>Radial elevation above the reference sphere</small></div>
-        <p id="status" role="status">Loading terrain…</p>
-        <dl id="details"></dl>
-        <p class="source"><a href="https://pgda.gsfc.nasa.gov/products/81">NASA 5 m LOLA mosaic</a> · <a href="https://pgda.gsfc.nasa.gov/products/90">Polar overview</a> · <a href="https://svs.gsfc.nasa.gov/4720/">NASA SVS Moon imagery</a></p>
-        <div class="coverage"><strong>Science coverage</strong><p>Sun and Earth terrain visibility are unknown. The lunar surface layer uses NASA imagery and fixed display lighting.</p></div>
-      </aside>
+      </div>
+    </section>
+
+    <div class="workspace">
+      <div class="layout">
+        <section id="viewport" aria-label="Interactive 3D lunar terrain">
+          <div class="badge" id="mode-label">87°S–90°S</div>
+          <div class="hint" id="hint">Click to fly · Drag to orbit · Middle-drag to pan · Scroll or pinch to zoom</div>
+        </section>
+
+        <aside class="controls">
+          <div class="slot-block">
+            <label for="site">Site A</label>
+            <select id="site"></select>
+            <div class="custom-coords" id="custom-a" hidden>
+              <label for="lat-a">Lat ° (neg = S)</label>
+              <input id="lat-a" type="number" step="0.0001" value="-89.5">
+              <label for="lon-a">Lon ° E</label>
+              <input id="lon-a" type="number" step="0.0001" value="0">
+              <button type="button" id="apply-custom-a">Apply custom A</button>
+            </div>
+          </div>
+
+          <div class="slot-block" id="site-b-block">
+            <label for="site-b">Site B (compare)</label>
+            <select id="site-b"></select>
+            <label class="check">
+              <input type="checkbox" id="compare-toggle" checked>
+              Side-by-side compare
+            </label>
+            <div class="custom-coords" id="custom-b" hidden>
+              <label for="lat-b">Lat ° (neg = S)</label>
+              <input id="lat-b" type="number" step="0.0001" value="-89.6">
+              <label for="lon-b">Lon ° E</label>
+              <input id="lon-b" type="number" step="0.0001" value="200">
+              <button type="button" id="apply-custom-b">Apply custom B</button>
+            </div>
+          </div>
+
+          <div class="buttons">
+            <button id="focus" type="button">Zoom to site A</button>
+            <button id="reset" type="button">Full polar cap</button>
+            <button id="globe" type="button">Whole Moon</button>
+          </div>
+
+          <label for="layer">Terrain layer</label>
+          <select id="layer">
+            <option value="relief">Lunar surface</option>
+            <option value="elevation">Elevation</option>
+            <option value="mesh">Mesh wireframe</option>
+          </select>
+          <div id="legend" hidden>
+            <div class="ramp"></div>
+            <div class="range"><span>−8,000 m</span><span>7,000 m</span></div>
+            <small>Radial elevation above the reference sphere</small>
+          </div>
+
+          <label for="start-utc">Mission start (UTC)</label>
+          <input id="start-utc" type="datetime-local">
+
+          <label for="duration">Mission length (Earth hours)</label>
+          <input id="duration" type="number" min="6" max="720" step="6" value="168">
+
+          <label for="scrub">Time scrubber (UTC)</label>
+          <input id="scrub" type="range" min="0" max="168" step="1" value="0">
+          <p class="scrub-readout" id="scrub-label">—</p>
+
+          <details class="thresholds" id="thresholds-box">
+            <summary>Planner thresholds</summary>
+            <label for="min-earth-el">Min Earth elevation °</label>
+            <input id="min-earth-el" type="number" min="0" max="30" step="0.5" value="5">
+            <label for="panel-area">Panel area m²</label>
+            <input id="panel-area" type="number" min="0.1" max="50" step="0.1" value="2">
+            <label for="panel-eff">Panel efficiency</label>
+            <input id="panel-eff" type="number" min="0.05" max="0.45" step="0.01" value="0.28">
+            <label for="battery-floor">Battery floor W</label>
+            <input id="battery-floor" type="number" min="0" max="500" step="5" value="40">
+          </details>
+
+          <label class="check" id="tech-details-label">
+            <input type="checkbox" id="tech-details">
+            Show technical details
+          </label>
+
+          <p id="status" role="status">Loading terrain…</p>
+          <dl id="details"></dl>
+          <p class="source">
+            <a href="https://pgda.gsfc.nasa.gov/products/81">LOLA 5 m</a> ·
+            <a href="https://ssd.jpl.nasa.gov/horizons/">JPL Horizons</a> ·
+            <a href="https://trek.nasa.gov/moon/">Moon Trek</a> ·
+            <a href="https://quickmap.lroc.asu.edu/">Quickmap</a>
+          </p>
+        </aside>
+      </div>
+
+      <section class="science-pane" aria-label="Power and communications assessment">
+        <div class="metrics" id="metrics-a">
+          <h2 id="metrics-a-title">Site A</h2>
+          <div class="viability" id="viability-a">—</div>
+          <div class="metric-grid" id="metric-grid-a"></div>
+          <p class="horizon-flag" id="horizon-flag-a"></p>
+        </div>
+        <div class="metrics" id="metrics-b">
+          <h2 id="metrics-b-title">Site B</h2>
+          <div class="viability" id="viability-b">—</div>
+          <div class="metric-grid" id="metric-grid-b"></div>
+          <p class="horizon-flag" id="horizon-flag-b"></p>
+        </div>
+
+        <div class="viz-block">
+          <h3>360° skyline · Site A</h3>
+          <canvas id="skyline" width="800" height="140" aria-label="Horizon skyline with Sun and Earth"></canvas>
+        </div>
+        <div class="viz-block">
+          <h3>Mission timeline</h3>
+          <canvas id="timeline" width="800" height="100" aria-label="Sunlight and Earth LOS timeline"></canvas>
+        </div>
+
+        <div class="provenance" id="provenance">
+          <h3>Provenance &amp; limits</h3>
+          <ul>
+            <li>Horizons: bundled JPL observer az/el for CR1/SR1 (Jan 2027); live API or analytic fallback otherwise.</li>
+            <li>Horizons (terrain): LOLA 5 m near-field + 320 m overview; gaps never invented.</li>
+            <li>Custom / curated non-study sites use an optimistic sphere horizon — labeled explicitly.</li>
+            <li>3D display lighting ≠ authoritative observer Sun/Earth status.</li>
+          </ul>
+          <div class="share-row">
+            <button type="button" id="copy-link">Copy shareable link</button>
+            <button type="button" id="export-json">Export time series JSON</button>
+            <span id="share-status" role="status"></span>
+          </div>
+        </div>
+      </section>
     </div>
   </main>
-  <script type="module" src="/src/main.ts"></script>
+  <script type="module" src="/src/app.ts"></script>
 </body>
 </html>

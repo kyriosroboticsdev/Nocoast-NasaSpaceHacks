@@ -12,6 +12,8 @@ export type InstantAssessment = {
   earthClearEl: number | null;
   sunlit: boolean | null;
   earthLos: boolean | null;
+  /** True when Sun or Earth ephemeris was missing for this instant. */
+  unknown: boolean;
   irradianceProxy: number;
   powerW: number;
 };
@@ -30,6 +32,7 @@ export type MissionAssessment = {
   sunlightHours: number;
   earthLosHours: number;
   simultaneousHours: number;
+  unknownHours: number;
   sunlightPct: number;
   earthLosPct: number;
   simultaneousPct: number;
@@ -43,47 +46,127 @@ export type MissionAssessment = {
   hoursToEarthset: number | null;
 };
 
-function windowsFromFlags(samples: InstantAssessment[], flag: (s: InstantAssessment) => boolean | null): TimeWindow[] {
-  const out: TimeWindow[] = [];
-  let open: string | null = null;
-  let prev: InstantAssessment | null = null;
-  for (const s of samples) {
-    const on = flag(s) === true;
-    if (on && !open) open = s.utc;
-    if (!on && open && prev) {
-      out.push({
-        startUtc: open,
-        endUtc: prev.utc,
-        hours: (Date.parse(prev.utc) - Date.parse(open)) / 3600_000,
-      });
-      open = null;
-    }
-    prev = s;
+/** Build exact sample times on [start, end] with no overshoot past mission end. */
+export function missionSampleTimes(startUtc: string, durationHours: number, stepHours: number): string[] {
+  const start = Date.parse(startUtc);
+  const end = start + Math.max(0, durationHours) * 3600_000;
+  const stepMs = Math.max(1e-9, stepHours) * 3600_000;
+  const out: string[] = [];
+  for (let t = start; t < end - 1e-6; t += stepMs) {
+    out.push(new Date(t).toISOString());
   }
-  if (open && prev) {
-    out.push({
-      startUtc: open,
-      endUtc: prev.utc,
-      hours: (Date.parse(prev.utc) - Date.parse(open)) / 3600_000,
-    });
-  }
+  const endIso = new Date(end).toISOString();
+  if (!out.length || out[out.length - 1] !== endIso) out.push(endIso);
   return out;
 }
 
-function longestGap(samples: InstantAssessment[], flag: (s: InstantAssessment) => boolean | null): number {
+/**
+ * Integrate a boolean|null flag across samples.
+ * true/true → full segment; transition → half segment; null → unknown (not blackout).
+ * Single-sample true near end still contributes via half-step transitions.
+ */
+function integrateFlag(
+  samples: InstantAssessment[],
+  flag: (s: InstantAssessment) => boolean | null,
+): { windows: TimeWindow[]; onHours: number; offHours: number; unknownHours: number } {
+  const windows: TimeWindow[] = [];
+  let onHours = 0;
+  let offHours = 0;
+  let unknownHours = 0;
+  let open: string | null = null;
+
+  const midIso = (a: string, b: string) =>
+    new Date((Date.parse(a) + Date.parse(b)) / 2).toISOString();
+
+  const closeAt = (endUtc: string) => {
+    if (!open) return;
+    const hours = (Date.parse(endUtc) - Date.parse(open)) / 3600_000;
+    if (hours > 1e-9) windows.push({ startUtc: open, endUtc, hours });
+    open = null;
+  };
+
+  for (let i = 0; i < samples.length - 1; i++) {
+    const a = samples[i];
+    const b = samples[i + 1];
+    const dt = (Date.parse(b.utc) - Date.parse(a.utc)) / 3600_000;
+    if (dt <= 0) continue;
+    const fa = flag(a);
+    const fb = flag(b);
+
+    if (fa == null && fb == null) {
+      closeAt(a.utc);
+      unknownHours += dt;
+      continue;
+    }
+    if (fa == null || fb == null) {
+      // Half known / half unknown
+      unknownHours += dt / 2;
+      const known = fa ?? fb;
+      const knownAtStart = fa != null;
+      if (known === true) {
+        onHours += dt / 2;
+        if (knownAtStart) {
+          if (!open) open = a.utc;
+          closeAt(midIso(a.utc, b.utc));
+        } else {
+          open = midIso(a.utc, b.utc);
+        }
+      } else {
+        offHours += dt / 2;
+        closeAt(a.utc);
+      }
+      continue;
+    }
+
+    if (fa && fb) {
+      onHours += dt;
+      if (!open) open = a.utc;
+    } else if (!fa && !fb) {
+      offHours += dt;
+      closeAt(a.utc);
+    } else if (fa && !fb) {
+      onHours += dt / 2;
+      offHours += dt / 2;
+      if (!open) open = a.utc;
+      closeAt(midIso(a.utc, b.utc));
+    } else {
+      offHours += dt / 2;
+      onHours += dt / 2;
+      open = midIso(a.utc, b.utc);
+    }
+  }
+
+  if (open && samples.length) closeAt(samples[samples.length - 1].utc);
+  return { windows, onHours, offHours, unknownHours };
+}
+
+function longestFalseRun(samples: InstantAssessment[], flag: (s: InstantAssessment) => boolean | null): number {
   let max = 0;
   let run = 0;
-  let prevT: number | null = null;
-  for (const s of samples) {
-    const t = Date.parse(s.utc);
-    const off = flag(s) !== true;
-    if (off && prevT != null) {
-      run += (t - prevT) / 3600_000;
+  for (let i = 0; i < samples.length - 1; i++) {
+    const a = samples[i];
+    const b = samples[i + 1];
+    const dt = (Date.parse(b.utc) - Date.parse(a.utc)) / 3600_000;
+    const fa = flag(a);
+    const fb = flag(b);
+    // Blackout only when explicitly false (unknown does not extend blackout).
+    if (fa === false && fb === false) {
+      run += dt;
       max = Math.max(max, run);
-    } else if (!off) {
+    } else if (fa === false && fb === true) {
+      run += dt / 2;
+      max = Math.max(max, run);
+      run = 0;
+    } else if (fa === true && fb === false) {
+      run = dt / 2;
+      max = Math.max(max, run);
+    } else if (fa === false && fb == null) {
+      // stop blackout at unknown
+      max = Math.max(max, run);
+      run = 0;
+    } else {
       run = 0;
     }
-    prevT = t;
   }
   return max;
 }
@@ -91,12 +174,16 @@ function longestGap(samples: InstantAssessment[], flag: (s: InstantAssessment) =
 function hoursUntilFalse(samples: InstantAssessment[], fromUtc: string, flag: (s: InstantAssessment) => boolean | null): number | null {
   const from = Date.parse(fromUtc);
   const start = samples.find(s => Date.parse(s.utc) >= from) ?? samples[samples.length - 1];
-  if (!start || flag(start) !== true) return 0;
+  if (!start) return null;
+  if (flag(start) == null) return null;
+  if (flag(start) !== true) return 0;
   for (const s of samples) {
     if (Date.parse(s.utc) < from) continue;
-    if (flag(s) !== true) return (Date.parse(s.utc) - from) / 3600_000;
+    const f = flag(s);
+    if (f == null) return (Date.parse(s.utc) - from) / 3600_000;
+    if (f !== true) return (Date.parse(s.utc) - from) / 3600_000;
   }
-  return null; // remains true through end of window
+  return null;
 }
 
 export function assessInstant(
@@ -107,18 +194,42 @@ export function assessInstant(
 ): InstantAssessment {
   const sun = provider.get('sun', utc);
   const earth = provider.get('earth', utc);
+  if (!sun || !earth) {
+    return {
+      utc,
+      sunAz: sun?.azimuthDeg ?? NaN,
+      sunEl: sun?.elevationDeg ?? NaN,
+      earthAz: earth?.azimuthDeg ?? NaN,
+      earthEl: earth?.elevationDeg ?? NaN,
+      sunClearEl: null,
+      earthClearEl: null,
+      sunlit: null,
+      earthLos: null,
+      unknown: true,
+      irradianceProxy: 0,
+      powerW: 0,
+    };
+  }
+
   const sunHorizon = horizonElevationAt(horizon, sun.azimuthDeg);
   const earthHorizon = horizonElevationAt(horizon, earth.azimuthDeg);
   const sunClear = sunHorizon == null ? null : sun.elevationDeg - sunHorizon;
   const earthClear = earthHorizon == null ? null : earth.elevationDeg - earthHorizon;
   const sunlit = sunClear == null ? null : sunClear > 0;
   const earthLos = earthClear == null ? null : earthClear >= thresholds.minEarthElevationDeg;
-  const clearEl = sunClear != null && sunClear > 0 ? sunClear : 0;
-  const tilt = thresholds.panelTiltDeg * Math.PI / 180;
-  // Simple irradiance proxy ∝ max(0, sin(el_clear)) with optional tilt boost.
-  const irradianceProxy = Math.max(0, Math.sin((clearEl + thresholds.panelTiltDeg * 0.25) * Math.PI / 180));
-  const solarConstant = 1361;
-  const powerW = solarConstant * thresholds.panelAreaM2 * thresholds.panelEfficiency * irradianceProxy * Math.cos(tilt * 0.1);
+
+  // Power only when sunlit; incidence from true sun elevation + panel tilt (not clearance hacks).
+  let irradianceProxy = 0;
+  let powerW = 0;
+  if (sunlit === true) {
+    const tilt = thresholds.panelTiltDeg;
+    // Effective incidence angle vs panel normal: sun elev toward tilt-facing panel.
+    const incidenceElev = sun.elevationDeg + tilt;
+    irradianceProxy = Math.max(0, Math.sin(incidenceElev * Math.PI / 180));
+    const solarConstant = 1361;
+    powerW = solarConstant * thresholds.panelAreaM2 * thresholds.panelEfficiency * irradianceProxy;
+  }
+
   return {
     utc,
     sunAz: sun.azimuthDeg,
@@ -129,6 +240,7 @@ export function assessInstant(
     earthClearEl: earthClear,
     sunlit,
     earthLos,
+    unknown: false,
     irradianceProxy,
     powerW,
   };
@@ -147,41 +259,48 @@ export function assessMission(options: {
   stepHours?: number;
 }): MissionAssessment {
   const step = options.stepHours ?? 1;
-  const samples: InstantAssessment[] = [];
-  const start = Date.parse(options.startUtc);
-  const n = Math.max(1, Math.round(options.durationHours / step));
-  for (let i = 0; i <= n; i++) {
-    const utc = new Date(start + i * step * 3600_000).toISOString();
-    samples.push(assessInstant(utc, options.provider, options.horizon, options.thresholds));
-  }
+  const times = missionSampleTimes(options.startUtc, options.durationHours, step);
+  const samples = times.map(utc => assessInstant(utc, options.provider, options.horizon, options.thresholds));
 
-  const sunlightWindows = windowsFromFlags(samples, s => s.sunlit);
-  const earthWindows = windowsFromFlags(samples, s => s.earthLos);
-  const simultaneousWindows = windowsFromFlags(samples, s => s.sunlit === true && s.earthLos === true);
+  const sunInt = integrateFlag(samples, s => s.sunlit);
+  const earthInt = integrateFlag(samples, s => s.earthLos);
+  const bothInt = integrateFlag(samples, s => (s.sunlit === true && s.earthLos === true ? true : s.sunlit == null || s.earthLos == null ? null : false));
 
-  const span = options.durationHours || 1;
-  const sunlightHours = sunlightWindows.reduce((a, w) => a + w.hours, 0);
-  const earthLosHours = earthWindows.reduce((a, w) => a + w.hours, 0);
-  const simultaneousHours = simultaneousWindows.reduce((a, w) => a + w.hours, 0);
-  const powers = samples.map(s => s.powerW);
-  const meanPowerW = powers.reduce((a, b) => a + b, 0) / powers.length;
-  const peakPowerW = Math.max(...powers);
+  const span = Math.max(1e-9, options.durationHours);
+  const sunlightHours = sunInt.onHours;
+  const earthLosHours = earthInt.onHours;
+  const simultaneousHours = bothInt.onHours;
+  const unknownHours = Math.max(sunInt.unknownHours, earthInt.unknownHours);
 
-  const sunlightPct = (100 * sunlightHours) / span;
-  const earthLosPct = (100 * earthLosHours) / span;
-  const simultaneousPct = (100 * simultaneousHours) / span;
+  const powers = samples.filter(s => !s.unknown).map(s => s.powerW);
+  const meanPowerW = powers.length ? powers.reduce((a, b) => a + b, 0) / powers.length : 0;
+  const peakPowerW = powers.length ? Math.max(...powers) : 0;
 
+  // Percent of mission duration (never inflate past 100 via overshoot).
+  const sunlightPct = Math.min(100, (100 * sunlightHours) / span);
+  const earthLosPct = Math.min(100, (100 * earthLosHours) / span);
+  const simultaneousPct = Math.min(100, (100 * simultaneousHours) / span);
+
+  // Known-fraction viability: do not treat unknown as blackout, but require enough known coverage.
+  const knownFraction = Math.max(0, 1 - unknownHours / span);
   let viability: ViabilityGrade = 'NO-GO';
   let viabilityReason = 'Insufficient sunlight or Earth LOS for the selected thresholds.';
-  if (sunlightPct >= 40 && earthLosPct >= 40 && meanPowerW >= options.thresholds.batteryFloorW) {
+
+  const sphereOnly = options.horizonModel === 'sphere_optimistic';
+  // Sphere alone must not get RISKY promotion without Earth LOS.
+  if (sunlightPct >= 40 && earthLosPct >= 40 && meanPowerW >= options.thresholds.batteryFloorW && knownFraction >= 0.5) {
     viability = 'GO';
     viabilityReason = 'Sunlight and Earth LOS both meet planning thresholds with margin.';
-  } else if (sunlightPct >= 20 && earthLosPct >= 20) {
+  } else if (sunlightPct >= 20 && earthLosPct >= 20 && knownFraction >= 0.5) {
     viability = 'RISKY';
     viabilityReason = 'Partial coverage — feasible with storage/relay or schedule tuning.';
-  } else if (options.horizonModel === 'sphere_optimistic' && sunlightPct >= 15) {
-    viability = 'RISKY';
-    viabilityReason = 'Sphere-horizon estimate only — terrain may worsen real visibility.';
+  } else if (sphereOnly) {
+    viability = 'NO-GO';
+    viabilityReason = 'Sphere-horizon estimate only — insufficient Earth/sun coverage (terrain unknown).';
+  }
+
+  if (unknownHours > span * 0.25) {
+    viabilityReason += ` Ephemeris unknown for ~${unknownHours.toFixed(1)} h of the window.`;
   }
 
   return {
@@ -190,17 +309,18 @@ export function assessMission(options: {
     horizonModel: options.horizonModel,
     ephemerisSource: options.provider.sourceLabel,
     samples,
-    sunlightWindows,
-    earthWindows,
-    simultaneousWindows,
+    sunlightWindows: sunInt.windows,
+    earthWindows: earthInt.windows,
+    simultaneousWindows: bothInt.windows,
     sunlightHours,
     earthLosHours,
     simultaneousHours,
+    unknownHours,
     sunlightPct,
     earthLosPct,
     simultaneousPct,
-    longestSunBlackoutHours: longestGap(samples, s => s.sunlit),
-    longestEarthBlackoutHours: longestGap(samples, s => s.earthLos),
+    longestSunBlackoutHours: longestFalseRun(samples, s => s.sunlit),
+    longestEarthBlackoutHours: longestFalseRun(samples, s => s.earthLos),
     meanPowerW,
     peakPowerW,
     viability,

@@ -2,6 +2,7 @@
  * Offline 360° horizon profiles for CR1 / SR1 from bundled LOLA products.
  * Near-field: 5 m focus windows; far-field: 320 m polar overview.
  * Observer = surface + 2 m AGL. Airless geometric elevation (no refraction).
+ * Azimuth 0 = true local north (ENU); rays follow constant-bearing great circles.
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -40,6 +41,25 @@ function siteXY(latDeg, lonEastDeg) {
   const rho = 2 * radius * Math.tan(((latDeg + 90) * DEG) / 2);
   const lon = lonEastDeg * DEG;
   return { x: rho * Math.sin(lon), y: rho * Math.cos(lon) };
+}
+
+/** Destination on a sphere after traveling distM along constant bearing (CW from north). */
+function destinationLatLon(latDeg, lonEastDeg, bearingDeg, distM) {
+  const δ = distM / radius;
+  const θ = bearingDeg * DEG;
+  const φ1 = latDeg * DEG;
+  const λ1 = lonEastDeg * DEG;
+  const sinφ1 = Math.sin(φ1);
+  const cosφ1 = Math.cos(φ1);
+  const sinδ = Math.sin(δ);
+  const cosδ = Math.cos(δ);
+  const sinφ2 = sinφ1 * cosδ + cosφ1 * sinδ * Math.cos(θ);
+  const φ2 = Math.asin(Math.max(-1, Math.min(1, sinφ2)));
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * sinδ * cosφ1, cosδ - sinφ1 * Math.sin(φ2));
+  return {
+    latitudeDeg: φ2 * RAD,
+    longitudeEastDeg: ((λ2 * RAD) % 360 + 360) % 360,
+  };
 }
 
 function heightAt(grid, x, y) {
@@ -93,58 +113,80 @@ function sampleTerrain(focus, overview, x, y) {
   return { h: NaN, source: 'gap' };
 }
 
-function horizonForSite(site, focus, overview) {
-  const { x: ox, y: oy } = siteXY(site.latitudeDeg, site.longitudeEastDeg);
+/**
+ * March one bearing. Mark gap when DEM ends before geometric closure
+ * (peak not confirmed by post-peak decline from curvature/range).
+ */
+function marchBearing(site, focus, overview, azDeg) {
   const observerH = site.surfaceElevationM + site.heightAboveGroundM;
-  const spacingDeg = 0.25;
-  const bins = [];
   const maxDist = 400_000;
   const stepNear = 25;
   const stepFar = 320;
+  let maxEl = -90;
+  let maxDistHit = null;
+  let samples = 0;
+  let lastValidDist = 0;
+  let closed = false;
+  let exitedDem = false;
+
+  for (let dist = stepNear; dist <= maxDist; dist += dist < 5000 ? stepNear : stepFar) {
+    const dest = destinationLatLon(site.latitudeDeg, site.longitudeEastDeg, azDeg, dist);
+    const { x, y } = siteXY(dest.latitudeDeg, dest.longitudeEastDeg);
+    const { h } = sampleTerrain(focus, overview, x, y);
+    if (!Number.isFinite(h)) {
+      if (samples > 0) exitedDem = true;
+      break;
+    }
+    samples++;
+    lastValidDist = dist;
+    const curve = (dist * dist) / (2 * radius);
+    const el = Math.atan2(h - observerH - curve, dist) * RAD;
+    if (el > maxEl + 1e-6) {
+      maxEl = el;
+      maxDistHit = dist;
+      closed = false;
+    } else if (maxDistHit != null && maxEl - el > 0.05) {
+      // Peak clearly behind us — geometric horizon closed within DEM.
+      closed = true;
+    }
+  }
+
+  // Incomplete if DEM ends before closure, or the peak sits at the DEM edge
+  // (higher terrain beyond coverage could still raise the horizon).
+  const peakNearEdge = maxDistHit != null && lastValidDist - maxDistHit < 2500;
+  const incomplete = samples < 8 || (exitedDem && (!closed || peakNearEdge));
+  return {
+    azimuthDeg: azDeg,
+    elevationDeg: incomplete ? null : Number(maxEl.toFixed(4)),
+    distanceM: incomplete ? null : maxDistHit,
+    status: incomplete ? 'gap' : 'ok',
+    _reachM: lastValidDist,
+    _closed: closed,
+    _exited: exitedDem,
+  };
+}
+
+function horizonForSite(site, focus, overview) {
+  const spacingDeg = 0.25;
+  const bins = [];
+  const reaches = [];
 
   for (let i = 0; i < 360 / spacingDeg; i++) {
-    const az = i * spacingDeg;
-    const rad = az * DEG;
-    // Polar stereographic: +X = 90°E, +Y = 0°E. Azimuth from north (0°E / +Y).
-    const dirX = Math.sin(rad);
-    const dirY = Math.cos(rad);
-    let maxEl = -90;
-    let maxDistHit = null;
-    let gaps = 0;
-    let samples = 0;
-    let dist = stepNear;
-    while (dist <= maxDist) {
-      const x = ox + dirX * dist;
-      const y = oy + dirY * dist;
-      const { h, source } = sampleTerrain(focus, overview, x, y);
-      if (!Number.isFinite(h)) {
-        gaps++;
-      } else {
-        samples++;
-        // Geometric elevation angle to terrain point (flat-plane approx + curvature).
-        const dh = h - observerH;
-        const range = dist;
-        // Lunar curvature: drop ≈ r²/(2R)
-        const curve = (range * range) / (2 * radius);
-        const el = Math.atan2(dh - curve, range) * RAD;
-        if (el > maxEl) {
-          maxEl = el;
-          maxDistHit = range;
-        }
-      }
-      dist += dist < 5000 ? stepNear : stepFar;
-      void source;
-    }
-    const mostlyGap = samples < 10 || gaps > samples * 4;
+    const bin = marchBearing(site, focus, overview, i * spacingDeg);
+    reaches.push(bin._reachM);
     bins.push({
-      azimuthDeg: az,
-      elevationDeg: mostlyGap ? null : Number(maxEl.toFixed(4)),
-      distanceM: mostlyGap ? null : maxDistHit,
-      status: mostlyGap ? 'gap' : 'ok',
+      azimuthDeg: bin.azimuthDeg,
+      elevationDeg: bin.elevationDeg,
+      distanceM: bin.distanceM,
+      status: bin.status,
     });
   }
 
-  // Downsample / keep 0.25° but also emit 1° companion note.
+  const reachMin = Math.min(...reaches);
+  const reachMax = Math.max(...reaches);
+  const reachMinKm = (reachMin / 1000).toFixed(0);
+  const reachMaxKm = (reachMax / 1000).toFixed(0);
+
   return {
     schemaVersion: '1.0',
     siteId: site.siteId,
@@ -163,10 +205,12 @@ function horizonForSite(site, focus, overview) {
     ],
     notes: [
       'Airless geometric horizon; no atmospheric refraction.',
-      'Near-field ≤~1.28 km uses 5 m focus; beyond that uses 320 m overview to 400 km.',
-      'Gaps remain null — never interpolated across missing DEM.',
+      'Azimuth 0° = true local north (ENU); rays are constant-bearing great circles projected to DEM XY.',
+      `Near-field ≤~1.28 km uses 5 m focus; overview DEM reach along rays is ~${reachMinKm}–${reachMaxKm} km (not 400 km).`,
+      'Bearings that exit DEM before geometric closure are status=gap with null elevation — never interpolated.',
       'Local visual mesh is not the authority for these angles.',
     ],
+    demReachM: { min: reachMin, max: reachMax },
     bins,
     generatedAtUtc: new Date().toISOString(),
   };
@@ -183,7 +227,9 @@ for (const site of sites) {
   const ok = profile.bins.filter(b => b.status === 'ok').length;
   const gap = profile.bins.filter(b => b.status === 'gap').length;
   const els = profile.bins.map(b => b.elevationDeg).filter(v => v != null);
-  const min = Math.min(...els);
-  const max = Math.max(...els);
-  console.log(`${site.siteId}: ${ok} ok / ${gap} gap · el ${min.toFixed(2)}° … ${max.toFixed(2)}° → ${out}`);
+  const min = els.length ? Math.min(...els) : NaN;
+  const max = els.length ? Math.max(...els) : NaN;
+  console.log(
+    `${site.siteId}: ${ok} ok / ${gap} gap · el ${min.toFixed?.(2) ?? 'n/a'}° … ${max.toFixed?.(2) ?? 'n/a'}° · DEM reach ${(profile.demReachM.min / 1000).toFixed(0)}–${(profile.demReachM.max / 1000).toFixed(0)} km → ${out}`,
+  );
 }

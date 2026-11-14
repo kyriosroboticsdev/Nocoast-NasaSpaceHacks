@@ -36,8 +36,14 @@ export function renderSkyline(
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, h);
 
-  const elMin = -15;
-  const elMax = 25;
+  const elevs = profile.bins.map(b => b.elevationDeg).filter((v): v is number => v != null);
+  if (markers) {
+    elevs.push(markers.sunEl, markers.earthEl);
+  }
+  const dataMin = elevs.length ? Math.min(...elevs) : -10;
+  const dataMax = elevs.length ? Math.max(...elevs) : 20;
+  const elMin = Math.min(-15, Math.floor(dataMin - 5));
+  const elMax = Math.max(25, Math.ceil(dataMax + 5));
   const yOf = (el: number) => h * (1 - (el - elMin) / (elMax - elMin));
   const xOf = (az: number) => (az / 360) * w;
 
@@ -131,6 +137,10 @@ export function renderSkyline(
     ctx.fillStyle = '#c4a35a';
     ctx.font = '11px system-ui, sans-serif';
     ctx.fillText('Sphere horizon · optimistic / terrain unknown', 8, 14);
+  } else if (profile.model === 'lola_overview_coarse') {
+    ctx.fillStyle = '#7de4d4';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('LOLA overview · true-north az · coarse search grade', 8, 14);
   }
 }
 

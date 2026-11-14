@@ -46,10 +46,11 @@ export function renderTimeline(
   const t0 = Date.parse(assessment.samples[0]?.utc ?? scrubUtc);
   const t1 = Date.parse(assessment.samples[assessment.samples.length - 1]?.utc ?? scrubUtc);
   const span = Math.max(1, t1 - t0);
-  const labelW = 108;
+  const labelW = secondary ? 128 : 100;
   const trackX = labelW;
   const trackW = w - labelW - 8;
   const rowH = h / rows.length;
+  const maxLabel = secondary ? 20 : 16;
 
   const best = highlight ?? findBestWindow(assessment);
   if (best.window) {
@@ -68,7 +69,8 @@ export function renderTimeline(
     const y = i * rowH;
     ctx.fillStyle = '#8aa0b8';
     ctx.font = '11px system-ui, sans-serif';
-    ctx.fillText(row.label.slice(0, 18), 6, y + rowH * 0.62);
+    const label = row.label.length > maxLabel ? `${row.label.slice(0, maxLabel - 1)}…` : row.label;
+    ctx.fillText(label, 6, y + rowH * 0.62);
     ctx.fillStyle = '#18293b';
     ctx.fillRect(trackX, y + 8, trackW, rowH - 16);
     for (const win of row.windows) {

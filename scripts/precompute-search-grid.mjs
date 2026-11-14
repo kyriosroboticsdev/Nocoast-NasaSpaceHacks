@@ -1,7 +1,8 @@
 /**
  * Coarse south-polar candidate grid with LOLA 320 m overview horizons.
  * Not a meter-perfect global optimum — overview DEM only, ~10 km spacing,
- * 2° azimuth bins. Writes public/science/search/polar-cap-candidates.json.
+ * 2° azimuth bins. Azimuth 0 = true local north (ENU great-circle bearings).
+ * Writes public/science/search/polar-cap-candidates.json.
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -29,6 +30,24 @@ function xyToLatLon(x, y) {
   let longitudeEastDeg = Math.atan2(x, y) * RAD;
   if (longitudeEastDeg < 0) longitudeEastDeg += 360;
   return { latitudeDeg, longitudeEastDeg };
+}
+
+function destinationLatLon(latDeg, lonEastDeg, bearingDeg, distM) {
+  const δ = distM / radius;
+  const θ = bearingDeg * DEG;
+  const φ1 = latDeg * DEG;
+  const λ1 = lonEastDeg * DEG;
+  const sinφ1 = Math.sin(φ1);
+  const cosφ1 = Math.cos(φ1);
+  const sinδ = Math.sin(δ);
+  const cosδ = Math.cos(δ);
+  const sinφ2 = sinφ1 * cosδ + cosφ1 * sinδ * Math.cos(θ);
+  const φ2 = Math.asin(Math.max(-1, Math.min(1, sinφ2)));
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * sinδ * cosφ1, cosδ - sinφ1 * Math.sin(φ2));
+  return {
+    latitudeDeg: φ2 * RAD,
+    longitudeEastDeg: ((λ2 * RAD) % 360 + 360) % 360,
+  };
 }
 
 function heightAt(grid, x, y) {
@@ -103,10 +122,8 @@ function buildGridPoints(overview) {
   return points;
 }
 
-/** Compact elevBins: number (0.01°) or null for gap. */
+/** Compact elevBins: number (0.01°) or null for gap. True-north ENU bearings. */
 function overviewElevBins(observer, overview) {
-  const ox = observer.x;
-  const oy = observer.y;
   const observerH = observer.surfaceElevationM + OBSERVER_AGL_M;
   const bins = [];
   const maxDist = 250_000;
@@ -114,24 +131,34 @@ function overviewElevBins(observer, overview) {
 
   for (let i = 0; i < 360 / SPACING_DEG; i++) {
     const az = i * SPACING_DEG;
-    const rad = az * DEG;
-    const dirX = Math.sin(rad);
-    const dirY = Math.cos(rad);
     let maxEl = -90;
     let samples = 0;
-    let gaps = 0;
+    let closed = false;
+    let exitedDem = false;
+    let maxDistHit = null;
+
     for (let dist = step; dist <= maxDist; dist += step) {
-      const h = heightAt(overview, ox + dirX * dist, oy + dirY * dist);
+      const dest = destinationLatLon(observer.latitudeDeg, observer.longitudeEastDeg, az, dist);
+      const { x, y } = siteXY(dest.latitudeDeg, dest.longitudeEastDeg);
+      const h = heightAt(overview, x, y);
       if (!Number.isFinite(h)) {
-        gaps++;
-        continue;
+        if (samples > 0) exitedDem = true;
+        break;
       }
       samples++;
       const el = Math.atan2(h - observerH - (dist * dist) / (2 * radius), dist) * RAD;
-      if (el > maxEl) maxEl = el;
+      if (el > maxEl + 1e-6) {
+        maxEl = el;
+        maxDistHit = dist;
+        closed = false;
+      } else if (maxDistHit != null && maxEl - el > 0.05) {
+        closed = true;
+      }
     }
-    const mostlyGap = samples < 8 || gaps > samples * 4;
-    bins.push(mostlyGap ? null : Math.round(maxEl * 100) / 100);
+    const peakNearEdge = maxDistHit != null && samples > 0 && !closed;
+    // For overview search: require closure; exiting DEM without post-peak decline → null.
+    const incomplete = samples < 6 || (exitedDem && (!closed || peakNearEdge));
+    bins.push(incomplete ? null : Math.round(maxEl * 100) / 100);
   }
   return bins;
 }
@@ -171,10 +198,11 @@ const payload = {
     dem: 'LOLA 320 m polar overview',
     nearField5m: false,
     azimuthSpacingDeg: SPACING_DEG,
+    azimuthFrame: 'true_local_north_ENU',
     rayStepM: 640,
     maxRayKm: 250,
     honesty:
-      'Regional coarse ranking only — not a global or meter-perfect optimum. Prefer CR1/SR1 5 m LOLA profiles for study-grade decisions.',
+      'Regional coarse ranking only — not a global or meter-perfect optimum. Azimuth 0 = true local north. DEM reach is limited (~80–145 km typical); bearings that exit DEM before geometric closure are null. Prefer CR1/SR1 5 m LOLA profiles for study-grade decisions.',
   },
   candidateCount: candidates.length,
   candidates,

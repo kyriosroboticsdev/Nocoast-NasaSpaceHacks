@@ -498,7 +498,18 @@ export async function startTerrain(): Promise<TerrainApi> {
     const y = rho*Math.cos(lon);
     if (Math.hypot(x, y) > capRadius * 1.05) {
       status.textContent = 'Site is outside the 87°S–90°S detailed cap — showing whole Moon.';
-      showGlobe(true);
+      // Aim camera at the site's selenographic position on the globe (not a fixed CR1 view).
+      const lat = T.MathUtils.degToRad(latitudeDeg);
+      const east = T.MathUtils.degToRad(longitudeEastDeg);
+      // World frame: moonCenter at (0,-R,0); +Y through south pole; lon via X/−Z.
+      const local = new T.Vector3(
+        Math.cos(lat) * Math.sin(east),
+        -Math.sin(lat),
+        -Math.cos(lat) * Math.cos(east),
+      ).normalize();
+      const target = moonCenter.clone().add(local.clone().multiplyScalar(radius));
+      const offset = local.clone().multiplyScalar(radius * 1.35).add(new T.Vector3(0, -radius * 0.15, 0));
+      flyTo(target, offset, new T.Vector3(0, -1, 0));
       return;
     }
     focusTerrain(x, y);
@@ -521,7 +532,8 @@ export async function startTerrain(): Promise<TerrainApi> {
 
   function latLonFromGlobeHit(point: T.Vector3): { latitudeDeg: number; longitudeEastDeg: number } {
     const radial = point.clone().sub(moonCenter).normalize();
-    const latitudeDeg = T.MathUtils.radToDeg(Math.asin(radial.y));
+    // moonCenter is at (0,-R,0); south pole has radial.y ≈ +1 → latitude −90°.
+    const latitudeDeg = T.MathUtils.radToDeg(Math.asin(-radial.y));
     let longitudeEastDeg = T.MathUtils.radToDeg(Math.atan2(radial.x, -radial.z));
     if (longitudeEastDeg < 0) longitudeEastDeg += 360;
     return { latitudeDeg, longitudeEastDeg };

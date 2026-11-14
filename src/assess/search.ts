@@ -30,6 +30,8 @@ export type SearchHit = RankedSite & {
   latitudeDeg: number;
   longitudeEastDeg: number;
   surfaceElevationM: number;
+  /** Compact elev bins used for ranking — retained on Adopt. */
+  elevBins: Array<number | null>;
 };
 
 let cachedCatalog: SearchCatalog | undefined;
@@ -60,10 +62,11 @@ export function candidateToHorizon(c: SearchCandidate, spacingDeg: number): Hori
       heightAboveGroundM: 2,
     },
     spacingDeg,
-    model: 'lola_terrain',
+    model: 'lola_overview_coarse',
     sources: ['NASA PGDA LOLA 320 m polar overview (search grid)'],
     notes: [
-      'Coarse regional search horizon — overview DEM only.',
+      'Coarse regional search horizon — overview DEM only; az 0 = true local north.',
+      'Bearings that exit DEM before geometric closure are null (gap).',
       'Not meter-perfect; prefer CR1/SR1 5 m study profiles for final decisions.',
     ],
     bins,
@@ -171,11 +174,13 @@ export async function rankSearchCandidates(options: {
   const ranked = rankAssessments(rows).slice(0, topN);
   const hits: SearchHit[] = ranked.map(r => {
     const meta = rows.find(x => x.siteId === r.siteId)!;
+    const elevBins = pool.find(c => c.id === r.siteId)?.elevBins ?? [];
     return {
       ...r,
       latitudeDeg: meta.latitudeDeg,
       longitudeEastDeg: meta.longitudeEastDeg,
       surfaceElevationM: meta.surfaceElevationM,
+      elevBins,
     };
   });
 

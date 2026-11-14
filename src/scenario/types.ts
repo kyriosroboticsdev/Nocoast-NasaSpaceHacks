@@ -4,6 +4,7 @@ export type AppMode = 'planner' | 'learn';
 
 export type HorizonModel =
   | 'lola_terrain'
+  | 'lola_overview_coarse'
   | 'sphere_optimistic'
   | 'unknown';
 

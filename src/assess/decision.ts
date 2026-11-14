@@ -3,11 +3,15 @@ import type { ViabilityGrade } from '../scenario/types';
 
 export type InstantStatus = 'BOTH' | 'SUNLIT' | 'EARTH_LOS' | 'BLACKOUT' | 'UNKNOWN';
 
+export type AuthorityTier = 'study' | 'overview' | 'sphere';
+
 export type RankedSite = {
   siteId: string;
   label: string;
   publishedLabel: string;
   horizonModel: string;
+  ephemerisSource: string;
+  authorityTier: AuthorityTier;
   viability: ViabilityGrade;
   viabilityReason: string;
   sunlightPct: number;
@@ -29,15 +33,20 @@ export type DateSuggestion = {
   score: number;
   deltaSimultaneousPct: number;
   label: string;
+  ephemerisSource: string;
 };
 
 /** Ops status at scrub time — independent of window-grade viability. */
 export function instantStatusFromSample(sample: {
   sunlit: boolean | null;
   earthLos: boolean | null;
+  unknown?: boolean;
 } | undefined): InstantStatus {
-  if (!sample) return 'UNKNOWN';
+  if (!sample || sample.unknown) return 'UNKNOWN';
+  if (sample.sunlit == null && sample.earthLos == null) return 'UNKNOWN';
   if (sample.sunlit === true && sample.earthLos === true) return 'BOTH';
+  if (sample.sunlit === true && sample.earthLos == null) return 'UNKNOWN';
+  if (sample.earthLos === true && sample.sunlit == null) return 'UNKNOWN';
   if (sample.sunlit === true) return 'SUNLIT';
   if (sample.earthLos === true) return 'EARTH_LOS';
   if (sample.sunlit === false || sample.earthLos === false) return 'BLACKOUT';
@@ -64,6 +73,26 @@ export function instantStatusClass(status: InstantStatus): string {
   }
 }
 
+export function authorityTier(horizonModel: string): AuthorityTier {
+  if (horizonModel === 'lola_terrain') return 'study';
+  if (horizonModel === 'lola_overview_coarse') return 'overview';
+  return 'sphere';
+}
+
+export function authorityBadge(horizonModel: string, ephemerisSource: string): string {
+  const tier = authorityTier(horizonModel);
+  const horiz =
+    tier === 'study' ? 'LOLA 5 m' :
+    tier === 'overview' ? 'LOLA overview' :
+    'sphere';
+  const eph = /bundled|jpl|live/i.test(ephemerisSource) && !/analytic/i.test(ephemerisSource)
+    ? 'JPL'
+    : /partial|unknown/i.test(ephemerisSource)
+      ? 'JPL partial'
+      : 'analytic';
+  return `${horiz} · ${eph}`;
+}
+
 /** Prefer longest simultaneous ∩, else longest sunlight, else longest Earth LOS. */
 export function findBestWindow(assessment: MissionAssessment): {
   kind: 'simultaneous' | 'sunlight' | 'earth' | 'none';
@@ -81,17 +110,24 @@ export function findBestWindow(assessment: MissionAssessment): {
   return { kind: 'none', window: null };
 }
 
-/** Composite score: simultaneous first, then sun/Earth, then power, with viability bonus. */
+/** Soft score; authority penalties keep sphere/analytic from outranking LOLA+JPL. */
 export function scoreAssessment(a: MissionAssessment): number {
   const viab =
     a.viability === 'GO' ? 30 :
     a.viability === 'RISKY' ? 12 : 0;
+  const tier = authorityTier(a.horizonModel);
+  const tierBonus = tier === 'study' ? 40 : tier === 'overview' ? 15 : -25;
+  const analyticPenalty = /analytic/i.test(a.ephemerisSource) ? -18 : 0;
+  const gapPenalty = (a.unknownHours ?? 0) * 0.4;
   return (
     a.simultaneousPct * 2.2 +
     a.sunlightPct * 0.9 +
     a.earthLosPct * 0.9 +
     Math.min(40, a.meanPowerW) * 0.35 +
-    viab -
+    viab +
+    tierBonus +
+    analyticPenalty -
+    gapPenalty -
     a.longestSunBlackoutHours * 0.15 -
     a.longestEarthBlackoutHours * 0.1
   );
@@ -111,6 +147,8 @@ export function rankAssessments(
       label: r.label,
       publishedLabel: r.publishedLabel,
       horizonModel: r.assessment.horizonModel,
+      ephemerisSource: r.assessment.ephemerisSource,
+      authorityTier: authorityTier(r.assessment.horizonModel),
       viability: r.assessment.viability,
       viabilityReason: r.assessment.viabilityReason,
       sunlightPct: r.assessment.sunlightPct,
@@ -120,7 +158,13 @@ export function rankAssessments(
       score: scoreAssessment(r.assessment),
       assessment: r.assessment,
     }))
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      // Hard tier order: study → overview → sphere, then score within tier.
+      const tierOrder = { study: 0, overview: 1, sphere: 2 };
+      const td = tierOrder[a.authorityTier] - tierOrder[b.authorityTier];
+      if (td !== 0) return td;
+      return b.score - a.score;
+    });
 }
 
 export function buildDateSuggestions(
@@ -142,6 +186,7 @@ export function buildDateSuggestions(
         meanPowerW: c.assessment.meanPowerW,
         score,
         deltaSimultaneousPct: c.assessment.simultaneousPct - baseline.simultaneousPct,
+        ephemerisSource: c.assessment.ephemerisSource,
         label: c.offsetDays === 0 ? 'Current start' : `Slip ${sign}${c.offsetDays} d`,
       };
     })
@@ -149,7 +194,6 @@ export function buildDateSuggestions(
     .sort((a, b) => b.score - a.score || Math.abs(a.offsetDays) - Math.abs(b.offsetDays))
     .map(s => ({
       ...s,
-      // Annotate relative to baseline after sort for display helpers.
       label: s.score > baseScore + 0.5
         ? `${s.label} · better`
         : s.score < baseScore - 0.5
@@ -176,8 +220,16 @@ export function explainVerdict(a: MissionAssessment): string {
   }
   if (a.horizonModel === 'sphere_optimistic') {
     parts.push('Horizon is an optimistic sphere — real terrain could worsen obstruction.');
+  } else if (a.horizonModel === 'lola_overview_coarse') {
+    parts.push('Horizon uses coarse LOLA 320 m overview (regional search grade, not 5 m study).');
   } else {
     parts.push('Horizon uses measured LOLA terrain for this study point.');
+  }
+  if ((a.unknownHours ?? 0) > 0.5) {
+    parts.push(`About ${a.unknownHours.toFixed(1)} h lack ephemeris coverage (unknown, not blackout).`);
+  }
+  if (/analytic/i.test(a.ephemerisSource)) {
+    parts.push('Ephemeris is analytic fallback — prefer bundled JPL when available.');
   }
   const best = findBestWindow(a);
   if (best.window) {

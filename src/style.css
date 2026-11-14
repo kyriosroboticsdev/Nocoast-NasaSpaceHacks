@@ -470,6 +470,7 @@ a { color: var(--accent); }
 #share-status { color: var(--muted); font-size: 0.8rem; }
 
 body.mode-learn .thresholds { display: none; }
+body.mode-learn.show-tech .thresholds { display: block; }
 body.mode-learn #tech-details-label { display: flex; }
 body.mode-planner #tech-details-label { display: none; }
 body.hide-b #metrics-b, body.hide-b #site-b-block select#site-b { opacity: 0.45; }

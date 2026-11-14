@@ -19,7 +19,7 @@ export type HorizonProfile = {
     heightAboveGroundM: number;
   };
   spacingDeg: number;
-  model: 'lola_terrain' | 'sphere_optimistic';
+  model: 'lola_terrain' | 'lola_overview_coarse' | 'sphere_optimistic';
   sources: string[];
   notes: string[];
   bins: HorizonBin[];

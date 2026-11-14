@@ -47,7 +47,7 @@
       "horizonModel": "lola_terrain",
       "horizonUrl": "science/horizons/connecting-ridge-cr1.json",
       "horizonSpacingDeg": 0.25,
-      "horizonNotes": "Near-field 5 m focus + 320 m overview to 400 km; airless geometric"
+      "horizonNotes": "Near-field 5 m focus + 320 m overview; az 0=true north; DEM reach ~80–145 km; gaps when incomplete"
     },
     {
       "siteId": "shackleton-rim-sr1",
@@ -80,7 +80,7 @@
       "horizonModel": "lola_terrain",
       "horizonUrl": "science/horizons/shackleton-rim-sr1.json",
       "horizonSpacingDeg": 0.25,
-      "horizonNotes": "Near-field 5 m focus + 320 m overview to 400 km; airless geometric"
+      "horizonNotes": "Near-field 5 m focus + 320 m overview; az 0=true north; DEM reach ~80–145 km; gaps when incomplete"
     }
   ]
 }

@@ -14,9 +14,10 @@ End-to-end **find / compare / decide** navigator on the Vite / TypeScript / Thre
 | Decision loop | **Find best location**, **Rank catalog**, **Suggest better dates**, slip ±7/14, **Jump scrub to best ∩**, adopt/apply |
 | Dual verdict | Mission **window grade** (GO/RISKY/NO-GO) + **at scrub time** chip (BOTH / SUNLIT / EARTH LOS / BLACKOUT) |
 | Sites | CR1/SR1 (LOLA); curated polar; CLPS-style; Apollo 11–17; Chang’e-4; Chandrayaan-3; custom + **map pick** |
-| Horizons | 360° LOLA for CR1/SR1; sphere_optimistic elsewhere with UI flag; coarse LOLA overview for regional search |
-| Ephemeris | Bundled Jan 2027 Horizons for CR1/SR1; analytic fallback; coverage guard |
-| Assessment | Sunlight / Earth LOS / ∩ windows, blackouts, %, power proxy, panel tilt, sunset/Earthset |
+| Horizons | 360° LOLA for CR1/SR1 (az 0 = **true local north** ENU); sphere elsewhere; overview LOLA for search (**Adopt keeps overview**, not sphere) |
+| Ephemeris | Bundled JPL for CR1/SR1 (extend via `science:ephemeris` when online); **no clamp past series end** (uncovered hours = unknown); calibrated analytic fallback (badged) |
+| Assessment | Exact `[start,end]` sampling; sun/shadow/**unknown** hours; windows with transition midpoints; power = 0 when not sunlit |
+| Ranking | Tiered authority: LOLA 5 m+JPL → overview → sphere/analytic (hard tier sort + score penalties); provenance badges |
 | Viz | 3D terrain (default **mesh/wireframe**) + skyline + timeline with **best-window highlighter** + **Play** |
 | Markers | Three categories on mesh: **catalog** (teal ●), **search** (amber ◆), **chosen** (coral ■) + Site B **compare** (violet ◎) |
 | Adopt → 3D | Site A changes / Adopt / map pick / custom apply **always** re-focus camera + chosen marker (no mystery CR1 snap) |
@@ -44,7 +45,7 @@ Full requirements mapping: `REQUIREMENTS_AUDIT.md`.
 1. Offline: `npm run science:search` → `scripts/precompute-search-grid.mjs` writes `public/science/search/polar-cap-candidates.json` (~262 points, ~10 km spacing, 87°S–90°S).  
 2. Each candidate stores compact **LOLA 320 m overview** horizon elev bins (2° azimuth, 640 m ray step to 250 km) — **no 5 m near-field**.  
 3. In-app **Find best location** filters by region (full cap or around Site A radius), scores with `assessMission` + analytic ephemeris (2 h steps), ranks top-N.  
-4. Hits plot as amber ◆ markers; **Adopt** sets custom Site A → coral ■ chosen marker + camera fly.  
+4. Hits plot as amber ◆ markers; **Adopt** sets custom Site A **and retains the overview LOLA horizon + elevation used for ranking** (not downgraded to sphere).  
 5. UI labels honesty: coarse ranking, not meter-perfect / not global optimum. Prefer CR1/SR1 for study-grade LOLA.
 
 ## Key files
@@ -71,9 +72,11 @@ Regenerate search grid: `npm.cmd run science:search`
 
 ## Limitations (honest)
 
-- Custom / non-study catalog sites use **sphere horizons** (optimistic).  
-- Bundled Horizons = **Jan 2027** for CR1/SR1; other dates/sites → analytic unless live enabled.  
-- Regional search = **320 m overview** + ~10 km grid — useful for exploration, not meter-perfect siting.  
+- Custom / map-pick (non-adopted-search) sites use **sphere horizons** (optimistic).  
+- Bundled Horizons cover CR1/SR1 from precompute range (target Jan–Mar 2027 when fetch succeeds); uncovered mission hours are **unknown**, not frozen Sun.  
+- Analytic fallback is calibrated near the south pole vs bundled JPL (~1° Sun az there) but still **badged** — not study-grade alone.  
+- Overview DEM reach along rays is typically **~80–145 km**, not 400 km; bearings that exit DEM before geometric closure are `gap`.  
+- Regional search = **320 m overview** + ~10 km grid — exploration grade.  
 - Quest VR runtime not shipped — JSON export for external viewers.  
 - 3D lighting ≠ authoritative observer Sun/Earth status.
 
@@ -95,6 +98,12 @@ Regenerate search grid: `npm.cmd run science:search`
 - [ ] Catalog teal ● visible (toggleable); chosen always distinct; Site B violet ◎ when compare on  
 - [ ] Click catalog/search marker adopts or focuses  
 - [ ] Changing Site A / custom apply / map pick flies to that location (not a stale study pin)  
+
+### Science fixes (post multi-model review)
+
+- [ ] 1.5 h mission → sunlight % ≤ 100 (no 133% overshoot)  
+- [ ] Adopt search hit → horizon flag shows overview LOLA (not sphere)  
+- [ ] Share URL restores thresholds + scrub; globe pick latitude sign correct  
 
 ### Integrity
 

@@ -1,18 +1,22 @@
 /**
  * Precompute Sun/Earth az/el series for curated study sites.
  * Tries JPL Horizons API; on failure writes analytic fallback (still demoable offline).
+ * Analytic math is shared with src/ephemeris/analytic-math.mjs.
  */
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  analyticEarthAzEl,
+  analyticSunAzEl,
+} from './lib/analytic-math.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
-const DEG = Math.PI / 180;
-const RAD = 180 / Math.PI;
 
+/** Extended past Feb 1 so late-January + multi-week missions stay in-bundle when fetch succeeds. */
 const START = '2027-01-01T00:00:00';
-const STOP = '2027-02-01T00:00:00';
+const STOP = '2027-03-01T00:00:00';
 const STEP = '1 h';
 
 const sites = [
@@ -30,63 +34,15 @@ const sites = [
   },
 ];
 
-function wrap360(deg) {
-  return ((deg % 360) + 360) % 360;
-}
-function wrap180(deg) {
-  return ((deg + 180) % 360 + 360) % 360 - 180;
-}
-function centuries(utcMs) {
-  return (utcMs / 86400000 - 10957.5) / 36525;
-}
-
-function sunSelenographic(utcMs) {
-  const T = centuries(utcMs);
-  const synodic = 360 / 29.530588853;
-  const day = utcMs / 86400000;
-  const lonDeg = wrap360(124.2 + synodic * (day - 20897));
-  const latDeg = 1.54 * Math.sin((lonDeg + 12.5 * T) * DEG) + 0.15 * Math.sin((2 * lonDeg) * DEG);
-  return { lonDeg, latDeg };
-}
-
-function earthSelenographic(utcMs) {
-  const day = utcMs / 86400000;
-  const D = (day - 20897) * (360 / 27.321661);
-  const F = (day - 20897) * (360 / 27.212221);
-  return {
-    lonDeg: wrap180(6.3 * Math.sin(D * DEG) + 1.2 * Math.sin(2 * D * DEG)),
-    latDeg: 6.9 * Math.sin(F * DEG) + 0.7 * Math.sin((F + D) * DEG),
-  };
-}
-
-function bodyAzEl(siteLatDeg, siteLonEastDeg, bodyLonDeg, bodyLatDeg) {
-  const φ = siteLatDeg * DEG;
-  const λ = siteLonEastDeg * DEG;
-  const δ = bodyLatDeg * DEG;
-  const α = bodyLonDeg * DEG;
-  const bx = Math.cos(δ) * Math.cos(α);
-  const by = Math.cos(δ) * Math.sin(α);
-  const bz = Math.sin(δ);
-  const east = [-Math.sin(λ), Math.cos(λ), 0];
-  const north = [-Math.sin(φ) * Math.cos(λ), -Math.sin(φ) * Math.sin(λ), Math.cos(φ)];
-  const up = [Math.cos(φ) * Math.cos(λ), Math.cos(φ) * Math.sin(λ), Math.sin(φ)];
-  const e = east[0] * bx + east[1] * by + east[2] * bz;
-  const n = north[0] * bx + north[1] * by + north[2] * bz;
-  const u = up[0] * bx + up[1] * by + up[2] * bz;
-  return {
-    azimuthDeg: wrap360(Math.atan2(e, n) * RAD),
-    elevationDeg: Math.asin(Math.max(-1, Math.min(1, u))) * RAD,
-  };
-}
-
 function analyticSeries(body, site) {
   const samples = [];
   const start = Date.parse(START + 'Z');
   const stop = Date.parse(STOP + 'Z');
   for (let t = start; t <= stop; t += 3600_000) {
     const utc = new Date(t).toISOString();
-    const sel = body === 'sun' ? sunSelenographic(t) : earthSelenographic(t);
-    const ae = bodyAzEl(site.latitudeDeg, site.longitudeEastDeg, sel.lonDeg, sel.latDeg);
+    const ae = body === 'sun'
+      ? analyticSunAzEl(utc, site.latitudeDeg, site.longitudeEastDeg)
+      : analyticEarthAzEl(utc, site.latitudeDeg, site.longitudeEastDeg);
     samples.push({ utc, ...ae });
   }
   return {
@@ -104,6 +60,7 @@ function analyticSeries(body, site) {
     generatedAtUtc: new Date().toISOString(),
     notes: [
       'Analytic lunar topocentric series (Horizons unreachable during precompute).',
+      'Shared model with src/ephemeris/analytic-math.mjs (calibrated near south pole).',
       'Replace by re-running with network for jpl_horizons provenance.',
     ],
   };
@@ -115,7 +72,6 @@ const MONTHS = {
 };
 
 function horizonsDateToIso(token) {
-  // "2027-Jan-15 00:00" → ISO
   const m = token.match(/^(\d{4})-([A-Za-z]{3})-(\d{2})\s+(\d{2}):(\d{2})$/);
   if (!m) return null;
   const mon = MONTHS[m[2]];
@@ -166,6 +122,7 @@ async function fetchHorizons(body, site) {
   const res = await fetch(`https://ssd.jpl.nasa.gov/api/horizons.api?${params}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
+  if (/ERROR/i.test(text.slice(0, 800))) throw new Error('Horizons error payload');
   const samples = parseHorizonsTable(text);
   return {
     schemaVersion: '1.0',
@@ -180,7 +137,11 @@ async function fetchHorizons(body, site) {
     source: 'jpl_horizons',
     samples,
     generatedAtUtc: new Date().toISOString(),
-    notes: ['Precomputed from JPL Horizons observer quantities 4 (az/el).', 'Airless; no refraction.'],
+    notes: [
+      'Precomputed from JPL Horizons observer quantities 4 (az/el).',
+      'Airless; no refraction.',
+      `Coverage ${START}Z → ${STOP}Z.`,
+    ],
   };
 }
 

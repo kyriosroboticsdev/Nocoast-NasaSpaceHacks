@@ -31,7 +31,6 @@ function parseHorizonsTable(text: string): TopocentricSample[] {
   for (const line of block.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('****')) continue;
-    // Typical: 2027-Jan-15 00:00 *i  az  elev ...
     const m = trimmed.match(
       /^(\d{4}-[A-Za-z]{3}-\d{2}\s+\d{2}:\d{2})\s+\S*\s+([+-]?\d+\.\d+)\s+([+-]?\d+\.\d+)/,
     );
@@ -58,7 +57,6 @@ export async function fetchHorizonsSeries(
   stopIso: string,
   stepSize = '1 h',
 ): Promise<EphemerisSeries> {
-  // Horizons SITE_COORD: longitude, latitude, altitude km (body-fixed).
   const siteCoord = `'${lonEastDeg},${latDeg},${altitudeKm}'`;
   const params = new URLSearchParams({
     format: 'text',
@@ -115,17 +113,25 @@ export async function loadBundledSeries(
   }
 }
 
-function interpolateSeries(series: EphemerisSeries, utcIso: string): TopocentricSample | null {
+/**
+ * Interpolate within series span only. Returns null outside coverage —
+ * never clamps to the last sample (that froze Sun/Earth past Feb 1).
+ */
+export function interpolateSeries(series: EphemerisSeries, utcIso: string): TopocentricSample | null {
   const t = Date.parse(utcIso);
   const samples = series.samples;
-  if (!samples.length) return null;
-  if (t <= Date.parse(samples[0].utc)) return samples[0];
-  if (t >= Date.parse(samples[samples.length - 1].utc)) return samples[samples.length - 1];
+  if (!samples.length || !Number.isFinite(t)) return null;
+  const t0 = Date.parse(samples[0].utc);
+  const t1 = Date.parse(samples[samples.length - 1].utc);
+  const eps = 1000; // 1 s tolerance at endpoints
+  if (t < t0 - eps || t > t1 + eps) return null;
+  if (t <= t0) return { ...samples[0], utc: utcIso };
+  if (t >= t1) return { ...samples[samples.length - 1], utc: utcIso };
   for (let i = 0; i < samples.length - 1; i++) {
-    const t0 = Date.parse(samples[i].utc);
-    const t1 = Date.parse(samples[i + 1].utc);
-    if (t >= t0 && t <= t1) {
-      const u = (t - t0) / (t1 - t0);
+    const a = Date.parse(samples[i].utc);
+    const b = Date.parse(samples[i + 1].utc);
+    if (t >= a && t <= b) {
+      const u = (t - a) / (b - a);
       const a0 = samples[i].azimuthDeg;
       let da = samples[i + 1].azimuthDeg - a0;
       if (da > 180) da -= 360;
@@ -141,12 +147,14 @@ function interpolateSeries(series: EphemerisSeries, utcIso: string): Topocentric
 }
 
 export type EphemerisProvider = {
-  get: (body: BodyId, utcIso: string) => TopocentricSample;
+  /** Null when the requested time is outside covered ephemeris (unknown). */
+  get: (body: BodyId, utcIso: string) => TopocentricSample | null;
   sourceLabel: string;
   series: Partial<Record<BodyId, EphemerisSeries>>;
+  /** True when any requested mission hour may be uncovered. */
+  hasCoverageGaps?: boolean;
 };
 
-/** True when mission start falls inside the bundled sample span (not just file exists). */
 function seriesCoversStart(series: EphemerisSeries, startUtc: string): boolean {
   if (!series.samples.length) return false;
   const t0 = Date.parse(series.samples[0].utc);
@@ -159,7 +167,7 @@ function seriesEndClipped(series: EphemerisSeries, startUtc: string, durationHou
   if (!series.samples.length) return false;
   const t1 = Date.parse(series.samples[series.samples.length - 1].utc);
   const end = Date.parse(startUtc) + durationHours * 3600_000;
-  return end > t1 + 3600_000;
+  return end > t1 + 1000;
 }
 
 /** Sync analytic-only provider for dense regional search (no bundled/live lookup). */
@@ -188,20 +196,15 @@ export function createAnalyticProvider(options: {
     sourceLabel: 'analytic fallback (search)',
     get(body, utcIso) {
       const s = series[body];
-      if (s) {
-        const sample = interpolateSeries(s, utcIso);
-        if (sample) return sample;
-      }
-      return sampleAnalyticSeries(
-        body, options.siteId, options.latDeg, options.lonEastDeg, options.altitudeKm, utcIso, 0, 1,
-      ).samples[0];
+      if (!s) return null;
+      return interpolateSeries(s, utcIso);
     },
   };
 }
 
 /**
  * Resolve ephemeris for a site: bundled (if start in coverage) → live Horizons (optional) → analytic.
- * Avoids silently clamping CR1/SR1 to Jan 2027 when the mission start is outside the bundle.
+ * Times past series end return null from get() — assessment marks those hours unknown.
  */
 export async function createEphemerisProvider(options: {
   siteId: string;
@@ -212,17 +215,23 @@ export async function createEphemerisProvider(options: {
   durationHours: number;
   baseUrl: string;
   allowLive?: boolean;
+  /** When true, prefer analytic over silent partial clamp for out-of-bundle starts. */
+  preferAnalyticOutsideBundle?: boolean;
 }): Promise<EphemerisProvider> {
   const series: Partial<Record<BodyId, EphemerisSeries>> = {};
   let sourceLabel = 'analytic';
+  let hasCoverageGaps = false;
 
   for (const body of ['sun', 'earth'] as BodyId[]) {
     const bundled = await loadBundledSeries(body, options.siteId, options.baseUrl);
     if (bundled && seriesCoversStart(bundled, options.startUtc)) {
       series[body] = bundled;
-      sourceLabel = seriesEndClipped(bundled, options.startUtc, options.durationHours)
-        ? 'bundled Horizons (end clipped)'
-        : 'bundled Horizons';
+      if (seriesEndClipped(bundled, options.startUtc, options.durationHours)) {
+        hasCoverageGaps = true;
+        sourceLabel = 'bundled Horizons (partial — uncovered hours unknown)';
+      } else {
+        sourceLabel = 'bundled Horizons';
+      }
       continue;
     }
     if (options.allowLive) {
@@ -254,7 +263,6 @@ export async function createEphemerisProvider(options: {
       1,
     );
     if (sourceLabel === 'analytic' || sourceLabel.startsWith('bundled')) {
-      // Prefer an honest label when sun/earth disagree; last body wins for mixed paths.
       sourceLabel = bundled && !seriesCoversStart(bundled, options.startUtc)
         ? 'analytic fallback (outside bundled range)'
         : 'analytic fallback';
@@ -264,16 +272,21 @@ export async function createEphemerisProvider(options: {
   return {
     series,
     sourceLabel,
+    hasCoverageGaps,
     get(body, utcIso) {
       const s = series[body];
-      if (s) {
-        const sample = interpolateSeries(s, utcIso);
-        if (sample) return sample;
+      if (!s) return null;
+      // Analytic series covers the requested window by construction.
+      if (s.source === 'analytic_fallback') {
+        return interpolateSeries(s, utcIso) ?? (() => {
+          const ae = sampleAnalyticSeries(
+            body, options.siteId, options.latDeg, options.lonEastDeg, options.altitudeKm, utcIso, 0, 1,
+          ).samples[0];
+          return ae;
+        })();
       }
-      const ae = body === 'sun'
-        ? sampleAnalyticSeries('sun', options.siteId, options.latDeg, options.lonEastDeg, options.altitudeKm, utcIso, 0, 1).samples[0]
-        : sampleAnalyticSeries('earth', options.siteId, options.latDeg, options.lonEastDeg, options.altitudeKm, utcIso, 0, 1).samples[0];
-      return ae;
+      // Bundled / live: never clamp past end — null → unknown assessment hour.
+      return interpolateSeries(s, utcIso);
     },
   };
 }

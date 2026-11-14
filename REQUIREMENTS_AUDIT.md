@@ -44,7 +44,7 @@ Status key: **Implemented** = usable in UI/engine today · **Partial** = present
 
 | Consideration | Status | Evidence |
 | --- | --- | --- |
-| Ephemeris (JPL Horizons or pre-computed) | **Implemented** | Bundled CR1/SR1 Jan 2027; analytic fallback; live client exists (`allowLive: false`). Coverage guard when start outside bundle. |
+| Ephemeris (JPL Horizons or pre-computed) | **Implemented** | Bundled CR1/SR1 JPL (extendable via fetch); uncovered hours → unknown (no end-clamp); calibrated analytic fallback badged; live client (`allowLive: false`). |
 | Lunar topography (LOLA) for surface + horizons | **Partial** | 3D mosaic + LOLA 360° for **CR1/SR1 only**. Curated/custom/Apollo/CLPS → sphere, flagged. On-demand LOLA for arbitrary points **deferred** (compute cost / mosaic coverage). |
 | No atmosphere / geometric horizon (no refraction) | **Implemented** | Notes in Horizons fetch + provenance. |
 | Solar elevation prominent for power | **Implemented** | Instant sun elev + clear elev + irradiance/power proxy; panel area/eff/**tilt** in thresholds. |
@@ -146,8 +146,15 @@ On-demand 5 m LOLA for arbitrary points; live Horizons toggle; dense sub-km neig
 | Missing / deferred | 2 |
 | **Total matrix rows** | **35** |
 
-**Still Partial:** A/B only (not >2 panels); no 2D illumination globe overlay; LOLA only at study sites; analytic libration; no PSR product; share/export without collaborative annotations.  
+**Still Partial:** A/B only (not >2 panels); no 2D illumination globe overlay; LOLA 5 m only at study sites (overview grid elsewhere); analytic libration simplified; no PSR product; share/export without collaborative annotations.  
 **Still deferred (Missing):** Neighborhood optimizer; Quest VR runtime (export stub only).
+
+### Science-correctness fixes (2026-11 review pass)
+
+- Horizon rays use **true local north (ENU)** great-circle bearings; CR1/SR1 + search artifacts regenerated.  
+- DEM exit before geometric closure → `gap` / null elevation; notes document ~80–145 km overview reach.  
+- Window math: exact mission bounds, unknown ≠ blackout, transition midpoints; ranking **tiers** study > overview > sphere.  
+- Adopt search retains overview LOLA horizon; share URL includes thresholds + scrub; globe pick lat sign fixed.
 
 ---
 

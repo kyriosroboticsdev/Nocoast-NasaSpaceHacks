@@ -42,7 +42,7 @@ export const GUIDED = [
 ] as const;
 
 export const PROVENANCE_BULLETS = [
-  'Horizons: bundled JPL observer az/el for CR1/SR1 (Jan 2027); analytic fallback otherwise.',
+  'Horizons: bundled JPL observer az/el for CR1/SR1 (precomputed range); uncovered hours unknown; analytic fallback is calibrated near the pole and always badged.',
   'Terrain horizons: LOLA 5 m near-field + 320 m overview for CR1/SR1; gaps are never invented.',
   'Custom / curated / Apollo / CLPS sites use an optimistic sphere horizon — labeled in the UI.',
   'Rank and date helpers use the same assessMission engine as the viability badges.',

@@ -25,6 +25,7 @@ import { createEphemerisProvider } from './ephemeris/horizons';
 import { assessMission, type MissionAssessment } from './assess/windows';
 import {
   DATE_SLIP_OFFSETS_DAYS,
+  authorityBadge,
   buildDateSuggestions,
   explainVerdict,
   findBestWindow,
@@ -37,6 +38,7 @@ import {
   type RankedSite,
 } from './assess/decision';
 import {
+  candidateToHorizon,
   loadSearchCatalog,
   rankSearchCandidates,
   type SearchCatalog,
@@ -74,6 +76,52 @@ let lastRanked: RankedSite[] = [];
 let lastDateSuggestions: DateSuggestion[] = [];
 let lastSearchHits: SearchHit[] = [];
 let searchCatalog: SearchCatalog | undefined;
+/** Retained when Adopt is used on a search hit — keeps overview LOLA horizon (not sphere). */
+let adoptedSearchHorizon: HorizonProfile | undefined;
+let adoptedSearchElevationM: number | undefined;
+let rankToken = 0;
+let searchToken = 0;
+let dateToken = 0;
+let recomputeToken = 0;
+let lastDecisionKey = '';
+
+function decisionKey(state: ScenarioState): string {
+  // Site adopt must not wipe rank/search lists — only window/threshold changes invalidate scores.
+  return JSON.stringify({
+    start: state.startUtc,
+    hours: state.durationHours,
+    th: state.thresholds,
+  });
+}
+
+function clearStaleDecisionLists(state: ScenarioState) {
+  const key = decisionKey(state);
+  if (key === lastDecisionKey) return;
+  lastDecisionKey = key;
+  if (lastRanked.length || lastSearchHits.length || lastDateSuggestions.length) {
+    lastRanked = [];
+    lastSearchHits = [];
+    lastDateSuggestions = [];
+    renderRankList([]);
+    renderSearchList([]);
+    renderDateList([]);
+    el('rank-status').textContent = 'Window/thresholds changed — re-run Rank / Find best.';
+    el('search-status').textContent = 'Window/thresholds changed — re-run Find best.';
+    el('date-status').textContent = 'Window changed — re-run Suggest dates.';
+  }
+}
+
+function clearAdoptedSearchHorizon() {
+  adoptedSearchHorizon = undefined;
+  adoptedSearchElevationM = undefined;
+}
+
+function horizonFlagText(a: MissionAssessment): string {
+  const badge = authorityBadge(a.horizonModel, a.ephemerisSource);
+  if (a.horizonModel === 'lola_terrain') return `Horizon: LOLA 5 m study · ${badge} · ${a.ephemerisSource}`;
+  if (a.horizonModel === 'lola_overview_coarse') return `Horizon: LOLA overview (adopted search) · ${badge}`;
+  return `⚠ Horizon: optimistic sphere · ${badge}`;
+}
 
 function fillSiteSelect(select: HTMLSelectElement, selected: string) {
   select.replaceChildren();
@@ -139,6 +187,12 @@ function hoursUntil(a: MissionAssessment, scrub: string, kind: 'sun' | 'earth'):
   return null;
 }
 
+function matchesAdoptedSearch(lat: number, lon: number): boolean {
+  if (!adoptedSearchHorizon) return false;
+  const o = adoptedSearchHorizon.observer;
+  return Math.abs(o.latitudeDeg - lat) < 1e-4 && Math.abs(o.longitudeEastDeg - lon) < 1e-4;
+}
+
 async function computeSlot(state: ScenarioState, slot: 'A' | 'B', override?: {
   siteId: string;
   customLatDeg?: number;
@@ -150,12 +204,19 @@ async function computeSlot(state: ScenarioState, slot: 'A' | 'B', override?: {
     : slot === 'A' ? state.primary : state.secondary;
   const startUtc = override?.startUtc ?? state.startUtc;
   const coords = resolveSiteCoords(sc.siteId, sc.customLatDeg, sc.customLonEastDeg);
-  const horizon = await loadHorizonProfile(sc.siteId, base, coords.latitudeDeg, coords.longitudeEastDeg);
+  const useAdopted = sc.siteId === 'custom' && matchesAdoptedSearch(coords.latitudeDeg, coords.longitudeEastDeg);
+  const horizon = useAdopted && adoptedSearchHorizon
+    ? adoptedSearchHorizon
+    : await loadHorizonProfile(sc.siteId, base, coords.latitudeDeg, coords.longitudeEastDeg);
+  const elevationM = useAdopted && adoptedSearchElevationM != null
+    ? adoptedSearchElevationM
+    : coords.elevationM;
+  const horizonModel = useAdopted ? 'lola_overview_coarse' : coords.horizonModel;
   const provider = await createEphemerisProvider({
     siteId: sc.siteId,
     latDeg: coords.latitudeDeg,
     lonEastDeg: coords.longitudeEastDeg,
-    altitudeKm: (coords.elevationM + coords.observerHeightM) / 1000,
+    altitudeKm: (elevationM + coords.observerHeightM) / 1000,
     startUtc,
     durationHours: state.durationHours,
     baseUrl: base,
@@ -163,8 +224,10 @@ async function computeSlot(state: ScenarioState, slot: 'A' | 'B', override?: {
   });
   return assessMission({
     siteId: sc.siteId,
-    siteLabel: coords.label,
-    horizonModel: coords.horizonModel,
+    siteLabel: useAdopted
+      ? `Search ${Math.abs(coords.latitudeDeg).toFixed(3)}°S ${coords.longitudeEastDeg.toFixed(2)}°E`
+      : coords.label,
+    horizonModel,
     provider,
     horizon,
     startUtc,
@@ -250,9 +313,7 @@ function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = 
   paintNogoPrompt(assessA);
   paintBestWindowLabel(assessA);
   renderMetricGrid(el('metric-grid-a'), assessA, state.scrubUtc);
-  el('horizon-flag-a').textContent = assessA.horizonModel === 'lola_terrain'
-    ? `Horizon: LOLA terrain · ephemeris ${assessA.ephemerisSource}`
-    : `⚠ Horizon: optimistic sphere · ephemeris ${assessA.ephemerisSource}`;
+  el('horizon-flag-a').textContent = horizonFlagText(assessA);
 
   if (assessB && state.compareEnabled) {
     el('metrics-b').hidden = false;
@@ -262,9 +323,7 @@ function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = 
     viabB.className = `viability ${viabilityClass(assessB.viability)}`;
     paintInstantChip('instant-b', assessB, state.scrubUtc);
     renderMetricGrid(el('metric-grid-b'), assessB, state.scrubUtc);
-    el('horizon-flag-b').textContent = assessB.horizonModel === 'lola_terrain'
-      ? `Horizon: LOLA terrain · ephemeris ${assessB.ephemerisSource}`
-      : `⚠ Horizon: optimistic sphere · ephemeris ${assessB.ephemerisSource}`;
+    el('horizon-flag-b').textContent = horizonFlagText(assessB);
   } else {
     el('metrics-b').hidden = true;
   }
@@ -327,17 +386,13 @@ function isScrubOnlyChange(prev: ScenarioState | undefined, next: ScenarioState)
   );
 }
 
+/** Camera focus follows Site A only — B-only edits must not yank the view. */
 function siteFocusKey(state: ScenarioState): string {
   const a = state.primary;
-  const b = state.secondary;
   return JSON.stringify({
     a: a.siteId,
     alat: a.customLatDeg,
     alon: a.customLonEastDeg,
-    b: b.siteId,
-    blat: b.customLatDeg,
-    blon: b.customLonEastDeg,
-    compare: state.compareEnabled,
   });
 }
 
@@ -414,10 +469,25 @@ function syncTerrainToScenario(state: ScenarioState, opts: { fly?: boolean } = {
 }
 
 function adoptSearchHit(hit: SearchHit) {
+  const spacing = searchCatalog?.method.azimuthSpacingDeg || 2;
+  const elevBins = hit.elevBins.length
+    ? hit.elevBins
+    : (searchCatalog?.candidates.find(c => c.id === hit.siteId)?.elevBins ?? []);
+  adoptedSearchHorizon = candidateToHorizon(
+    {
+      id: hit.siteId,
+      latitudeDeg: hit.latitudeDeg,
+      longitudeEastDeg: hit.longitudeEastDeg,
+      surfaceElevationM: hit.surfaceElevationM,
+      elevBins,
+    },
+    spacing,
+  );
+  adoptedSearchElevationM = hit.surfaceElevationM;
   // Clear before setCustomCoords so subscribeScenario always re-flies the camera.
   lastFocusKey = '';
   setCustomCoords('A', hit.latitudeDeg, hit.longitudeEastDeg);
-  el('search-status').textContent = `Adopted ${hit.publishedLabel} → Site A (chosen)`;
+  el('search-status').textContent = `Adopted ${hit.publishedLabel} → Site A (overview LOLA horizon retained)`;
 }
 
 async function recompute(state: ScenarioState) {
@@ -430,16 +500,31 @@ async function recompute(state: ScenarioState) {
     return;
   }
   lastKey = key;
+  const token = ++recomputeToken;
   el('status').textContent = 'Updating power & comms assessment…';
   try {
-    assessA = await computeSlot(state, 'A');
-    assessB = state.compareEnabled ? await computeSlot(state, 'B') : undefined;
-    cachedHorizon = await loadHorizonProfile(
-      state.primary.siteId, base, state.primary.customLatDeg, state.primary.customLonEastDeg,
-    );
+    const nextA = await computeSlot(state, 'A');
+    const nextB = state.compareEnabled ? await computeSlot(state, 'B') : undefined;
+    if (token !== recomputeToken) return;
+    assessA = nextA;
+    assessB = nextB;
+    if (
+      state.primary.siteId === 'custom'
+      && state.primary.customLatDeg != null
+      && matchesAdoptedSearch(state.primary.customLatDeg, state.primary.customLonEastDeg ?? 0)
+      && adoptedSearchHorizon
+    ) {
+      cachedHorizon = adoptedSearchHorizon;
+    } else {
+      cachedHorizon = await loadHorizonProfile(
+        state.primary.siteId, base, state.primary.customLatDeg, state.primary.customLonEastDeg,
+      );
+    }
+    if (token !== recomputeToken) return;
     paintAssessment(state, { syncUrlNow: true });
     el('status').textContent = '';
   } catch (error) {
+    if (token !== recomputeToken) return;
     console.error(error);
     el('status').textContent = 'Assessment failed — check console.';
   }
@@ -452,6 +537,20 @@ function syncControlsFromState(state: ScenarioState) {
   if (scrubOnly) {
     scheduleScrubPaint(state);
     return;
+  }
+
+  clearStaleDecisionLists(state);
+
+  // Drop retained search horizon if Site A left those coordinates.
+  if (
+    adoptedSearchHorizon
+    && !(
+      state.primary.siteId === 'custom'
+      && state.primary.customLatDeg != null
+      && matchesAdoptedSearch(state.primary.customLatDeg, state.primary.customLonEastDeg ?? 0)
+    )
+  ) {
+    clearAdoptedSearchHorizon();
   }
 
   // Site / compare changes → 3D focus + marker categories follow Site A (and B).
@@ -476,6 +575,10 @@ function syncControlsFromState(state: ScenarioState) {
   if (state.primary.siteId === 'custom') {
     if (state.primary.customLatDeg != null) el<HTMLInputElement>('lat-a').value = String(state.primary.customLatDeg);
     if (state.primary.customLonEastDeg != null) el<HTMLInputElement>('lon-a').value = String(state.primary.customLonEastDeg);
+  }
+  if (state.secondary.siteId === 'custom') {
+    if (state.secondary.customLatDeg != null) el<HTMLInputElement>('lat-b').value = String(state.secondary.customLatDeg);
+    if (state.secondary.customLonEastDeg != null) el<HTMLInputElement>('lon-b').value = String(state.secondary.customLonEastDeg);
   }
   el<HTMLInputElement>('compare-toggle').checked = state.compareEnabled;
   el<HTMLInputElement>('start-utc').value = localDateInputValue(state.startUtc);
@@ -508,20 +611,25 @@ function renderRankList(rows: RankedSite[]) {
     item.type = 'button';
     item.className = `rank-item viability-${viabilityClass(row.viability)}`;
     item.setAttribute('role', 'listitem');
-    const sphere = row.horizonModel !== 'lola_terrain' ? ' · sphere' : ' · LOLA';
+    const badge = authorityBadge(row.horizonModel, row.ephemerisSource);
     item.innerHTML = `
       <span class="rank-pos">#${i + 1}</span>
       <span class="rank-body">
         <strong>${row.publishedLabel} · ${row.label}</strong>
-        <span class="rank-metrics">${row.viability} · ∩ ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)}${sphere}</span>
+        <span class="rank-metrics">${row.viability} · ∩ ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)} · ${badge}</span>
       </span>
       <span class="rank-adopt">Adopt</span>`;
     item.onclick = () => {
       lastFocusKey = '';
       if (row.siteId === 'custom') {
         const s = getScenario();
+        // Keep adopted search horizon if this custom row is the retained search site.
+        if (!matchesAdoptedSearch(s.primary.customLatDeg ?? 999, s.primary.customLonEastDeg ?? 999)) {
+          clearAdoptedSearchHorizon();
+        }
         setCustomCoords('A', s.primary.customLatDeg ?? -89.5, s.primary.customLonEastDeg ?? 0);
       } else {
+        clearAdoptedSearchHorizon();
         setPrimarySite(row.siteId);
       }
       // subscribeScenario → syncTerrainToScenario flies camera + updates chosen marker.
@@ -557,10 +665,12 @@ function renderSearchList(rows: SearchHit[]) {
 
 async function runFindBestLocation() {
   const state = getScenario();
+  const token = ++searchToken;
   el('search-status').textContent = 'Loading grid…';
   el('search-list').innerHTML = '<p class="empty-hint">Scoring overview candidates…</p>';
   try {
     if (!searchCatalog) searchCatalog = await loadSearchCatalog(base);
+    if (token !== searchToken) return;
     const regionSel = el<HTMLSelectElement>('search-region').value;
     const topN = Math.max(3, Math.min(25, Number(el<HTMLInputElement>('search-topn').value) || 8));
     const a = resolveSiteCoords(state.primary.siteId, state.primary.customLatDeg, state.primary.customLonEastDeg);
@@ -582,18 +692,21 @@ async function runFindBestLocation() {
       topN,
       stepHours: 2,
     });
+    if (token !== searchToken) return;
     lastSearchHits = hits;
+    lastDecisionKey = decisionKey(state);
     renderSearchList(hits);
     syncTerrainToScenario(state, { fly: false });
     const note = el('neighborhood-note');
     note.innerHTML = `<strong>Find best location</strong> scored <strong>${assessed}</strong> coarse candidates
       (${searchCatalog.region.label}${region.kind === 'around' ? `, ≤${region.radiusKm} km of Site A` : ''})
-      with <strong>LOLA 320 m overview</strong> horizons + analytic ephemeris. Top ${hits.length} shown as amber ◆ markers.
+      with <strong>LOLA 320 m overview</strong> horizons + analytic ephemeris (badged). Top ${hits.length} shown as amber ◆ markers.
       ${limitations}`;
     el('search-status').textContent = hits.length
-      ? `Top ${hits.length} of ${assessed} · overview LOLA`
+      ? `Top ${hits.length} of ${assessed} · overview LOLA · analytic`
       : `No candidates in region (${assessed} scored)`;
   } catch (error) {
+    if (token !== searchToken) return;
     console.error(error);
     el('search-status').textContent = 'Search failed';
     el('search-list').innerHTML = '<p class="empty-hint">Could not run regional search — see console.</p>';
@@ -631,6 +744,7 @@ function renderDateList(rows: DateSuggestion[]) {
 
 async function runRankSites() {
   const state = getScenario();
+  const token = ++rankToken;
   el('rank-status').textContent = 'Scoring…';
   el('rank-list').innerHTML = '<p class="empty-hint">Assessing catalog…</p>';
   try {
@@ -659,10 +773,13 @@ async function runRankSites() {
       })());
     }
     const rows = await Promise.all(jobs);
+    if (token !== rankToken) return;
     lastRanked = rankAssessments(rows);
+    lastDecisionKey = decisionKey(state);
     renderRankList(lastRanked);
-    el('rank-status').textContent = `${lastRanked.length} sites · window ${state.startUtc.slice(0, 10)} · ${state.durationHours} h`;
+    el('rank-status').textContent = `${lastRanked.length} sites · tiered LOLA→overview→sphere · ${state.startUtc.slice(0, 10)} · ${state.durationHours} h`;
   } catch (error) {
+    if (token !== rankToken) return;
     console.error(error);
     el('rank-status').textContent = 'Rank failed';
     el('rank-list').innerHTML = '<p class="empty-hint">Could not rank sites — see console.</p>';
@@ -675,6 +792,7 @@ async function runSuggestDates() {
     el('date-status').textContent = 'Wait for assessment…';
     return;
   }
+  const token = ++dateToken;
   el('date-status').textContent = 'Searching slips…';
   el('date-list').innerHTML = '<p class="empty-hint">Scoring nearby starts…</p>';
   try {
@@ -690,13 +808,16 @@ async function runSuggestDates() {
         return { offsetDays, startUtc, assessment };
       }),
     );
+    if (token !== dateToken) return;
     lastDateSuggestions = buildDateSuggestions(assessA, candidates);
+    lastDecisionKey = decisionKey(state);
     renderDateList(lastDateSuggestions);
     const best = lastDateSuggestions[0];
     el('date-status').textContent = best
-      ? `Best nearby: ${best.label} (${best.startUtc.slice(0, 10)})`
+      ? `Best nearby: ${best.label} (${best.startUtc.slice(0, 10)}) · ${best.ephemerisSource}`
       : 'No alternatives';
   } catch (error) {
+    if (token !== dateToken) return;
     console.error(error);
     el('date-status').textContent = 'Suggest failed';
     el('date-list').innerHTML = '<p class="empty-hint">Could not suggest dates — see console.</p>';
@@ -755,6 +876,7 @@ function setPickMode(enabled: boolean) {
     el<HTMLInputElement>('lat-a').value = lat.toFixed(4);
     el<HTMLInputElement>('lon-a').value = lon.toFixed(4);
     lastFocusKey = '';
+    clearAdoptedSearchHorizon();
     setCustomCoords('A', lat, lon);
     el('status').textContent = `Custom Site A set to ${lat.toFixed(3)}°, ${lon.toFixed(3)}°E (optimistic sphere horizon).`;
     setPickMode(false);
@@ -766,24 +888,24 @@ function wireUi() {
   el('mode-learn').onclick = () => setMode('learn');
   el<HTMLSelectElement>('site').onchange = e => {
     lastFocusKey = '';
+    clearAdoptedSearchHorizon();
     setPrimarySite((e.target as HTMLSelectElement).value);
   };
   el<HTMLSelectElement>('site-b').onchange = e => {
-    lastFocusKey = '';
     setSecondarySite((e.target as HTMLSelectElement).value);
   };
   el<HTMLInputElement>('compare-toggle').onchange = e => {
-    lastFocusKey = '';
     toggleCompare((e.target as HTMLInputElement).checked);
   };
   el('apply-custom-a').onclick = () => {
     lastFocusKey = '';
     const lat = Number(el<HTMLInputElement>('lat-a').value);
     const lon = Number(el<HTMLInputElement>('lon-a').value);
+    if (!matchesAdoptedSearch(lat, lon)) clearAdoptedSearchHorizon();
     setCustomCoords('A', lat, lon);
   };
   el('apply-custom-b').onclick = () => {
-    lastFocusKey = '';
+    // Site B edits must not clear Site A focus key / adopted search horizon.
     setCustomCoords('B', Number(el<HTMLInputElement>('lat-b').value), Number(el<HTMLInputElement>('lon-b').value));
   };
   el('pick-map-a').onclick = () => setPickMode(true);

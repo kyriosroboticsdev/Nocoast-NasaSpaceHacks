@@ -11,6 +11,7 @@ from functools import lru_cache
 
 import numpy as np
 from skyfield.api import Loader, PlanetaryConstants
+from skyfield.framelib import itrs
 
 from .config import DATA, EARTH_RADIUS_KM, FRAME_ID, SUN_RADIUS_KM
 
@@ -48,7 +49,22 @@ def sun_earth(lat: float, lon: float, times: list[datetime]) -> dict[str, np.nda
         out[f"{key}_dist_km"] = dist.km
         out[f"{key}_r"] = np.degrees(np.arcsin(radius_km / dist.km))
         out[f"{key}_enu"] = np.stack([np.cos(el) * np.sin(a), np.cos(el) * np.cos(a), np.sin(el)], axis=-1)
+
+    # Earth's spin axis and prime meridian as local ENU directions, so viewers can draw Earth with the right
+    # face towards the Moon. rotation_at() maps ICRS -> frame, so row k of the ITRS matrix is ITRS axis k in ICRS.
+    r_me, r_it = frame.rotation_at(t), itrs.rotation_at(t)
+    to_enu = enu_basis(lat, lon)
+    for name, k in (("earth_pole_enu", 2), ("earth_prime_enu", 0)):
+        out[name] = (to_enu @ np.einsum("ijn,jn->in", r_me, r_it[k])).T
     return out
+
+
+def enu_basis(lat: float, lon: float) -> np.ndarray:
+    """3x3 matrix whose rows are the local east, north, up unit vectors in the body-fixed frame."""
+    phi, lam = np.radians(lat), np.radians(lon)
+    up = np.array([np.cos(phi) * np.cos(lam), np.cos(phi) * np.sin(lam), np.sin(phi)])
+    east = np.array([-np.sin(lam), np.cos(lam), 0.0])
+    return np.stack([east, np.cross(up, east), up])
 
 
 # Backwards-compatible name used by tests.

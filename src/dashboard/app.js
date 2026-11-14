@@ -1,4 +1,6 @@
 // Lunar Navigator: Sun, Earth & communication. Plain-language by default, with an Advanced mode for specialists.
+import { createSkyView } from "./sky3d.js";
+import { simulate, resultCsv, MODEL_ID } from "../power/model.mjs";   // Person 3 power model, unchanged
 const SUN = "#ffc83d", EARTH = "#4fb8ff", BOTH = "#3ddc97", BAD = "#ff7a7a";
 const SITE_COLORS = ["#8ab4ff", "#ff8fab", "#c792ea", "#5eead4"];
 const MAX_COMPARE = 4;
@@ -22,6 +24,18 @@ const TEXT = {
   ctlLanding: ["Landing day", "Landing day"],
   ctlLength: ["Mission length", "Mission duration"],
   skyTitle: ["What the lander sees", "Horizon panorama"],
+  view3d: ["3D", "3D"],
+  viewFlat: ["Flat", "Panorama"],
+  modeLander: ["Lander's eyes", "Observer view"],
+  modeBird: ["Bird's-eye", "Orbit view"],
+  findEarth: ["Find Earth", "Point at Earth"],
+  findSun: ["Find Sun", "Point at Sun"],
+  resetView: ["Reset", "Reset view"],
+  sky3dHelp: ["You're standing next to the lander. Drag to look around and scroll to zoom in like binoculars. The ground is the real Moon surface from NASA maps. The lines show where the Sun and Earth travel during the whole mission. Dashed parts are behind the hills.",
+    "Observer at 2 m on LOLA/PGDA terrain (5 m to 620 m, 70 m to 8.4 km) plus a far-horizon wall from the 1440-sample computed horizon (true elevation angles). Full Sun/Earth topocentric tracks (MOON_ME_DE421); obstructed segments dashed and drawn through terrain. Earth oriented from ITRS pole/prime-meridian vectors, phase lit by the Sun vector. Bird's-eye view enlarges the Sun and Earth ×5. Terrain is brightened while the Sun is down, for readability."],
+  pwrTitle: ["Solar power over the mission", "Panel output (Person 3 direct-beam model)"],
+  pwrHelp: ["How much power the solar panel makes at each moment. It drops to zero when the Sun is behind the hills. Click anywhere to jump to that moment.",
+    "powerW per sample from Person 3's direct-beam-constant-efficiency-v1 (unchanged), fed by this backend's solar-input: DE421 Sun az/el/range and center-binary terrain visibility with 60 s transition samples. Trapezoidal energy; excludes temperature, dust, wiring losses, batteries and loads."],
   skyHelp: ["A 360° view around the lander. The grey shapes are hills. Hills are drawn taller than they really are so you can see them.",
     "Terrain horizon (1440 az samples, 0.25°) with Sun/Earth topocentric tracks over the window. Vertical scale exaggerated."],
   legSun: ["Sun's path", "Sun track (visible)"],
@@ -45,6 +59,16 @@ const TEXT = {
     "Δ metrics vs. the planned landing day for the same mission duration."],
 };
 const INFO = {
+  sunEl: ["How high the Sun is above a level horizon. At the South Pole it stays just above the ground, so panels need to stand up and shadows are extremely long.",
+    "Topocentric solar elevation above the local horizontal plane (not above the terrain). Statistics over samples where the Sun center clears the terrain horizon."],
+  needs: ["Tell the tool what your lander needs. The quick check above compares the mission against these numbers.",
+    "Planning thresholds for the quick check (heuristic; placeholder until Person 3's viability score). Survival-critical: mean power, darkness endurance. Operational: DTE blackout."],
+  energy: ["All the electricity the solar panel collects during the whole mission.",
+    "Trapezoidal integral of unobstructed panel power with the left sample's visibility held on [t_i, t_i+1). Null if any interval is unknown."],
+  meanPower: ["The panel's power averaged over the whole mission, nights included.",
+    "Total energy / mission duration. Direct beam: 1361/r² W/m² × area × efficiency × max(0, n·s) × visibility."],
+  panel: ["Change the solar panel to see how much power it would make. At the South Pole the Sun stays low, so a panel standing up catches much more light than one lying flat.",
+    "Fixed panel: tilt from face-up horizontal (0–180°), facing bearing clockwise from true north. Applies to every site. No Sun tracking."],
   comm: ["The lander can only send messages straight to Earth when Earth is above the hills on its horizon.",
     "Direct-to-Earth line-of-sight proxy: Earth center elevation > max(terrain horizon + margin, antenna min elevation). Strict >. No link budget or DSN scheduling."],
   blackout: ["The longest stretch when Earth is hidden and the lander can't call home on its own.",
@@ -148,6 +172,7 @@ async function refresh() {
     $("t").max = r._t.length - 1; $("t").value = state.tIdx;
     setStatus("");
     renderAll();
+    refreshPower();
   } catch (e) { setStatus(e.message, true); }
   refreshSweep();
 }
@@ -181,7 +206,7 @@ $("advanced").addEventListener("change", () => {
   advanced = $("advanced").checked;
   document.body.classList.toggle("advanced", advanced);
   save("advancedMode", advanced);
-  applyText(); renderAll();
+  applyText(); renderNeedsBox(); renderPanelBox(); renderAll();
 });
 function showTab(tab) {
   state.tab = ["overview", "compare", "dates", "terrain"].includes(tab) ? tab : "overview";
@@ -257,6 +282,7 @@ function renderAll() {
 function renderOverview() {
   const r = state.results.get(state.focus);
   if (!r) return;
+  renderVerdict();
   renderNumbers(r);
   renderSchedule(r);
   renderMoment();
@@ -266,6 +292,280 @@ function untilNext(r, body) {
   const t = r._t[state.tIdx];
   const ev = r.events.find((e) => e.body === body && Date.parse(e.timeUtc) > t);
   return ev ? (Date.parse(ev.timeUtc) - t) / 1000 : null;
+}
+
+// ============================================================ solar power (Person 3 model, fed by our solar-input)
+const PANEL_DEFAULT = { areaM2: 2, efficiency: 0.28, tiltDeg: 90, azimuthDeg: 0 };
+state.panel = { ...PANEL_DEFAULT, ...load("panelV1", {}) };
+state.power = new Map();
+const solarCache = new Map();
+function solarInputFor(id) {
+  if (!state.contract.sites.some((x) => x.siteId === id)) return Promise.resolve(null);   // P0: CR1/SR1 only
+  const key = `${id}|${utc(state.start)}|${utc(state.end)}`;
+  if (!solarCache.has(key)) {
+    solarCache.set(key, api(`solar_input/${encodeURIComponent(id)}`, { startUtc: utc(state.start), endUtc: utc(state.end) })
+      .catch((e) => { solarCache.delete(key); throw e; }));
+  }
+  return solarCache.get(key);
+}
+async function refreshPower() {
+  const ids = [...new Set([state.focus, ...state.compare])].filter((id) => siteById(id));
+  const panel = { ...state.panel, referenceIrradianceWm2: 1361 };
+  const out = new Map();
+  await Promise.all(ids.map(async (id) => {
+    try {
+      const input = await solarInputFor(id);
+      if (!input) { out.set(id, null); return; }
+      const p = simulate(input, panel);
+      p._t = p.samples.map((x) => Date.parse(x.timeUtc));
+      out.set(id, p);
+    } catch (e) { out.set(id, { error: e.message }); }
+  }));
+  state.power = out;
+  renderAll();
+}
+function powerAt(p, ms) {              // sample in force at time ms (previous-sample hold)
+  if (!p?._t || ms < p._t[0]) return null;
+  let lo = 0, hi = p._t.length - 2;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (p._t[mid] <= ms) lo = mid; else hi = mid - 1; }
+  return p.samples[lo];
+}
+const fmtW = (w) => (w == null ? "—" : w < 10 ? `${w.toFixed(1)} W` : `${Math.round(w).toLocaleString()} W`);
+const fmtWh = (wh) => (wh == null ? "—" : wh >= 1000 ? `${(wh / 1000).toFixed(wh >= 100000 ? 0 : 1)} kWh` : `${Math.round(wh)} Wh`);
+const COMPASS8 = [["North", 0], ["North-east", 45], ["East", 90], ["South-east", 135], ["South", 180], ["South-west", 225], ["West", 270], ["North-west", 315]];
+
+function renderPanelBox() {
+  const p = state.panel;
+  const opt = (list, cur) => (list.some(([, v]) => v === cur) ? "" : `<option value="${cur}" selected>Custom (${cur}°)</option>`) +
+    list.map(([l, v]) => `<option value="${v}" ${v === cur ? "selected" : ""}>${l}</option>`).join("");
+  $("panel-box").innerHTML = `<div class="group-label">${advanced ? "Panel configuration" : "Solar panel"}${info("panel")}</div>
+    <div class="panel-grid">
+      <label>${advanced ? "Area (m²)" : "Size (m²)"}<input id="p-area" type="number" min="0.1" max="1000" step="0.1" value="${p.areaM2}"></label>
+      <label>Efficiency (%)<input id="p-eff" type="number" min="1" max="100" step="1" value="${Math.round(p.efficiency * 1000) / 10}"></label>
+      <label>${advanced ? "Tilt from horizontal (°)" : "Tilt"}${advanced
+        ? `<input id="p-tilt" type="number" min="0" max="180" step="1" value="${p.tiltDeg}">`
+        : `<select id="p-tilt">${opt([["Lying flat", 0], ["Leaning (45°)", 45], ["Standing up", 90]], p.tiltDeg)}</select>`}</label>
+      <label>${advanced ? "Facing bearing (°)" : "Faces"}${advanced
+        ? `<input id="p-az" type="number" min="0" max="359.9" step="1" value="${p.azimuthDeg}">`
+        : `<select id="p-az">${opt(COMPASS8, p.azimuthDeg)}</select>`}</label>
+    </div>
+    <p class="help">${advanced ? `Model ${MODEL_ID} · 1361 W/m² at 1 AU · same panel for every site` : "Same panel for every landing spot."}</p>
+    <button class="btn adv-only" id="p-csv">⬇ Power samples (CSV)</button>`;
+  const num = (id, lo, hi) => { const v = parseFloat($(id).value); return Number.isFinite(v) && v >= lo && v <= hi ? v : null; };
+  const onChange = () => {
+    const area = num("p-area", 0.1, 1000), eff = num("p-eff", 1, 100), tilt = num("p-tilt", 0, 180), az = num("p-az", 0, 359.999);
+    if ([area, eff, tilt, az].some((v) => v == null)) { setStatus("Check the panel numbers.", true); return; }
+    setStatus("");
+    state.panel = { areaM2: area, efficiency: eff / 100, tiltDeg: tilt, azimuthDeg: az };
+    save("panelV1", state.panel);
+    refreshPower();
+  };
+  for (const id of ["p-area", "p-eff", "p-tilt", "p-az"]) $(id).addEventListener("change", onChange);
+  $("p-csv").addEventListener("click", () => {
+    const pw = state.power.get(state.focus);
+    if (!pw || pw.error) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([resultCsv(pw)], { type: "text/csv" }));
+    a.download = `${state.focus}_power_${toDate(state.start)}_${toDate(state.end)}.csv`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+}
+
+function drawPower(canvas, p) {
+  const note = $("power-note");
+  if (!p || p.error) {
+    canvas.hidden = true; note.hidden = false;
+    note.textContent = p?.error ? `Power couldn't be worked out: ${p.error}`
+      : advanced ? "Person 3 power model P0 supports the contract sites (CR1, SR1) only." : "Power estimates are only available for the two main landing spots.";
+    return;
+  }
+  canvas.hidden = false; note.hidden = true;
+  const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
+  if (!W) return;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr);
+  const labelW = 150, top = 8, bottom = 22, ph = H - top - bottom, pw = W - labelW - 4;
+  const t0 = state.start.getTime(), t1 = state.end.getTime();
+  const X = (ms) => labelW + ((ms - t0) / (t1 - t0)) * pw;
+  const peak = Math.max(1, p.summary.sampledPeakPowerW ?? 0);
+  const step = [1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000, 2000, 5000].find((v) => peak / v <= 4) || 10000;
+  const ymax = Math.ceil(peak / step) * step, Y = (w) => top + ph - (w / ymax) * ph;
+  ctx.font = "11px system-ui";
+  for (let v = 0; v <= ymax; v += step) {        // recessive grid + axis labels in the left gutter
+    ctx.strokeStyle = "#1a2130"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(labelW, Y(v)); ctx.lineTo(W, Y(v)); ctx.stroke();
+    ctx.fillStyle = "#8d98aa"; ctx.textAlign = "right"; ctx.fillText(`${v.toLocaleString()} W`, labelW - 8, Y(v) + 4);
+  }
+  const days = (t1 - t0) / 1000 / DAY, every = days <= 16 ? 2 : days <= 35 ? 5 : 10;
+  for (let d = 0; d <= days; d += every) {
+    const x = X(t0 + d * DAY * 1000);
+    ctx.fillStyle = "#8d98aa"; ctx.textAlign = x > W - 30 ? "right" : "center";
+    ctx.fillText(advanced ? new Date(t0 + d * DAY * 1000).toISOString().slice(5, 10) : `Day ${d + 1}`, x, H - 6);
+  }
+  // held-visibility power as a step-aware area + 2 px line; unknown samples break the path
+  const segs = []; let cur = [];
+  for (let k = 0; k < p.samples.length; k++) {
+    const w = p.samples[k].powerW;
+    if (w == null) { if (cur.length) segs.push(cur); cur = []; continue; }
+    const prev = k ? p.samples[k - 1] : null;
+    if (prev?.powerW != null && prev.solarVisibleFraction !== p.samples[k].solarVisibleFraction) {
+      cur.push([X(p._t[k]), Y(prev.solarVisibleFraction ? p.samples[k].unobstructedPowerW : 0)]);
+    }
+    cur.push([X(p._t[k]), Y(w)]);
+  }
+  if (cur.length) segs.push(cur);
+  for (const sg of segs) {
+    ctx.beginPath(); ctx.moveTo(sg[0][0], Y(0)); sg.forEach(([x, y]) => ctx.lineTo(x, y)); ctx.lineTo(sg.at(-1)[0], Y(0)); ctx.closePath();
+    ctx.fillStyle = "rgba(255,200,61,0.16)"; ctx.fill();
+    ctx.beginPath(); sg.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.strokeStyle = SUN; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke();
+  }
+  const r0 = state.results.get(state.focus);
+  if (r0) {
+    const ms = r0._t[state.tIdx], x = X(ms), s0 = powerAt(p, ms);
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + ph); ctx.stroke();
+    if (s0?.powerW != null) {
+      ctx.fillStyle = SUN; ctx.strokeStyle = "#121722"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, Y(s0.powerW), 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+  }
+  canvas._scrub = { labelW, pw, t0, t1 };
+}
+$("power-chart").addEventListener("mousedown", (e) => { dragging = $("power-chart"); scrubFrom(dragging, e); });
+$("power-chart").addEventListener("mousemove", (e) => {
+  const g = $("power-chart")._scrub, p = state.power.get(state.focus);
+  if (!g || !p?._t) return;
+  const rect = $("power-chart").getBoundingClientRect(), f = (e.clientX - rect.left - g.labelW) / g.pw;
+  if (f < 0 || f > 1) { $("tooltip").style.display = "none"; return; }
+  const ms = g.t0 + f * (g.t1 - g.t0), s0 = powerAt(p, ms);
+  tooltip(`<b>${fmtW(s0?.powerW)}</b><br>${fmtWhen(new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z"))}`, e);
+});
+$("power-chart").addEventListener("mouseleave", () => { $("tooltip").style.display = "none"; });
+
+let sky3d = null;
+state.skyView = load("skyView", "3d");
+function skyTexts() {
+  return {
+    sun: "Sun", earth: "Earth",
+    sunHidden: advanced ? "Sun (obstructed)" : "Sun (behind hills)",
+    earthHidden: advanced ? "Earth (obstructed)" : "Earth (behind hills)",
+    lander: advanced ? "Observer" : "Lander",
+    compass: advanced ? [["0°", 0], ["90°", 90], ["180°", 180], ["270°", 270]] : [["N", 0], ["E", 90], ["S", 180], ["W", 270]],
+  };
+}
+function drawSkyView(r) {
+  const flat = state.skyView === "flat";
+  document.body.classList.toggle("flat-sky", flat);
+  $("sky").hidden = !flat; $("sky3d").hidden = flat;
+  document.querySelectorAll("#sky-view button").forEach((b) => b.classList.toggle("active", b.dataset.v === state.skyView));
+  document.querySelector("#tab-overview [data-t=skyHelp]").textContent = flat ? T("skyHelp") : T("sky3dHelp");
+  if (flat) { drawSky($("sky"), r); return; }
+  try {
+    if (!sky3d) {
+      sky3d = createSkyView($("sky3d"));
+      if (new URLSearchParams(location.search).get("sky") === "bird") sky3d.setMode("bird");
+    }
+  } catch (e) {               // no WebGL: fall back to the flat panorama
+    state.skyView = "flat"; drawSkyView(r); setStatus("3D view needs WebGL; showing the flat view.", true); return;
+  }
+  sky3d.setTexts(skyTexts());
+  sky3d.setSite(siteById(state.focus));
+  sky3d.setResult(r);
+  sky3d.setTime(state.tIdx);
+  document.querySelectorAll("#sky-mode button").forEach((b) => b.classList.toggle("active", b.dataset.m === sky3d.mode));
+}
+document.querySelectorAll("#sky-view button").forEach((b) => b.addEventListener("click", () => {
+  state.skyView = b.dataset.v; save("skyView", state.skyView); renderMoment();
+}));
+document.querySelectorAll("#sky-mode button").forEach((b) => b.addEventListener("click", () => {
+  if (sky3d) { sky3d.setMode(b.dataset.m); renderMoment(); }
+}));
+$("find-earth").addEventListener("click", () => { sky3d?.aim("earth"); renderMoment(); });
+$("find-sun").addEventListener("click", () => { sky3d?.aim("sun"); renderMoment(); });
+$("reset-view").addEventListener("click", () => sky3d?.resetView());
+
+// ============================================================ Sun height + quick viability check
+function sunStats(r) {
+  const el = r.series.sunElevationDeg, v = r.series.sunVisible;
+  let n = 0, sum = 0, lo = Infinity, hi = -Infinity;
+  for (let k = 0; k < el.length; k++) if (v[k]) { n++; sum += el[k]; lo = Math.min(lo, el[k]); hi = Math.max(hi, el[k]); }
+  return n ? { mean: sum / n, min: lo, max: hi } : null;
+}
+const fmtLen = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+function sunNote(el, up) {
+  if (!up) return "";
+  if (el <= 0.05) return `<div class="note">The Sun is below a level horizon but still visible, because the lander sits on high ground.</div>`;
+  return `<div class="note">The Sun is very low: a 2 m tall lander casts a shadow about ${fmtLen(2 / Math.tan(el * Math.PI / 180))} long.</div>`;
+}
+
+const NEEDS_DEFAULT = { powerW: 40, batteryHours: 48, blackoutHours: 72 };
+state.needs = { ...NEEDS_DEFAULT, ...load("needsV1", {}) };
+function verdictFor(id) {
+  const r = state.results.get(id), p = state.power.get(id), n = state.needs;
+  if (!r) return null;
+  const mean = p && !p.error ? p.summary.meanPowerW : null;
+  const dark = r.sun.summary.longestGapSeconds, gap = r.communication.summary.longestGapSeconds;
+  const st = (have, ok) => (have == null ? "unknown" : ok ? "pass" : "fail");
+  const checks = [
+    { key: "power", status: st(mean, mean >= n.powerW),
+      label: advanced ? "Mean power ≥ load" : "Enough solar power",
+      text: advanced ? `${fmtW(mean)} vs ${n.powerW} W` : mean == null ? "Not available for this spot" : `${fmtW(mean)} on average (needs ${n.powerW} W)` },
+    { key: "dark", status: st(dark, dark <= n.batteryHours * 3600),
+      label: advanced ? "Longest darkness ≤ battery endurance" : "Battery outlasts the longest night",
+      text: advanced ? `${fmtDur(dark)} vs ${n.batteryHours} h` : `Longest night ${fmtDur(dark)} (battery lasts ${fmtDur(n.batteryHours * 3600)})` },
+    { key: "comm", status: st(gap, gap <= n.blackoutHours * 3600),
+      label: advanced ? "Longest DTE blackout ≤ limit" : "Never out of touch too long",
+      text: advanced ? `${fmtDur(gap)} vs ${n.blackoutHours} h` : `Longest silence ${fmtDur(gap)} (limit ${fmtDur(n.blackoutHours * 3600)})` },
+  ];
+  const fail = (k) => checks.find((c) => c.key === k).status === "fail";
+  const overall = fail("power") || fail("dark") ? "nogo" : fail("comm") ? "caution"
+    : checks.some((c) => c.status === "unknown") ? "unknown" : "go";
+  return { overall, checks, estimate: !r.site.rankable };
+}
+const VERDICT = {
+  go: ["GO", "This spot and date look workable for your lander", "All thresholds met"],
+  caution: ["CAUTION", "Workable, but contact with Earth has long gaps", "Survival thresholds met; DTE blackout exceeds limit"],
+  nogo: ["NO-GO", "The lander probably wouldn't make it through this mission", "A survival threshold (power or darkness) is not met"],
+  unknown: ["CAN'T TELL", "Not enough data to judge this spot yet", "One or more inputs unknown"],
+};
+const vbadge = (v, small) => `<span class="vbadge ${v.overall}${small ? " small" : ""}">${VERDICT[v.overall][0]}</span>`;
+function renderVerdict() {
+  const v = verdictFor(state.focus);
+  if (!v) { $("verdict").innerHTML = ""; return; }
+  const [, simple, adv] = VERDICT[v.overall];
+  $("verdict").innerHTML = `<div class="verdict-head">${vbadge(v)}<div>
+      <div class="headline">${advanced ? adv : simple}${v.estimate ? ` <span class="warn-tag">${advanced ? "fallback terrain" : "rough map data"}</span>` : ""}</div>
+      <div class="sub">${advanced ? "Heuristic quick check against the thresholds on the right (placeholder for Person 3's viability score); not a mission certification."
+        : "A quick check against what your lander needs (change it on the right). It's a first look, not a final answer."}</div></div></div>
+    <div class="checks">${v.checks.map((c) => `<div class="check ${c.status}"><i>${{ pass: "✓", fail: "✕", unknown: "?" }[c.status]}</i>
+      <div><div class="l">${c.label}</div><div class="v">${c.text}</div></div></div>`).join("")}</div>`;
+}
+function renderNeedsBox() {
+  const n = state.needs;
+  $("needs-box").innerHTML = `<div class="group-label">${advanced ? "Quick-check thresholds" : "What your lander needs"}${info("needs")}</div>
+    <div class="panel-grid">
+      <label>${advanced ? "Mean load (W)" : "Power it uses (W)"}<input id="n-power" type="number" min="0" max="100000" step="5" value="${n.powerW}"></label>
+      <label>${advanced ? "Battery endurance (h)" : "Battery lasts (hours)"}<input id="n-batt" type="number" min="0" max="1440" step="1" value="${n.batteryHours}"></label>
+      <label>${advanced ? "Max DTE blackout (h)" : "Longest silence OK (hours)"}<input id="n-gap" type="number" min="0" max="1440" step="1" value="${n.blackoutHours}"></label>
+    </div>`;
+  const onChange = () => {
+    const vals = ["n-power", "n-batt", "n-gap"].map((id) => parseFloat($(id).value));
+    if (vals.some((v) => !Number.isFinite(v) || v < 0)) { setStatus("Check the lander numbers.", true); return; }
+    setStatus("");
+    state.needs = { powerW: vals[0], batteryHours: vals[1], blackoutHours: vals[2] };
+    save("needsV1", state.needs);
+    renderAll();
+  };
+  for (const id of ["n-power", "n-batt", "n-gap"]) $(id).addEventListener("change", onChange);
+}
+
+function powerLine(r) {
+  const s0 = powerAt(state.power.get(state.focus), r._t[state.tIdx]);
+  if (!s0 || s0.powerW == null) return "";
+  if (s0.solarVisibleFraction && s0.powerW === 0) {
+    return advanced ? ` · P = 0 W (incidence ${s0.incidenceAngleDeg.toFixed(1)}° > 90°: Sun behind the panel)`
+      : " But the panel is facing away from the Sun, so it makes 0 W.";
+  }
+  return advanced ? ` · P = ${fmtW(s0.powerW)} (incidence ${s0.incidenceAngleDeg.toFixed(1)}°)` : ` The panel is making ${fmtW(s0.powerW)}.`;
 }
 
 function renderMoment() {
@@ -282,17 +582,20 @@ function renderMoment() {
     const el = s[`${b}ElevationDeg`][i], hz = s[`${b}HorizonDeg`][i];
     return hz == null ? `el ${el.toFixed(2)}°` : `el ${el.toFixed(2)}° · horizon ${hz.toFixed(2)}° · clearance ${(el - hz >= 0 ? "+" : "") + (el - hz).toFixed(2)}°`;
   };
+  const elNow = (b) => s[`${b}ElevationDeg`][i];
+  const stat = (b, label) => `<div class="now-stat"><div class="v">${elNow(b).toFixed(1)}°</div><div class="l">${label}</div></div>`;
   $("now-sun").innerHTML = `<span class="big-icon sun ${sunUp ? "" : "off"}"></span><div>
     <div class="headline">${advanced ? `Sun: <span class="${sunUp ? "yes" : "no"}">${sunUp ? "visible" : "obstructed"}</span>` :
       sunUp ? `<span class="yes">The Sun is up</span>, so the solar panels make power` : `<span class="no">The Sun is hidden</span>, so the lander runs on batteries`}</div>
-    <div class="sub">${advanced ? `${clearance("sun")} · ${sunUp ? "set" : "rise"} in ${fmtDur(tSun)}` : later(tSun, sunUp ? "Sunset" : "Sunrise")}</div></div>`;
+    <div class="sub">${advanced ? `${clearance("sun")} · ${sunUp ? "set" : "rise"} in ${fmtDur(tSun)}` : later(tSun, sunUp ? "Sunset" : "Sunrise")}${powerLine(r)}</div>${advanced ? "" : sunNote(elNow("sun"), sunUp)}</div>${stat("sun", advanced ? "Sun elevation" : "Sun height")}`;
   $("now-earth").innerHTML = `<span class="big-icon earth ${earthUp ? "" : "off"}"></span><div>
     <div class="headline">${advanced ? `DTE: <span class="${earthUp ? "yes" : "no"}">${earthUp ? "line of sight" : "blocked"}</span>` :
       earthUp ? `<span class="yes">Earth is in view</span>, so we can talk to mission control` : `<span class="no">Earth is hidden</span>, so there's no direct contact`}</div>
-    <div class="sub">${advanced ? `${clearance("earth")} · ${earthUp ? "set" : "rise"} in ${fmtDur(tEarth)}` : later(tEarth, earthUp ? "Earth sets" : "Earth comes back")}</div></div>`;
+    <div class="sub">${advanced ? `${clearance("earth")} · ${earthUp ? "set" : "rise"} in ${fmtDur(tEarth)}` : later(tEarth, earthUp ? "Earth sets" : "Earth comes back")}</div></div>${stat("earth", advanced ? "Earth elevation" : "Earth height")}`;
 
-  drawSky($("sky"), r);
+  drawSkyView(r);
   drawTimeline($("timeline"), [{ r, name: null }]);
+  if (state.power.has(state.focus)) drawPower($("power-chart"), state.power.get(state.focus));
 }
 
 function metric(label, value, { infoKey, bar, color, unit } = {}) {
@@ -311,8 +614,27 @@ function renderNumbers(r) {
   h += `<div class="group-label">${advanced ? "Illumination" : "Sunlight"}</div>`;
   h += metric(advanced ? "Sun visible" : "Sunlight", pctAdv(su.percentOfMission), { infoKey: "sun", bar: su.percentOfMission, color: SUN, unit: advanced ? "" : "of the mission" });
   h += metric(advanced ? "Longest darkness" : "Longest night", fmtDur(su.longestGapSeconds), { infoKey: "dark" });
+  const ss = sunStats(r);
+  h += metric(advanced ? "Mean solar elevation (visible)" : "Average Sun height", ss ? `${ss.mean.toFixed(1)}°` : "—", { infoKey: "sunEl" });
+  if (ss) h += compact(advanced ? "Elevation range (visible)" : "Lowest to highest", `${ss.min.toFixed(1)}° to ${ss.max.toFixed(1)}°`);
   h += `<div class="group-label">${advanced ? "Combined" : "Best working time"}</div>`;
   h += metric(advanced ? "Sun ∩ DTE" : "Sun and Earth together", pctAdv(b.percentOfMission), { infoKey: "both", bar: b.percentOfMission, color: BOTH, unit: advanced ? "" : "of the mission" });
+  const p = state.power.get(state.focus);
+  h += `<div class="group-label">Solar power</div>`;
+  if (p === undefined) h += `<p class="help">Working it out…</p>`;
+  else if (p === null) h += `<p class="help">${advanced ? "Power model P0 covers CR1/SR1 only." : "Only available for the two main landing spots."}</p>`;
+  else if (p.error) h += `<p class="help">${esc(p.error)}</p>`;
+  else {
+    const ps = p.summary;
+    h += metric(advanced ? "Mission energy" : "Energy collected", fmtWh(ps.totalEnergyWh), { infoKey: "energy" });
+    h += metric(advanced ? "Mean power" : "Average power", fmtW(ps.meanPowerW), { infoKey: "meanPower" });
+    if (advanced) {
+      h += compact("Sampled peak", fmtW(ps.sampledPeakPowerW));
+      h += compact("Terrain obstruction loss", fmtWh(ps.knownObstructionLossWh));
+      h += compact("Data coverage", `${(ps.coverageFraction * 100).toFixed(1)}%`);
+      h += compact("Terrain-comparison eligible", ps.eligibleForTerrainComparison ? "yes" : "no");
+    }
+  }
   h += `<div class="group-label">${advanced ? "Site" : "The landing spot"}</div>`;
   h += metric(advanced ? "Surface elevation" : "Height", r.site.surfaceElevationM == null ? "—" : `${Math.round(r.site.surfaceElevationM).toLocaleString()} m`, { infoKey: "height" });
   h += compact(advanced ? "Coordinates" : "Where", where(site));
@@ -359,9 +681,8 @@ function drawSky(canvas, r) {
   const s = r.series, i = state.tIdx, mask = r.horizon.elevationDeg, step = r.horizon.azimuthStepDeg;
   const padL = advanced ? 36 : 0, padB = 22, pw = W - padL, ph = H - padB;
   const known = mask.filter((v) => v != null);
-  const lo = Math.max(-12, Math.min(-2, Math.min(...known) - 1));
-  const above = (a) => a.filter((v) => v >= lo);
-  const hi = Math.min(90, Math.max(2, ...above(s.sunElevationDeg), ...above(s.earthElevationDeg), ...known) + 2.5);
+  const lo = Math.max(-90, Math.min(-2, Math.min(...known) - 1, ...s.sunElevationDeg, ...s.earthElevationDeg) - 1);
+  const hi = Math.min(90, Math.max(2, ...s.sunElevationDeg, ...s.earthElevationDeg, ...known) + 2.5);
   const X = (az) => padL + (az / 360) * pw, Y = (el) => ((hi - el) / (hi - lo)) * ph;
   const sunUp = s.sunVisible[i];
 
@@ -507,6 +828,7 @@ window.addEventListener("mouseup", () => { dragging = null; });
 function renderCompare() {
   const ids = state.compare.filter((id) => state.results.has(id));
   const rs = ids.map((id) => state.results.get(id));
+  const pOf = (r) => state.power.get(ids[rs.indexOf(r)]);
   const best = (get, dir) => {
     const v = rs.filter((r) => r.site.rankable).map(get).filter((x) => x != null);
     if (v.length < 2 || new Set(v).size < 2) return null;
@@ -518,12 +840,16 @@ function renderCompare() {
     [advanced ? "Sun visible" : "Sunlight", (r) => r.sun.summary.percentOfMission, pctAdv, "max", SUN, "sun"],
     [advanced ? "Longest darkness" : "Longest night", (r) => r.sun.summary.longestGapSeconds, fmtDur, "min", null, "dark"],
     [advanced ? "Sun ∩ DTE" : "Sun and Earth together", (r) => r.sunAndCommunication.summary.percentOfMission, pctAdv, "max", BOTH, "both"],
+    [advanced ? "Mean solar elevation" : "Average Sun height", (r) => sunStats(r)?.mean ?? null, (v) => (v == null ? "—" : `${v.toFixed(1)}°`), "max", null, "sunEl"],
+    [advanced ? "Mission energy" : "Solar energy collected", (r) => pOf(r)?.summary?.totalEnergyWh ?? null, fmtWh, "max", null, "energy"],
+    [advanced ? "Mean power" : "Average solar power", (r) => pOf(r)?.summary?.meanPowerW ?? null, fmtW, "max", null, "meanPower"],
   ];
   const bests = rows.map(([, get, , dir]) => best(get, dir));
   $("compare-grid").innerHTML = ids.map((id, k) => {
     const r = rs[k], s = siteById(id);
     const tag = r.site.rankable ? "" : `<span class="warn-tag">${advanced ? `${r.site.terrainQuality} · unranked` : "rough map data"}</span>`;
-    return `<div class="site-card"><h3><span class="swatch" style="background:${colorOf(id)}"></span>${esc(s.name)} ${tag}</h3>
+    const v = verdictFor(id);
+    return `<div class="site-card"><h3><span class="swatch" style="background:${colorOf(id)}"></span>${esc(s.name)} ${v ? vbadge(v, true) : ""} ${tag}</h3>
       <div class="where">${where(s)}${r.site.surfaceElevationM != null ? ` · ${Math.round(r.site.surfaceElevationM).toLocaleString()} m high` : ""}</div>
       ${rows.map(([label, get, fmt, , color, infoKey], j) => {
         const v = get(r), isBest = r.site.rankable && v != null && v === bests[j];
@@ -766,7 +1092,10 @@ window.addEventListener("resize", renderAll);
   $("land-date").min = toDate(new Date(c.time.supportedStartUtc));
   $("land-date").max = toDate(new Date(new Date(c.time.supportedEndUtc).getTime() - DAY * 1000));
   $("antenna").value = state.antenna;
-  applyText(); renderSiteSelect(); syncDateInputs();
+  const qs = new URLSearchParams(location.search);
+  const site = qs.get("site"); if (site && siteById(site)) state.focus = site;
+  if (qs.get("t")) state.tIdx = Math.max(0, parseInt(qs.get("t"), 10) || 0);
+  applyText(); renderSiteSelect(); syncDateInputs(); renderNeedsBox(); renderPanelBox();
   showTab(location.hash.slice(1));
   refresh();
 })();

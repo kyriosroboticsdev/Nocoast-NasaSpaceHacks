@@ -77,3 +77,23 @@ src/dashboard/  website home page (dashboard); terrain.html + src/main.ts = Pers
 scripts/   fetch_data.py: DEMs, PGDA tiles, SPICE kernels
 tests/     ephemeris / terrain / communication tests
 ```
+
+## 3D sky view support (Overview tab)
+
+- `GET /api/local_terrain?latitudeDeg&longitudeEastDeg&halfExtentM=6000&n=241`: an `n x n` height grid on the site's
+  tangent plane (rows south to north, columns west to east), giving each point's height above the site's local
+  horizontal in metres, with Moon curvature included. Same sources as the horizons: PGDA 5 m, else LOLA 80/240 m.
+- `series.earthNorthPoleEnu` / `series.earthPrimeMeridianEnu` (extensions, not in contract v0.1): Earth's spin axis
+  and prime-meridian direction as local ENU unit vectors at each sample, so a viewer (web or Quest) can draw
+  Earth with the correct face towards the Moon. Checked against Skyfield's sub-Moon point (within 0.3°).
+
+## Solar power handoff (Person 3)
+
+- `GET /api/solar_input/{siteId}?startUtc&endUtc` returns the `solar-input` 0.1.0 envelope from Person 3's
+  `docs/solar/INPUT_CONTRACT.md` (branch `solar-integration`): 600 s samples, 60 s samples around every Sun
+  rise/set, and the exact end boundary. Each carries Sun az/el, observer-to-Sun range (AU) and the center-binary
+  terrain visibility. Sources are DE421 for any 2027 date and the contract-quality horizon.
+- `src/power/model.mjs` / `model.d.mts` are copied **unchanged** from `solar-integration`. The dashboard runs
+  `simulate()` in the browser with the user's panel settings.
+- Checked: Person 3's `validateScenario` accepts our input for CR1/SR1, with 100% coverage and terrain eligible.
+- The P0 model supports CR1/SR1 only, so custom map sites show no power estimate.

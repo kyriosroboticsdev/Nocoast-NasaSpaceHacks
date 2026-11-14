@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import analysis, polarmap
+from . import analysis, polarmap, terrain
 from .config import CONTRACT, ROOT, SITES, TIME, parse_utc
 
 app = FastAPI(title="Lunar Navigator: Sun, Earth & Communication")
@@ -63,6 +63,17 @@ def export(site_id: str, startUtc: str = TIME["defaultStartUtc"], endUtc: str = 
     return JSONResponse(r, headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
+@app.get("/api/solar_input/{site_id}")
+def solar_input(site_id: str, startUtc: str = TIME["defaultStartUtc"], endUtc: str = TIME["defaultEndUtc"]):
+    """Person 3 power-model input (`solar-input` 0.1.0) for a contract site, built from this backend's Sun data."""
+    s = _site(site_id)
+    start, end = _times(startUtc, endUtc)
+    try:
+        return analysis.solar_input(s, start, end)
+    except analysis.WindowError as e:
+        raise HTTPException(400, str(e)) from e
+
+
 @app.get("/api/sweep")
 def sweep(latitudeDeg: float = Query(..., ge=-90, le=90), longitudeEastDeg: float = Query(..., ge=-360, le=360),
           firstDayUtc: str = TIME["supportedStartUtc"], sweepDays: int = Query(90, ge=1, le=366),
@@ -74,6 +85,14 @@ def sweep(latitudeDeg: float = Query(..., ge=-90, le=90), longitudeEastDeg: floa
                                       antennaMinElevationDeg)
     except analysis.WindowError as e:
         raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/local_terrain")
+def local_terrain(latitudeDeg: float = Query(..., ge=-90, le=-60),
+                  longitudeEastDeg: float = Query(..., ge=-360, le=360),
+                  halfExtentM: float = Query(6000, ge=100, le=20000), n: int = Query(241, ge=17, le=321)):
+    """Height grid around a site (for the 3D sky view), from the same NASA terrain maps as the horizons."""
+    return terrain.local_grid(round(latitudeDeg, 6), round(longitudeEastDeg % 360.0, 6), halfExtentM, n)
 
 
 @app.get("/api/polar_map/meta")

@@ -237,3 +237,37 @@ def mask_at(elevation_deg: list, az_deg: np.ndarray) -> np.ndarray:
     i = np.clip(np.searchsorted(x, a, side="right") - 1, 0, N_AZ - 1)
     f = (a - x[i]) / AZ_STEP
     return y[i] * (1 - f) + y[i + 1] * f
+
+
+@lru_cache(maxsize=16)
+def local_grid(lat: float, lon: float, half_extent_m: float, n: int) -> dict:
+    """Terrain around a site for 3D viewers: an n x n grid on the site's tangent plane (east x north, metres),
+    giving each point's height above the site's local horizontal plane (Moon curvature included).
+
+    Row j runs south->north and column i west->east, both from -half_extent_m to +half_extent_m. Heights come
+    from the 5 m PGDA tiles where they exist, else the 80 m / 240 m LOLA maps; missing points are null.
+    """
+    from .ephem import enu_basis
+
+    east, north, up = enu_basis(lat, lon)
+    ax = np.linspace(-half_extent_m, half_extent_m, n)
+    e, nn = np.meshgrid(ax, ax)
+    d = np.hypot(e, nn)
+    delta = d / MOON_R_M
+    with np.errstate(invalid="ignore", divide="ignore"):
+        de, dn = np.where(d > 0, e / d, 0.0), np.where(d > 0, nn / d, 0.0)
+    p = (np.cos(delta)[..., None] * up
+         + np.sin(delta)[..., None] * (de[..., None] * east + dn[..., None] * north))
+    lat2 = np.degrees(np.arcsin(np.clip(p[..., 2], -1, 1)))
+    lon2 = np.degrees(np.arctan2(p[..., 1], p[..., 0])) % 360.0
+    h, fb = height_with_fallback(5.0, lat2, lon2)
+    h0, _ = site_height(lat, lon)
+    z = (MOON_R_M + h) * np.cos(delta) - (MOON_R_M + (h0 if h0 is not None else 0.0))
+    ok = ~np.isnan(z)
+    return {
+        "latitudeDeg": lat, "longitudeEastDeg": lon, "halfExtentM": half_extent_m, "n": n,
+        "siteElevationM": h0,
+        "heightsM": [None if not k else round(float(v), 2) for v, k in zip(z.ravel(), ok.ravel(), strict=True)],
+        "fine5mFraction": float(np.mean(ok & ~fb)), "missingFraction": float(np.mean(~ok)),
+        "rowOrder": "south-to-north", "columnOrder": "west-to-east",
+    }

@@ -185,3 +185,59 @@ table.adv th { color: var(--muted); font-weight: 600; }
 
 /* ---------- 3D terrain tab ---------- */
 .terrain-frame { width: 100%; height: 720px; border: 0; border-radius: 12px; margin-top: 12px; background: #0a111a; }
+
+/* ---------- 3D sky view ---------- */
+.sky-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.seg { display: inline-flex; background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.seg button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600;
+  padding: 5px 12px; border-radius: 7px; cursor: pointer; }
+.seg button.active { background: var(--accent); color: #0a0d14; }
+.tool-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.sky3d { position: relative; height: 440px; border-radius: 10px; overflow: hidden; background: #000; touch-action: none; }
+.sky3d canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.sky3d canvas:active { cursor: grabbing; }
+.sky3d-labels { position: absolute; inset: 0; pointer-events: none; }
+.sky3d-label { position: absolute; transform: translate(-50%, -100%); font-size: 12px; font-weight: 700;
+  white-space: nowrap; text-shadow: 0 1px 3px #000, 0 0 8px #000; }
+.sky3d-label.sun { color: var(--sun); } .sky3d-label.earth { color: var(--earth); }
+.sky3d-label.hidden { opacity: .75; font-style: italic; }
+.sky3d-label.compass { color: #c9d3e3; transform: translate(-50%, 0); font-size: 13px; }
+.sky3d-label.lander { color: #fff; }
+body.flat-sky .sky3d-only { display: none !important; }
+@media (max-width: 700px) { .sky3d { height: 340px; } }
+
+/* ---------- solar power ---------- */
+canvas.power-chart { width: 100%; height: 170px; display: block; cursor: pointer; }
+.panel-box { margin-top: 14px; padding-top: 4px; border-top: 1px solid var(--line); }
+.panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+.panel-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.panel-grid input, .panel-grid select { width: 100%; }
+.panel-box .btn { margin-top: 6px; }
+
+/* ---------- quick viability check ---------- */
+.verdict { display: flex; flex-direction: column; gap: 12px; }
+.verdict-head { display: flex; gap: 14px; align-items: center; }
+.verdict-head .headline { font-weight: 650; font-size: 16px; }
+.verdict-head .sub { color: var(--muted); font-size: 13px; }
+.vbadge { font-weight: 800; font-size: 15px; padding: 7px 14px; border-radius: 10px; letter-spacing: .04em; white-space: nowrap; }
+.vbadge.small { font-size: 11px; padding: 1px 8px; border-radius: 999px; margin-left: 6px; vertical-align: 2px; }
+.vbadge.go { background: var(--both); color: #0a0d14; }
+.vbadge.caution { background: #ffa94d; color: #0a0d14; }
+.vbadge.nogo { background: var(--bad); color: #0a0d14; }
+.vbadge.unknown { background: var(--card-2); color: var(--muted); border: 1px solid var(--line); }
+.checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.check { display: flex; gap: 10px; background: var(--card-2); border-radius: 10px; padding: 10px 12px; align-items: flex-start; }
+.check i { font-style: normal; font-weight: 800; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; flex: 0 0 auto; }
+.check.pass i { background: var(--both); color: #0a0d14; }
+.check.fail i { background: var(--bad); color: #0a0d14; }
+.check.unknown i { background: var(--line); color: var(--muted); }
+.check .l { font-weight: 600; font-size: 13px; }
+.check .v { color: var(--muted); font-size: 12px; }
+@media (max-width: 700px) { .checks { grid-template-columns: 1fr; } .verdict-head { flex-direction: column; align-items: flex-start; } }
+
+/* ---------- Sun / Earth height in the "right now" card ---------- */
+.now-stat { margin-left: auto; text-align: right; padding-left: 10px; }
+.now-stat .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.now-stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.now-row .note { color: var(--muted); font-size: 12px; margin-top: 3px; }

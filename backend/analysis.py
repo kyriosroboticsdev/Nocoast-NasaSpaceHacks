@@ -165,6 +165,9 @@ def analyze(lat: float, lon: float, start: datetime, end: datetime, antenna_min:
             "earthHorizonDeg": r(base["earth_hz"]), "earthVisible": vis(base["earth_vis"]),
             "sunAngularRadiusDeg": r(base["sun_r"]), "earthAngularRadiusDeg": r(base["earth_r"]),
             "sunEnu": [r(v, 6) for v in base["sun_enu"]], "earthEnu": [r(v, 6) for v in base["earth_enu"]],
+            # extension (not in contract v0.1): Earth's north pole and prime meridian as ENU unit vectors
+            "earthNorthPoleEnu": [r(v, 4) for v in base["earth_pole_enu"]],
+            "earthPrimeMeridianEnu": [r(v, 4) for v in base["earth_prime_enu"]],
         },
         "sun": {"sunlitWindows": sun["windows"], "darkPeriods": sun["gaps"], "unknown": sun["unknown"],
                 "summary": sun["summary"]},
@@ -173,6 +176,67 @@ def analyze(lat: float, lon: float, start: datetime, end: datetime, antenna_min:
         "sunAndCommunication": {"windows": both["windows"], "unknown": both["unknown"],
                                 "summary": both["summary"]},
         "events": sorted(sun["events"] + comm["events"], key=lambda ev: ev["timeUtc"]),
+    }
+
+
+# ----------------------------------------------------------------------------- Person 3 solar handoff
+AU_KM = 149_597_870.7
+SOLAR_SCHEMA = "0.1.0"
+
+
+def solar_input(site: dict, start: datetime, end: datetime, profile: dict | None = None) -> dict:
+    """`solar-input` envelope for Person 3's power model (docs/solar/INPUT_CONTRACT.md on the solar branch).
+
+    Samples: every 600 s base sample, plus 60 s samples inside each bracket where Sun visibility changes (so each
+    sunrise/sunset is explicit to 60 s), plus the exact mission end boundary. Each sample carries the Sun's
+    topocentric az/el, observer-to-Sun range in AU, and the binary terrain visibility of the interval that follows.
+    """
+    check_window(start, end)
+    lat, lon = site["latitudeDeg"], site["longitudeEastDeg"] % 360.0
+    profile = profile or terrain.horizon_profile(lat, lon)
+    base_t = time_grid(start, end, BASE_STEP_S)
+    base = evaluate(lat, lon, base_t, profile, ANTENNA_MIN)
+    flips = np.nonzero(np.diff(base["sun_vis"]) != 0)[0]
+    k_per = int(BASE_STEP_S // REFINE_STEP_S)
+    ref_t = [base_t[i] + timedelta(seconds=REFINE_STEP_S * k) for i in flips for k in range(1, k_per)]
+    times = sorted(base_t + ref_t + [end])
+    e = evaluate(lat, lon, times, profile, ANTENNA_MIN)
+    samples = []
+    for j, t in enumerate(times):
+        az = round(float(e["sun_az"][j]), 6) % 360.0
+        vis = int(e["sun_vis"][j])
+        samples.append({
+            "timeUtc": fmt_utc(t),
+            "sun": {"azimuthDeg": 0.0 if az >= 360.0 else az, "elevationDeg": round(float(e["sun_el"][j]), 6),
+                    "rangeAu": round(float(e["sun_dist_km"][j]) / AU_KM, 12)},
+            "solarVisibleFraction": None if vis == UNKNOWN else float(vis),
+            "quality": {"status": "missing", "reason": "horizon_missing"} if vis == UNKNOWN
+            else {"status": "valid", "reason": None},
+        })
+    hz_id = f"person2-horizon:{site['siteId']}:{profile.get('terrainQuality')}:{profile.get('profileHash', 'computed')}"
+    art = f"person2:{site['siteId']}:{fmt_utc(start)}:{fmt_utc(end)}"
+    return {
+        "schemaVersion": SOLAR_SCHEMA, "artifactType": "solar-input", "artifactId": art, "scenarioId": art,
+        "generatedAtUtc": fmt_utc(datetime.now(tz=start.tzinfo).replace(microsecond=0)),
+        "label": f"{site.get('displayName', site['siteId'])} solar input (Person 2 backend)",
+        "frameId": FRAME_ID, "siteId": site["siteId"],
+        "site": {"latitudeDeg": site["latitudeDeg"], "longitudeEastDeg": site["longitudeEastDeg"],
+                 "surfaceElevationM": profile.get("siteElevationM", site.get("surfaceElevationM")),
+                 "referenceRadiusM": int(CONTRACT["referenceRadiusM"])},
+        "observerHeightAboveGroundM": 2,
+        "time": {"startUtc": fmt_utc(start), "endUtc": fmt_utc(end), "baseStepSeconds": int(BASE_STEP_S),
+                 "visibilityInterpolation": "previous-sample-hold"},
+        "provenance": {
+            "ephemeris": {"provider": "Skyfield + JPL DE421 (Person 2 backend)",
+                          "kernels": ["de421.bsp", "moon_pa_de421_1900-2050.bpc", "moon_080317.tf", "pck00010.tpc"],
+                          "validation": "checked against JPL Horizons coord@301 (tests/test_ephemeris.py)"},
+            "visibility": {"provider": "Person 2 backend analysis.evaluate", "mode": "terrain",
+                           "sunModel": "center-binary-v1", "horizonArtifactId": hz_id,
+                           "horizonObserverHeightAboveGroundM": 2,
+                           "terrainQuality": profile.get("terrainQuality"),
+                           "timing": "600 s base samples; 60 s samples in every bracket where Sun visibility changes"},
+        },
+        "samples": samples,
     }
 
 

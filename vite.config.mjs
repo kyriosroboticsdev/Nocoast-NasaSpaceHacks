@@ -1,16 +1,17 @@
 import { defineConfig } from 'vite';
-import { existsSync } from 'node:fs';
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { fromFile, fromUrl } from 'geotiff';
 
 const mosaicUrl = 'https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/87S/ldem_87s_5mpp.tif';
 const localMosaic = '.cache/polar-full.tif';
-const windowCache = '.cache/polar-windows';
 const localOnly = process.env.POLAR_LOCAL_ONLY === '1';
-let source;
-async function openMosaic() {
-  const local = existsSync(localMosaic);
-  if (localOnly && !local) throw new Error(`Local terrain mosaic is missing at ${localMosaic}`);
+const sources = new Map();
+async function openMosaic(mode) {
+  const local = mode === 'local';
+  if (local) {
+    const file = await stat(localMosaic);
+    if (file.size !== 3465285714) throw new Error('Local LOLA mosaic download is incomplete');
+  }
   const tiff = local
     ? await fromFile(localMosaic)
     : await fromUrl(mosaicUrl, {blockSize: 65536, cacheSize: 256, maxRanges: 0});
@@ -28,7 +29,7 @@ async function openMosaic() {
         keys.ProjFalseNorthingGeoKey !== 0) {
       throw new Error('Unexpected projection or dimensions for the polar mosaic');
     }
-    return {image, tiff, local};
+    return image;
   } catch (error) {
     await tiff.close();
     throw error;
@@ -39,17 +40,23 @@ let running = 0;
 async function elevationWindow(req, res, next) {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname !== '/terrain/window') return next();
+  const mode = url.searchParams.get('source') ?? 'local';
   const numbers = ['column', 'row', 'stride'].map(name => {
     const value = url.searchParams.get(name);
     return value !== null && /^\d+$/.test(value) ? Number(value) : NaN;
   });
   const [column, row, stride] = numbers;
-  const size = 257;
+  const size = url.searchParams.has('size') ? Number(url.searchParams.get('size')) : 257;
   const extent = (size - 1) * stride + 1;
-  if (req.method !== 'GET' || ![1, 2, 4].includes(stride) ||
+  if (req.method !== 'GET' || !['local', 'stream'].includes(mode) ||
+      ![129, 257].includes(size) || ![1, 2, 4, 8].includes(stride) || extent > 1025 ||
       !Number.isInteger(column) || !Number.isInteger(row) ||
       column + extent > 40000 || row + extent > 40000) {
     res.writeHead(400).end('Invalid terrain window');
+    return;
+  }
+  if (localOnly && mode === 'stream') {
+    res.writeHead(403).end('NASA streaming is disabled on this server');
     return;
   }
   if (running >= 2) {
@@ -60,21 +67,13 @@ async function elevationWindow(req, res, next) {
   res.once('close', () => abort.abort());
   running++;
   try {
-    const cachedPath = `${windowCache}/${column}-${row}-${stride}.bin`;
-    const cached = await readFile(cachedPath).catch(error => {
-      if (error.code === 'ENOENT') return undefined;
-      throw error;
-    });
-    if (cached?.length === size * size * 4) {
-      res.writeHead(200, {
-        'Content-Type': 'application/octet-stream',
-        'Cache-Control': 'public, max-age=86400',
-        'X-Terrain-Source': 'local-cache',
-      }).end(cached);
-      return;
+    if (!sources.has(mode)) {
+      sources.set(mode, openMosaic(mode).catch(error => {
+        sources.delete(mode);
+        throw error;
+      }));
     }
-    source ??= openMosaic().catch(error => { source = undefined; throw error; });
-    const {image, local} = await source;
+    const image = await sources.get(mode);
     abort.signal.throwIfAborted();
     const raster = await image.readRasters({
       window: [column, row, column + extent, row + extent],
@@ -88,19 +87,17 @@ async function elevationWindow(req, res, next) {
         result.writeFloatLE(height, (y * size + x) * 4);
       }
     }
-    if (!local) {
-      await mkdir(windowCache, {recursive: true});
-      await writeFile(cachedPath, result);
-    }
     res.writeHead(200, {
       'Content-Type': 'application/octet-stream',
       'Cache-Control': 'public, max-age=86400',
-      'X-Terrain-Source': local ? 'local' : 'remote',
+      'X-Terrain-Source': mode === 'local' ? 'local' : 'remote',
     }).end(result);
   } catch (error) {
     if (!res.destroyed) {
       console.error('Polar terrain read failed:', error);
-      res.writeHead(502).end('Could not read the NASA terrain mosaic');
+      res.writeHead(mode === 'local' ? 503 : 502).end(mode === 'local'
+        ? 'Could not read .cache/polar-full.tif'
+        : 'Could not stream the NASA terrain mosaic');
     }
   } finally {
     running--;

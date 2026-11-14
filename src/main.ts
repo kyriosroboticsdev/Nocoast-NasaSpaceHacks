@@ -9,9 +9,12 @@ const element = <E extends HTMLElement = HTMLElement>(id: string) => document.ge
 const status = element('status');
 const selector = element<HTMLSelectElement>('site');
 const layer = element<HTMLSelectElement>('layer');
+const terrainSource = element<HTMLSelectElement>('terrain-source');
+const lockResolution = element<HTMLInputElement>('lock-resolution');
 const focus = element<HTMLButtonElement>('focus');
 const reset = element<HTMLButtonElement>('reset');
-const size = 257;
+const size = 129;
+const maxTiles = 36;
 const moonCenter = new T.Vector3(0,-radius,0);
 
 type Site = {name: string; latitudeDeg: number; longitudeEastDeg: number; surfaceElevationM: number};
@@ -32,15 +35,15 @@ function projection(point: T.Vector3) {
 
 function heightAt(grid: Grid, x: number, y: number) {
   const u = (x-grid.x)/grid.spacing, v = (grid.y-y)/grid.spacing;
-  const i = Math.floor(u), j = Math.floor(v);
-  if (i < 0 || j < 0 || i >= grid.width-1 || j >= grid.width-1) return NaN;
+  if (u < 0 || v < 0 || u > grid.width-1 || v > grid.width-1) return NaN;
+  const i = Math.min(grid.width-2,Math.floor(u)), j = Math.min(grid.width-2,Math.floor(v));
   const a = grid.values[j*grid.width+i], b = grid.values[j*grid.width+i+1];
   const c = grid.values[(j+1)*grid.width+i], d = grid.values[(j+1)*grid.width+i+1];
   const du = u-i, dv = v-j;
   return du+dv <= 1 ? a+(b-a)*du+(c-a)*dv : d+(c-d)*(1-du)+(b-d)*(1-dv);
 }
 
-function meshFor(grid: Grid, material: T.Material, parent?: Grid) {
+function meshFor(grid: Grid, material: T.Material) {
   const {values, width, spacing} = grid;
   const positions = new Float32Array(values.length*3);
   const colors = new Float32Array(positions.length);
@@ -57,17 +60,10 @@ function meshFor(grid: Grid, material: T.Material, parent?: Grid) {
     uv[idx*2] = x/radius;
     uv[idx*2+1] = y/radius;
     const h = values[idx];
-    let renderHeight = h;
-    // Fade the outer margin into the overview to keep the join continuous.
-    if (parent) {
-      const coarse = heightAt(parent, x, y);
-      const weight = T.MathUtils.smoothstep(Math.min(i,j,width-1-i,width-1-j), 0, 24);
-      if (Number.isFinite(coarse)) renderHeight = T.MathUtils.lerp(coarse, h, weight);
-    }
     const distanceToEdge = capRadius-Math.hypot(x,y);
-    if (distanceToEdge < 0 || !Number.isFinite(renderHeight)) continue;
+    if (distanceToEdge < 0 || !Number.isFinite(h)) continue;
     // Bring the outer two kilometers back to the reference sphere at the globe join.
-    renderHeight *= T.MathUtils.smoothstep(distanceToEdge, 650, 2650);
+    const renderHeight = h*T.MathUtils.smoothstep(distanceToEdge,650,2650);
     valid[idx] = 1;
     world(x,y,renderHeight).toArray(positions, idx*3);
     const fraction = T.MathUtils.clamp((h+8000)/15000, 0, 1);
@@ -165,39 +161,53 @@ async function start() {
     elevation: new T.MeshBasicMaterial({vertexColors:true}),
     mesh: new T.MeshBasicMaterial({color:0x89b6ba,wireframe:true}),
   };
-  const cutout = {value:new T.Vector4()};
+  const cutouts = Array.from({length:2*maxTiles},()=>new T.Vector4());
+  const cutout = {value:cutouts};
+  const replacementCount = {value:0};
   const cap = {value:capRadius};
-  const overviewMaterials = Object.fromEntries(Object.entries(materials).map(([key, material]) => {
+  function clippedMaterials(fallback: boolean) {
+    return Object.fromEntries(Object.entries(materials).map(([key, material]) => {
     const copy = material.clone();
-    copy.customProgramCacheKey = () => `polar-overview-${key}`;
+    copy.customProgramCacheKey = () => `polar-clipped-${key}-${fallback}`;
     copy.onBeforeCompile = shader => {
       if (key === 'relief') applyPolarImagery(shader);
       shader.uniforms.detailBounds = cutout;
+      shader.uniforms.replacementCount = replacementCount;
       shader.uniforms.capRadius = cap;
       shader.vertexShader = 'attribute vec2 projectedXY; varying vec2 polarXY;\n' + shader.vertexShader.replace('#include <begin_vertex>', `
         #include <begin_vertex>
         polarXY = projectedXY;
       `);
-      shader.fragmentShader = 'uniform vec4 detailBounds; uniform float capRadius; varying vec2 polarXY;\n' +
+      shader.fragmentShader = `uniform vec4 detailBounds[${cutouts.length}]; uniform int replacementCount; uniform float capRadius; varying vec2 polarXY;\n` +
         shader.fragmentShader.replace('#include <clipping_planes_fragment>', `
           #include <clipping_planes_fragment>
           if (length(polarXY) > capRadius) discard;
-          if (polarXY.x > detailBounds.x && polarXY.x < detailBounds.z &&
-              polarXY.y > detailBounds.y && polarXY.y < detailBounds.w) discard;
+          for (int i = 0; i < ${fallback ? 'replacementCount' : cutouts.length}; i++) {
+            vec4 bounds = detailBounds[i];
+            if (polarXY.x >= bounds.x && polarXY.x <= bounds.z &&
+                polarXY.y >= bounds.y && polarXY.y <= bounds.w) discard;
+          }
         `);
     };
     return [key,copy];
-  })) as typeof materials;
+    })) as typeof materials;
+  }
+  const overviewMaterials = clippedMaterials(false);
+  const fallbackMaterials = clippedMaterials(true);
   const backdrop = meshFor(overview, overviewMaterials.relief);
   scene.add(backdrop);
-  let detail: T.Mesh<T.BufferGeometry, T.Material> | undefined;
-  let currentGrid: Grid | undefined;
-  let currentKey = '';
-  let pendingKey = '';
-  let lastFailure = '';
-  let retryAt = 0;
-  let request: AbortController | undefined;
+  type Tile = {grid: Grid; mesh: T.Mesh; bounds: T.Vector4};
+  const tiles = new Map<string,Tile>();
+  const pending = new Map<string,AbortController>();
+  const retryAt = new Map<string,number>();
+  let visibleKeys = new Set<string>();
+  let fallbackKeys = new Set<string>();
+  let requestedKeys = new Set<string>();
   let nextUpdate = 0;
+  const footprintRay = new T.Raycaster();
+  const footprintPoint = new T.Vector3();
+  const footprintSphere = new T.Sphere(moonCenter,radius);
+  const terrainEnvelope = new T.Sphere(moonCenter,radius+10000);
   function createControls() {
     const orbit = new OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true;
@@ -214,94 +224,196 @@ async function start() {
   function setLayer() {
     const key = layer.value as keyof typeof materials;
     backdrop.material = overviewMaterials[key];
-    if (detail) detail.material = materials[key];
+    syncTiles();
     element('legend').hidden = key !== 'elevation';
   }
   layer.onchange = setLayer;
   setLayer();
 
-  function removeDetail() {
-    if (detail) {
-      scene.remove(detail);
-      detail.geometry.dispose();
-      detail = undefined;
+  function syncTiles() {
+    backdrop.visible = !lockResolution.checked;
+    let index = 0;
+    const layerKey = layer.value as keyof typeof materials;
+    for (const key of visibleKeys) cutouts[index++].copy(tiles.get(key)!.bounds);
+    replacementCount.value = index;
+    for (const [key,tile] of tiles) {
+      const replacement = visibleKeys.has(key);
+      tile.mesh.visible = replacement || fallbackKeys.has(key);
+      tile.mesh.material = replacement ? materials[layerKey] : fallbackMaterials[layerKey];
+      if (tile.mesh.visible && !replacement) cutouts[index++].copy(tile.bounds);
     }
-    currentKey = '';
-    currentGrid = undefined;
-    cutout.value.set(0,0,0,0);
+    while (index < cutouts.length) cutouts[index++].set(1,1,0,0);
   }
-  function showDetail(grid: Grid, key: string) {
-    removeDetail();
-    detail = meshFor(grid, materials.relief, overview);
-    currentGrid = grid;
-    currentKey = key;
-    const span = (size-1)*grid.spacing;
-    // Only open the overview underneath a fully valid window.
-    if (grid.values.every(Number.isFinite) &&
-        [grid.x,grid.x+span].every(x=>Math.hypot(x,grid.y) < capRadius && Math.hypot(x,grid.y-span) < capRadius)) {
-      cutout.value.set(grid.x+3,grid.y-span+3,grid.x+span-3,grid.y-3);
+
+  function updateDetail() {
+    const distance = camera.position.distanceTo(controls.target);
+    const overviewText = '87°S–90°S · 320 M OVERVIEW';
+    const nativeOnly = lockResolution.checked;
+    const [targetX,targetY] = projection(controls.target);
+    if ((!nativeOnly && distance > 26000) ||
+        (nativeOnly && (controls.target.distanceTo(moonCenter) < radius/2 || Math.hypot(targetX,targetY) > capRadius))) {
+      visibleKeys.clear();
+      fallbackKeys.clear();
+      requestedKeys.clear();
+      for (const controller of pending.values()) controller.abort();
+      syncTiles();
+      element('mode-label').textContent = nativeOnly ? '5 M ONLY · SELECT THE POLAR CAP' : overviewText;
+      status.textContent = '';
+      return;
     }
-    scene.add(detail);
-    setLayer();
-    if (!flight && focusedPoint && controls.target.distanceTo(focusedPoint.target)<1) {
+
+    camera.updateMatrixWorld();
+    const points: (readonly [number,number])[] = [[targetX,targetY]];
+    // At close range the reference sphere can sit kilometers below the
+    // visible ground. Estimate the footprint at the tracked terrain height.
+    const elevation = groundHeight(targetX,targetY);
+    footprintSphere.radius = radius + (Number.isFinite(elevation)
+      ? elevation
+      : controls.target.distanceTo(moonCenter)-radius);
+    let grazing = false;
+    for (const v of [-1,-.5,0,.5,1]) for (const u of [-1,-.5,0,.5,1]) {
+      footprintRay.setFromCamera(new T.Vector2(u,v),camera);
+      if (footprintRay.ray.intersectSphere(footprintSphere,footprintPoint)) {
+        points.push(projection(footprintPoint));
+        if (footprintPoint.distanceTo(camera.position) > distance*4+4000) grazing = true;
+      } else if (footprintRay.ray.intersectsSphere(terrainEnvelope)) {
+        grazing = true;
+      }
+    }
+    // Preserve native detail around the target during a close grazing view.
+    // Rays near the horizon can otherwise make a nearby footprint span the cap.
+    if ((nativeOnly || (grazing && distance < 1000)) && Math.hypot(targetX,targetY) <= capRadius) {
+      const localRange = nativeOnly ? 6*(size-1)*5 : Math.max(distance,320);
+      const xs = points.map(([x])=>x);
+      const ys = points.map(([,y])=>y);
+      points.length = 1;
+      points.push(
+        [Math.max(targetX-localRange,Math.min(...xs)-320),Math.max(targetY-localRange,Math.min(...ys)-320)],
+        [Math.min(targetX+localRange,Math.max(...xs)+320),Math.min(targetY+localRange,Math.max(...ys)+320)],
+      );
+      grazing = false;
+    }
+    const xs = points.map(([x])=>x), ys = points.map(([,y])=>y);
+    const [centerX,centerY] = points[0];
+    const padding = 350;
+    const minX = Math.max(-capRadius,Math.min(...xs)-padding);
+    const maxX = Math.min(capRadius,Math.max(...xs)+padding);
+    const minY = Math.max(-capRadius,Math.min(...ys)-padding);
+    const maxY = Math.min(capRadius,Math.max(...ys)+padding);
+    let stride = nativeOnly || distance < 4200 ? 1 : distance < 8500 ? 2 : distance < 15000 ? 4 : 8;
+    let candidates: {column:number; row:number; key:string; distance:number}[] = [];
+    const source = terrainSource.value;
+    while (!grazing) {
+      const span = (size-1)*stride;
+      candidates = [];
+      for (let row=Math.floor((100000-maxY)/5/span)*span; row<=(100000-minY)/5; row+=span) {
+        for (let column=Math.floor((minX+100000)/5/span)*span; column<=(maxX+100000)/5; column+=span) {
+          const x=-100000+(column+.5)*5, y=100000-(row+.5)*5, edge=5*span;
+          if (Math.hypot(T.MathUtils.clamp(0,x,x+edge),T.MathUtils.clamp(0,y-edge,y)) > capRadius) continue;
+          candidates.push({column,row,key:`${source}/${column}/${row}/${stride}`,
+            distance:Math.hypot(x+edge/2-centerX,y-edge/2-centerY)});
+        }
+      }
+      if (nativeOnly || candidates.length <= maxTiles || stride === 8) break;
+      stride *= 2;
+    }
+    candidates.sort((a,b)=>a.distance-b.distance);
+    // At wide grazing angles, use the overview for the entire view if even
+    // the coarsest detail level would exceed the tile budget.
+    const limited = nativeOnly && candidates.length > maxTiles;
+    if (limited) candidates = candidates.slice(0,maxTiles);
+    else if (candidates.length > maxTiles) candidates = [];
+    requestedKeys = new Set(candidates.map(tile=>tile.key));
+    const ready = new Set(candidates.filter(tile=>tiles.has(tile.key)).map(tile=>tile.key));
+    const wasShowingDetail = visibleKeys.size > 0;
+    if (!candidates.length || ready.size === candidates.length) {
+      fallbackKeys.clear();
+    } else if ([...visibleKeys].some(key=>!requestedKeys.has(key))) {
+      fallbackKeys = visibleKeys;
+    }
+    for (const key of ready) fallbackKeys.delete(key);
+    visibleKeys = ready;
+    syncTiles();
+    if (ready.size && !wasShowingDetail && focusedPoint && controls.target.distanceTo(focusedPoint.target)<1) {
       const {x,y} = focusedPoint;
-      const h = groundHeight(x,y);
-      if (Number.isFinite(h)) {
-        const target = world(x,y,h);
+      const target = world(x,y,groundHeight(x,y));
+      if (Number.isFinite(target.y)) {
         camera.position.add(target.clone().sub(controls.target));
         controls.target.copy(target);
         focusedPoint.target.copy(target);
         controls.update();
       }
     }
-  }
-
-  function updateDetail() {
-    const distance = camera.position.distanceTo(controls.target);
-    const [x,y] = projection(controls.target);
-    if (distance > 6300 || Math.hypot(x,y) > capRadius) {
-      request?.abort();
-      removeDetail();
-      element('mode-label').textContent = '87°S–90°S · 320 M OVERVIEW';
-      status.textContent = '';
-      return;
+    for (const [key,controller] of pending) {
+      if (!requestedKeys.has(key)) controller.abort();
     }
-    const stride = distance < 1000 ? 1 : distance < 2300 ? 2 : 4;
-    const span = 256 * stride, step = 64 * stride;
-    const column = Math.round(((x+100000)/5-span/2)/step)*step;
-    const row = Math.round(((100000-y)/5-span/2)/step)*step;
-    const key = `${column}/${row}/${stride}`;
-    if (key === currentKey) {
-      request?.abort();
-      status.textContent = '';
-      return;
+    const shown = tiles.get(visibleKeys.values().next().value ?? fallbackKeys.values().next().value ?? '');
+    element('mode-label').textContent = shown
+      ? ready.size < candidates.length
+        ? `UPDATING TERRAIN · ${ready.size}/${candidates.length} TILES READY`
+        : `${shown.grid.spacing} M TERRAIN · ${limited ? 'VIEW CENTER' : `${visibleKeys.size} TILES`}`
+      : nativeOnly ? '5 M ONLY · LOADING TILES' : overviewText;
+    if (!candidates.length || ready.size === candidates.length) status.textContent = '';
+    const requests = candidates.filter(({key})=>!tiles.has(key) && !pending.has(key) &&
+      (retryAt.get(key) ?? 0) <= performance.now());
+    for (const {column,row,key} of requests.slice(0,Math.max(0,2-pending.size))) {
+      const spacing = 5*stride;
+      const controller = new AbortController();
+      pending.set(key,controller);
+      status.textContent = `Loading ${spacing} m terrain from ${source === 'local' ? 'disk' : 'NASA'}…`;
+      const params = new URLSearchParams({column:String(column),row:String(row),stride:String(stride),size:String(size),source});
+      void fetch(base+`terrain/window?${params}`,{signal:controller.signal})
+        .then(async response => {
+          if (!response.ok) throw new Error(await response.text());
+          const data = await response.arrayBuffer();
+          if (data.byteLength !== size*size*4) throw new Error('Unexpected terrain tile');
+          if (controller.signal.aborted) return;
+          const grid = {x:-100000+(column+.5)*5,y:100000-(row+.5)*5,width:size,
+            spacing,values:new Float32Array(data)};
+          const mesh = meshFor(grid,materials[layer.value as keyof typeof materials]);
+          const span = (size-1)*spacing;
+          const bounds = grid.values.every(Number.isFinite)
+            ? new T.Vector4(grid.x,grid.y-span,grid.x+span,grid.y)
+            : new T.Vector4(1,1,0,0);
+          tiles.set(key,{grid,mesh,bounds});
+          mesh.visible = false;
+          scene.add(mesh);
+          retryAt.delete(key);
+          for (const [oldKey,old] of tiles) {
+            if (tiles.size <= 54) break;
+            if (requestedKeys.has(oldKey) || visibleKeys.has(oldKey) || fallbackKeys.has(oldKey)) continue;
+            scene.remove(old.mesh);
+            old.mesh.geometry.dispose();
+            tiles.delete(oldKey);
+          }
+        }).catch((error:unknown) => {
+          if (controller.signal.aborted) return;
+          retryAt.set(key,performance.now()+5000);
+          status.textContent = error instanceof Error ? error.message : 'Detailed terrain unavailable';
+        }).finally(() => {
+          pending.delete(key);
+          nextUpdate = 0;
+        });
     }
-    if (key === pendingKey || (key === lastFailure && performance.now() < retryAt)) return;
-    request?.abort();
-    const controller = new AbortController();
-    request = controller;
-    pendingKey = key;
-    status.textContent = `Loading ${5*stride} m terrain…`;
-    const params = new URLSearchParams({column:String(column),row:String(row),stride:String(stride)});
-    const cachedSite = stride === 1 && (key === '17664/22272/1' || key === '19328/21120/1');
-    const path = cachedSite ? `terrain/focus/${column}-${row}.bin` : `terrain/window?${params}`;
-    void fetch(base+path,{signal:controller.signal})
-      .then(async response => {
-        if (!response.ok) throw new Error(String(response.status));
-        const data = await response.arrayBuffer();
-        if (data.byteLength !== size*size*4) throw new Error('Unexpected terrain window');
-        if (controller.signal.aborted) return;
-        showDetail({x:-100000+(column+.5)*5,y:100000-(row+.5)*5,width:size,
-          spacing:5*stride,values:new Float32Array(data)},key);
-        element('mode-label').textContent = `${5*stride} M TERRAIN NEAR VIEW CENTER`;
-        status.textContent = '';
-      }).catch(() => {
-        if (controller.signal.aborted) return;
-        lastFailure = key;
-        retryAt = performance.now()+5000;
-        status.textContent = 'Detailed terrain is temporarily unavailable. Retrying…';
-      }).finally(() => {if (request === controller) pendingKey = '';});
   }
+  terrainSource.onchange = () => {
+    for (const request of pending.values()) request.abort();
+    requestedKeys.clear();
+    retryAt.clear();
+    nextUpdate = 0;
+  };
+  lockResolution.onchange = () => {
+    if (lockResolution.checked) {
+      visibleKeys = new Set([...visibleKeys].filter(key=>tiles.get(key)?.grid.spacing === 5));
+      fallbackKeys = new Set([...fallbackKeys].filter(key=>tiles.get(key)?.grid.spacing === 5));
+      for (const [key,controller] of pending) {
+        if (!key.endsWith('/1')) controller.abort();
+      }
+      if (controls.target.distanceTo(moonCenter) < radius/2) reset.click();
+    }
+    syncTiles();
+    nextUpdate = 0;
+  };
   const sites = siteBody.sites.map(site => {
     const rho = 2*radius*Math.tan(T.MathUtils.degToRad((site.latitudeDeg+90)/2));
     const lon = T.MathUtils.degToRad(site.longitudeEastDeg);
@@ -359,16 +471,10 @@ async function start() {
     controls.enabled = false;
   }
   function groundHeight(x: number,y: number) {
-    if (currentGrid) {
-      const h = heightAt(currentGrid,x,y);
-      if (Number.isFinite(h)) {
-        const u = (x-currentGrid.x)/currentGrid.spacing;
-        const v = (currentGrid.y-y)/currentGrid.spacing;
-        const edge = Math.min(u,v,currentGrid.width-1-u,currentGrid.width-1-v);
-        const coarse = heightAt(overview,x,y);
-        const height = Number.isFinite(coarse) ? T.MathUtils.lerp(coarse,h,T.MathUtils.smoothstep(edge,0,24)) : h;
-        return height*T.MathUtils.smoothstep(capRadius-Math.hypot(x,y),650,2650);
-      }
+    for (const key of [...visibleKeys,...fallbackKeys]) {
+      const {grid} = tiles.get(key)!;
+      const height = heightAt(grid,x,y);
+      if (Number.isFinite(height)) return height*T.MathUtils.smoothstep(capRadius-Math.hypot(x,y),650,2650);
     }
     return heightAt(overview,x,y)*T.MathUtils.smoothstep(capRadius-Math.hypot(x,y),650,2650);
   }
@@ -425,8 +531,9 @@ async function start() {
     if (!click || click.id !== event.pointerId || Math.hypot(event.clientX-click.x,event.clientY-click.y)>5) return;
     const rect = renderer.domElement.getBoundingClientRect();
     ray.setFromCamera(new T.Vector2(2*(event.clientX-rect.left)/rect.width-1,1-2*(event.clientY-rect.top)/rect.height),camera);
-    const bounds = cutout.value;
-    const candidates = detail ? [detail,backdrop,globe] : [backdrop,globe];
+    const candidates = [...tiles.values()].filter(tile=>tile.mesh.visible).map(tile=>tile.mesh);
+    if (backdrop.visible) candidates.push(backdrop);
+    candidates.push(globe);
     for (const hit of ray.intersectObjects(candidates,false)) {
       if (hit.object === globe) {
         focusedPoint = undefined;
@@ -436,7 +543,9 @@ async function start() {
         break;
       }
       const [x,y] = projection(hit.point);
-      if (hit.object === backdrop && x>bounds.x && x<bounds.z && y>bounds.y && y<bounds.w) continue;
+      const isFallback = [...fallbackKeys].some(key=>tiles.get(key)?.mesh === hit.object);
+      const activeCuts = hit.object === backdrop ? cutouts : isFallback ? cutouts.slice(0,replacementCount.value) : [];
+      if (activeCuts.some(bounds=>x>=bounds.x && x<=bounds.z && y>=bounds.y && y<=bounds.w)) continue;
       focusTerrain(x,y);
       break;
     }
@@ -444,9 +553,20 @@ async function start() {
   for (const site of sites) selector.add(new Option(site.name));
   selector.onchange = goToSite;
   focus.onclick = goToSite;
-  selector.disabled = focus.disabled = reset.disabled = layer.disabled = globeButton.disabled = false;
+  terrainSource.value = 'local';
+  selector.disabled = focus.disabled = reset.disabled = layer.disabled = globeButton.disabled = terrainSource.disabled = lockResolution.disabled = false;
   showGlobe(false);
+  const fps = element('fps');
+  let fpsStart = performance.now();
+  let frames = 0;
   renderer.setAnimationLoop(now => {
+    frames++;
+    const elapsed = now-fpsStart;
+    if (elapsed >= 1000) {
+      fps.textContent = `${Math.round(frames*1000/elapsed)} FPS`;
+      fpsStart = now;
+      frames = 0;
+    }
     if (flight) {
       const t = T.MathUtils.clamp((now-flight.start)/1400,0,1);
       const pan = T.MathUtils.smoothstep(t,0,.52);
@@ -469,8 +589,7 @@ async function start() {
     }
     for (let i=0; i<sites.length; i++) {
       const site = sites[i];
-      const local = currentGrid ? heightAt(currentGrid,site.x,site.y) : NaN;
-      const h = Number.isFinite(local) ? local : heightAt(overview,site.x,site.y);
+      const h = groundHeight(site.x,site.y);
       markers[i].position.copy(world(site.x,site.y,h+8));
       markers[i].scale.setScalar(T.MathUtils.clamp(camera.position.distanceTo(markers[i].position)*.013,3,12000));
     }

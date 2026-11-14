@@ -5,7 +5,10 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "terrain": "node scripts/build-terrain.mjs"
+    "terrain": "node scripts/build-terrain.mjs",
+    "science:horizons": "node scripts/compute-horizons.mjs",
+    "science:ephemeris": "node scripts/fetch-horizons.mjs",
+    "science": "npm run science:horizons && npm run science:ephemeris"
   },
   "type": "module",
   "private": true,

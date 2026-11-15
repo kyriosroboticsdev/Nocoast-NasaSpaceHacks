@@ -215,7 +215,10 @@ body.advanced .actions.adv-only { display: flex; }
 .hero-btn, .share-btn { white-space: nowrap; }
 .hero-btn { border-color: var(--sun); color: var(--sun); }
 .hero-btn:hover { background: rgba(242, 201, 76, .12); }
-.strip { grid-column: 1 / -1; width: 100%; height: 64px; cursor: ew-resize; touch-action: none; }
+.strip { grid-column: 1 / -1; width: 100%; height: 88px; cursor: ew-resize; touch-action: none; }
+.relay-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin: 2px 0 6px; cursor: pointer; }
+.relay-row input { width: 16px; height: 16px; accent-color: var(--accent); }
+#relay-box .legend-relay { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #b07cf0; vertical-align: middle; margin-right: 4px; }
 .results { overflow: auto; padding: 4px 20px 16px; }
 .del { background: none; border: 1px solid transparent; color: var(--faint); width: 26px; height: 26px; border-radius: var(--r); display: grid; place-items: center; }
 .del:hover { color: var(--text); border-color: var(--line-2); }
@@ -248,6 +251,8 @@ table.days { border-collapse: separate; border-spacing: 3px; }
 .d-unknown { background: var(--unknown); }
 .d-pending { background: var(--panel-2); color: var(--faint); animation: pulse 1.2s ease-in-out infinite; }
 .d-out { width: 26px; }
+.opt-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.opt-bar .hint { margin: 0; flex: 1; min-width: 180px; }
 .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 10px; }
 .legend span { display: flex; align-items: center; gap: 6px; }
 .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }

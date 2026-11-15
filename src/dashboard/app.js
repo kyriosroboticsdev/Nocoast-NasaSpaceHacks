@@ -28,6 +28,7 @@ const state = {
   days: new Map(), dayRun: 0,
   needs: { ...NEEDS_DEFAULT, ...load("needsV2", {}) },
   panel: { ...PANEL_DEFAULT, ...load("panelV2", {}) },
+  relay: { on: true, sats: 3, ...load("relayV1", {}) },   // polar comms relay (direct-to-Earth + relay)
 };
 let advanced = false;
 
@@ -66,9 +67,12 @@ function cached(key, fn) {
 }
 const allSites = () => [...state.sites, ...state.custom];
 const siteById = (id) => allSites().find((s) => s.id === id);
-const analyze = (s, start, end) => cached(`a|${s.id}|${utc(start)}|${utc(end)}|${state.antenna}`, () =>
-  api("analyze", { latitudeDeg: s.lat, longitudeEastDeg: s.lon, startUtc: utc(start), endUtc: utc(end), antennaMinElevationDeg: state.antenna })
+const analyze = (s, start, end) => cached(`a|${s.id}|${utc(start)}|${utc(end)}|${state.antenna}|${state.relay.on}|${state.relay.sats}`, () =>
+  api("analyze", { latitudeDeg: s.lat, longitudeEastDeg: s.lon, startUtc: utc(start), endUtc: utc(end),
+    antennaMinElevationDeg: state.antenna, relay: state.relay.on, relaySats: state.relay.sats })
     .then((r) => ({ ...r, _t: r.series.timesUtc.map(Date.parse) })));
+// Effective contact = direct-to-Earth OR relay (when the relay is on and the backend returned it).
+const commsBlock = (r) => (state.relay.on && r.commsEffective) ? r.commsEffective : r.communication;
 const NO_POWER = "The power model covers CR1 and SR1 only so far, so power can't be judged here.";
 const solarInput = (s, start, end) => s.custom ? Promise.resolve({ error: NO_POWER }) : cached(`s|${s.id}|${utc(start)}|${utc(end)}`, () =>
   api(`solar_input/${encodeURIComponent(s.id)}`, { startUtc: utc(start), endUtc: utc(end) }));
@@ -98,8 +102,9 @@ function missionSettings() {
 // Earth line-of-sight timeline from the backend's exact windows (unknown stays unknown, never assumed).
 function commsTimeline(r, start, end) {
   const t0 = start.getTime(), dur = (end - start) / 1000;
-  const spans = [...r.communication.windows.map((w) => [w, true]), ...r.communication.blackouts.map((w) => [w, false]),
-    ...r.communication.unknown.map((w) => [w, null])]
+  const comm = commsBlock(r);
+  const spans = [...comm.windows.map((w) => [w, true]), ...comm.blackouts.map((w) => [w, false]),
+    ...comm.unknown.map((w) => [w, null])]
     .map(([w, v]) => [(Date.parse(w.startUtc) - t0) / 1000, (Date.parse(w.endUtc) - t0) / 1000, v])
     .sort((a, b) => a[0] - b[0]);
   const out = []; let at = 0;
@@ -194,7 +199,7 @@ async function refreshDays() {
     const row = { dates, sweep: null, inputs: new Map(), stay, noPower: !!s.custom };
     state.days.set(s.id, row);
     api("sweep", { latitudeDeg: s.lat, longitudeEastDeg: s.lon, firstDayUtc: utc(first), sweepDays: dates.length,
-      missionSeconds: stay / 1000, antennaMinElevationDeg: state.antenna })
+      missionSeconds: stay / 1000, antennaMinElevationDeg: state.antenna, relay: state.relay.on, relaySats: state.relay.sats })
       .then((sw) => { if (run === state.dayRun) { row.sweep = sw; recomputeDays(); renderResults(); } })
       .catch((e) => { if (run === state.dayRun) { row.error = e.message; renderResults(); } });
   }
@@ -227,9 +232,11 @@ function recomputeDays(onlyId, onlyDate) {
       const input = row.inputs.get(ds);
       let m = null;
       if (input && !input.error) { try { m = runMission(input).m; } catch { m = null; } }
+      const commFrac = (state.relay.on && sw?.commWithRelayPercent != null ? sw.commWithRelayPercent : sw?.commPercent) / 100;
+      const blackoutH = state.relay.on && sw?.longestBlackoutWithRelayHours != null ? sw.longestBlackoutWithRelayHours : sw?.longestBlackoutHours;
       const verdict = !sw || sw.missing || !m ? (sw && (input || row.noPower) ? "unknown" : "pending") : judge({
         powerFrac: m.summary.powerAvailabilityFraction, powerOutages: m.powerOutages.length,
-        commsFrac: sw.commPercent / 100, blackoutH: sw.longestBlackoutHours, complete: m.summary.complete });
+        commsFrac: commFrac, blackoutH: blackoutH, complete: m.summary.complete });
       row.cells.set(ds, { verdict, sw, m });
     }
   }
@@ -297,6 +304,22 @@ function renderPanelBox() {
     recomputeAll(); renderPanelBox();
   };
   for (const id of ["p-area", "p-eff", "p-tilt", "p-face"]) $(id).addEventListener("change", commit);
+}
+function renderRelayBox() {
+  const on = state.relay.on;
+  $("relay-box").innerHTML = `<h2>Comms relay <span class="tag">${on ? "on" : "off"}</span></h2>
+    <label class="relay-row"><input type="checkbox" id="relay-on" ${on ? "checked" : ""}>Use a polar relay satellite</label>
+    <p class="hint">When Earth drops behind the terrain, an orbiting relay carries the signal — so the lander stays in contact far more of the time.${advanced ? " Simplified polar constellation (see backend/relay.py)." : ""}</p>
+    ${on ? `<div class="adv-only pair">${numberField("relay-sats", "Relay satellites", state.relay.sats, { min: 1, max: 8, step: 1 })}</div>` : ""}`;
+  $("relay-on").addEventListener("change", () => {
+    state.relay = { ...state.relay, on: $("relay-on").checked }; save("relayV1", state.relay);
+    state.days.clear(); state.dayRun++; refresh();
+  });
+  $("relay-sats")?.addEventListener("change", () => {
+    const v = parseInt($("relay-sats").value, 10);
+    if (v >= 1 && v <= 8) { state.relay = { ...state.relay, sats: v }; save("relayV1", state.relay); state.days.clear(); state.dayRun++; refresh(); }
+    else setStatus("Relay satellites must be 1 to 8.", "err");
+  });
 }
 function renderSources() {
   $("sources-line").innerHTML = advanced
@@ -444,7 +467,7 @@ function renderNow() {
 }
 
 // ============================================================ time strip (sunlight / Earth contact / power) + playback
-const BAND = { sun: "#f2c94c", earth: "#4f8fe8", ok: "#2fa36b", bad: "#fc3d21", none: "#26324a", unknown: "#5b6478" };
+const BAND = { sun: "#f2c94c", earth: "#4f8fe8", relay: "#b07cf0", ok: "#2fa36b", bad: "#fc3d21", none: "#26324a", unknown: "#5b6478" };
 function drawStrip() {
   const canvas = $("strip"), r = state.results.get(state.focus);
   const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
@@ -455,9 +478,11 @@ function drawStrip() {
   const X = (ms) => labelW + ((ms - t0) / (t1 - t0)) * pw;
   ctx.font = "500 11px 'Public Sans', system-ui, sans-serif"; ctx.textBaseline = "middle";
   const m = state.mission.get(state.focus);
+  const relayOn = state.relay.on && r.relay;
   const rows = [
     [advanced ? "Sun visible" : "Sunlight", r.sun.sunlitWindows.map((w) => [w.startUtc, w.endUtc, BAND.sun])],
-    [advanced ? "DTE line of sight" : "Earth contact", r.communication.windows.map((w) => [w.startUtc, w.endUtc, BAND.earth])],
+    [advanced ? "Contact (any)" : "Earth contact", commsBlock(r).windows.map((w) => [w.startUtc, w.endUtc, BAND.earth])],
+    ...(relayOn ? [["via relay", r.relay.windows.map((w) => [w.startUtc, w.endUtc, BAND.relay])]] : []),
     [advanced ? "Load served" : "Power OK", m?.segments ? m.segments.map((g) => [t0 + g.startOffsetSeconds * 1000, t0 + g.endOffsetSeconds * 1000,
       g.available == null ? BAND.unknown : g.available ? BAND.ok : BAND.bad]) : []],
   ];
@@ -472,13 +497,13 @@ function drawStrip() {
   });
   const days = (t1 - t0) / 1000 / DAY, every = days <= 8 ? 1 : days <= 16 ? 2 : days <= 32 ? 4 : 10;
   ctx.fillStyle = "#b9c3d6"; ctx.font = "11px 'Public Sans', system-ui, sans-serif";
-  const ty = top + 3 * (rowH + gap) + 6;
+  const ty = top + rows.length * (rowH + gap) + 6;
   for (let d = 0; d < days; d += every) {
     const x = X(t0 + d * DAY * 1000);
     ctx.textAlign = d === 0 ? "left" : "center"; ctx.fillText(`Day ${d + 1}`, x, ty);
   }
   const x = X(r._t[state.tIdx]);
-  ctx.fillStyle = "#ffffff"; ctx.fillRect(x - 1, 0, 2, top + 3 * (rowH + gap) - gap + 4);
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(x - 1, 0, 2, top + rows.length * (rowH + gap) - gap + 4);
   canvas._g = { labelW, pw, t0, t1 };
 }
 function scrub(ev) {
@@ -542,12 +567,22 @@ function siteChecks(s) {
     out.push({ k: "soc", label: advanced ? "Min. SOC" : "Battery low point", status: minSoc != null && minSoc <= n.reserveSocFraction + 1e-6 ? "warn" : "info",
       value: pct(minSoc), sub: `reserve ${pct(n.reserveSocFraction)}`, tip: "The lowest the battery gets. It never drains below the reserve cutoff." });
   }
-  const c = su?.commsAvailabilityFraction ?? r.communication.summary.percentOfMission / 100;
-  const gapS = su?.longestCommsBlackoutSeconds ?? r.communication.summary.longestGapSeconds;
-  out.push({ k: "comms", label: advanced ? "DTE availability" : "Earth contact", status: c + 1e-12 >= n.minCommsAvailabilityFraction ? "pass" : "fail",
-    value: pct(c), sub: `needs ${pct(n.minCommsAvailabilityFraction)}`, tip: "Share of the stay Earth is above the terrain, so the lander can radio home directly." });
-  out.push({ k: "gap", label: advanced ? "Max. DTE blackout" : "Longest silence", status: gapS / 3600 <= n.maxCommsBlackoutHours + 1e-9 ? "pass" : "fail",
-    value: fmtDur(gapS), sub: `limit ${fmtDur(n.maxCommsBlackoutHours * 3600)}`, tip: "The longest stretch with Earth hidden behind terrain." });
+  const eff = commsBlock(r).summary;
+  const c = su?.commsAvailabilityFraction ?? eff.percentOfMission / 100;
+  const gapS = su?.longestCommsBlackoutSeconds ?? eff.longestGapSeconds;
+  const relayOn = state.relay.on && r.relay;
+  const dtePct = r.communication.summary.percentOfMission;
+  const relaySub = relayOn && eff.percentOfMission != null && dtePct != null && eff.percentOfMission > dtePct + 0.05
+    ? `direct ${pct(dtePct / 100)} + relay` : `needs ${pct(n.minCommsAvailabilityFraction)}`;
+  out.push({ k: "comms", label: advanced ? "Contact availability" : "Earth contact", status: c + 1e-12 >= n.minCommsAvailabilityFraction ? "pass" : "fail",
+    value: pct(c), sub: relaySub, tip: relayOn ? "Share of the stay the lander can reach Earth directly OR through the relay satellite." : "Share of the stay Earth is above the terrain, so the lander can radio home directly." });
+  out.push({ k: "gap", label: advanced ? "Max. blackout" : "Longest silence", status: gapS / 3600 <= n.maxCommsBlackoutHours + 1e-9 ? "pass" : "fail",
+    value: fmtDur(gapS), sub: `limit ${fmtDur(n.maxCommsBlackoutHours * 3600)}`, tip: "The longest stretch with no way to reach Earth." });
+  if (relayOn && r.relay.summary.percentOfMission != null) {
+    out.push({ k: "relay", label: advanced ? "Relay coverage" : "Relay link", status: "info",
+      value: pct(r.relay.summary.percentOfMission / 100), sub: `${state.relay.sats} sat${state.relay.sats > 1 ? "s" : ""}, polar orbit`,
+      tip: "Share of the stay an orbiting relay satellite can carry the signal when Earth is hidden behind terrain. Simplified polar constellation model." });
+  }
   out.push({ k: "sun", label: advanced ? "Sun visible" : "Sunlight", status: "info", value: pct(r.sun.summary.percentOfMission / 100), sub: "of the stay",
     tip: "Share of the stay the Sun is above the terrain." });
   const ss = sunStats(r);
@@ -592,9 +627,9 @@ function reason(id, v) {
   const m = state.mission.get(id), s = siteById(id)?.name ?? "";
   if (state.loading) return "Calculating…";
   if (!m || m.error) {
-    const r = state.results.get(id), n = state.needs;
-    const comms = r ? r.communication.summary.percentOfMission / 100 + 1e-12 >= n.minCommsAvailabilityFraction
-      && r.communication.summary.longestGapSeconds / 3600 <= n.maxCommsBlackoutHours + 1e-9 : null;
+    const r = state.results.get(id), n = state.needs, cs = r && commsBlock(r).summary;
+    const comms = r ? cs.percentOfMission / 100 + 1e-12 >= n.minCommsAvailabilityFraction
+      && cs.longestGapSeconds / 3600 <= n.maxCommsBlackoutHours + 1e-9 : null;
     return `${s}: can't tell. ${m?.error ?? "Power data unavailable."}${comms == null ? "" : comms ? " Earth contact meets the limits." : " Earth contact already misses the limits."}`;
   }
   const su = m.summary, n = state.needs;
@@ -625,7 +660,9 @@ function renderDays() {
   const monthRow = `<tr><th></th>${head.map((d, k) => { const mk = months.find(([j]) => j === k); return `<td class="mon">${mk ? mk[1] : ""}</td>`; }).join("")}</tr>`;
   const done = [...state.days.values()].reduce((a, r) => a + [...(r.cells?.values() ?? [])].filter((c) => c.verdict !== "pending").length, 0);
   const total = [...state.days.values()].reduce((a, r) => a + r.dates.length, 0);
-  return `<p class="why">Each square is a landing on that day (00:00 UTC) for a ${Math.round((state.end - state.start) / 1000 / DAY)}-day stay. Click one to load it.
+  return `<div class="opt-bar"><button class="btn primary" id="optimize-btn">${icon("check")}Best site &amp; day for sun + contact</button>
+      <span class="hint">Searches every site and landing day for the most sunlight and communication${state.relay.on ? " (with the relay)" : ""}.</span></div>
+    <p class="why">Each square is a landing on that day (00:00 UTC) for a ${Math.round((state.end - state.start) / 1000 / DAY)}-day stay. Click one to load it.
     ${done < total ? `<span class="prog">Checked ${done} of ${total}…</span>` : ""}</p>
     <div class="tbl-wrap"><table class="days">${monthRow}${rows}</table></div>
     <div class="legend">${["go", "caution", "nogo", "unknown"].map((v) => `<span><i class="d-${v}"></i>${VERDICT[v]}</span>`).join("")}<span><i class="planned-key"></i>Current landing day</span></div>`;
@@ -673,7 +710,39 @@ $("results").addEventListener("click", (e) => {
     state.focus = b.dataset.site; state.tIdx = 0; syncInputs(); setMode("check"); refresh();
   } else if (b.id === "open-compare") setPane("compare");
   else if (b.id === "game-card") shareCard({ withScore: true });
+  else if (b.id === "optimize-btn") runOptimize();
 });
+// Joint optimiser: ask the backend for the (site, landing day) with the most sun + contact, then load it.
+async function runOptimize() {
+  const btn = $("optimize-btn"); if (btn) { btn.disabled = true; }
+  setStatus("Searching every site and landing day for the most sun + contact…", "busy");
+  const stayDays = Math.round((state.end - state.start) / 1000 / DAY);
+  const qs = new URLSearchParams({
+    firstDayUtc: utc(new Date(state.contract.time.supportedStartUtc)), sweepDays: "30",
+    missionSeconds: String((state.end - state.start) / 1000), antennaMinElevationDeg: String(state.antenna),
+    relay: String(state.relay.on), relaySats: String(state.relay.sats),
+  });
+  for (const s of state.custom) qs.append("extraSites", `${s.lat},${s.lon}`);
+  try {
+    const r = await fetch(`/api/optimize?${qs}`);
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    const o = await r.json(), b = o.best;
+    if (!b) { setStatus("No site could be scored over this range.", "err"); return; }
+    const site = allSites().find((s) => s.id === b.id)
+      || allSites().find((s) => Math.abs(s.lat - b.latitudeDeg) < 1e-3 && Math.abs(((s.lon - b.longitudeEastDeg) % 360 + 360) % 360) < 1e-3);
+    const name = site?.name || b.name || where({ lat: b.latitudeDeg, lon: b.longitudeEastDeg });
+    setStatus(`Best: ${name}, land ${b.bestDateUtc.slice(0, 10)} — score ${b.objectiveScore}, contact ${Math.round(b.commWithRelayPercent ?? b.commPercent)}%, sun ${Math.round(b.sunlitPercent)}%.`, "");
+    if (site) {
+      state.focus = site.id;
+      state.start = new Date(b.bestDateUtc);
+      state.end = new Date(state.start.getTime() + stayDays * DAY * 1000);
+      const max = new Date(state.contract.time.supportedEndUtc); if (state.end > max) state.end = max;
+      setMode("check"); newWindow();
+    }
+  } catch (e) {
+    setStatus(`Couldn't optimize: ${e.message}`, "err");
+  } finally { if ($("optimize-btn")) $("optimize-btn").disabled = false; }
+}
 function selectSite(id) { if (id && id !== state.focus) { state.focus = id; syncInputs(); renderAll(); } }
 $("pane-compare").addEventListener("click", (e) => {
   const del = e.target.closest("[data-del]"); if (del) { removeSpot(del.dataset.del); return; }
@@ -694,7 +763,7 @@ document.querySelectorAll(".pane-tabs button").forEach((b) => b.addEventListener
 // ============================================================ render + modes
 function renderAll() {
   if (!state.contract) return;
-  renderResults(); renderNow(); renderPanelBox(); renderMap();
+  renderResults(); renderNow(); renderPanelBox(); renderRelayBox(); renderMap();
 }
 function setMode(mode) {
   state.mode = mode === "days" || mode === "game" ? mode : "check";
@@ -848,7 +917,7 @@ window.addEventListener("resize", () => drawStrip());
   $("land-date").max = toDate(new Date(new Date(c.time.supportedEndUtc).getTime() - DAY * 1000));
   $("antenna").value = state.antenna;
   if (qs.get("t")) state.tIdx = Math.max(0, parseInt(qs.get("t"), 10) || 0);
-  syncInputs(); renderNeedsBox(); renderPanelBox(); renderSources();
+  syncInputs(); renderNeedsBox(); renderPanelBox(); renderRelayBox(); renderSources();
   setPane(state.pane); setMode(location.hash.slice(1));
   refresh();
 })();

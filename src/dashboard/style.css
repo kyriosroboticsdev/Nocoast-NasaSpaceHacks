@@ -362,9 +362,28 @@ body.landing-open { overflow: hidden; }
 body.pre-enter .app { opacity: 0; transform: scale(1.025); }
 body.pre-enter .bar { opacity: 0; transform: translateY(-8px); }
 
-/* ---------- polish: satisfying verdict reveal + button feedback */
-.summary .v, .card .v, .game-score b { animation: v-pop .34s cubic-bezier(.2,.8,.2,1); }
+/* ---------- the verdict moment: big stat strip + a reveal that fires only on a real change */
+.verdict-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.verdict-stats { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.vstat { flex: 1; min-width: 118px; padding: 9px 12px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); }
+.vstat-l { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); }
+.vstat b { display: block; font-size: 21px; font-weight: 700; line-height: 1.15; margin: 1px 0; color: var(--text); }
+.vstat-s { font-size: 11.5px; color: var(--faint); }
+.vstat-pass b { color: var(--go); } .vstat-fail b { color: var(--nogo); } .vstat-warn b { color: var(--caution); }
+
+.game-score b { animation: v-pop .34s cubic-bezier(.2,.8,.2,1); }
 @keyframes v-pop { from { transform: scale(.84); opacity: .2; } to { transform: scale(1); opacity: 1; } }
+.summary.reveal .v { animation: v-pop .4s cubic-bezier(.2,.8,.2,1); }
+.summary.reveal .why { animation: s-fade .55s ease .04s both; }
+.summary.reveal .vstat { animation: s-up .5s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(.12s + var(--i) * .07s); }
+@keyframes s-fade { from { opacity: 0; } }
+@keyframes s-up { from { opacity: 0; transform: translateY(9px); } }
+.summary.reveal .v-go { animation: v-pop .4s cubic-bezier(.2,.8,.2,1), glow-go .95s ease; }
+.summary.reveal .v-nogo { animation: v-pop .4s cubic-bezier(.2,.8,.2,1), glow-nogo .95s ease; }
+.summary.reveal .v-caution { animation: v-pop .4s cubic-bezier(.2,.8,.2,1), glow-caution .95s ease; }
+@keyframes glow-go { 0% { box-shadow: 0 0 0 0 rgba(47,163,107,.75); } 100% { box-shadow: 0 0 26px 3px rgba(47,163,107,0); } }
+@keyframes glow-nogo { 0% { box-shadow: 0 0 0 0 rgba(252,61,33,.7); } 100% { box-shadow: 0 0 26px 3px rgba(252,61,33,0); } }
+@keyframes glow-caution { 0% { box-shadow: 0 0 0 0 rgba(242,179,61,.7); } 100% { box-shadow: 0 0 26px 3px rgba(242,179,61,0); } }
 .btn.primary { transition: transform .12s, box-shadow .2s, background .15s; }
 .btn.primary:hover { box-shadow: 0 6px 18px rgba(11,61,145,.5); transform: translateY(-1px); }
 .btn:active, .tool:active, .play:active, .l-enter:active { transform: translateY(1px) scale(.985); }
@@ -400,4 +419,14 @@ body.pre-enter .bar { opacity: 0; transform: translateY(-8px); }
   .hero-btn, .share-btn { padding: 0 10px; font-size: 0; gap: 0; }
   .hero-btn svg, .share-btn svg { font-size: 14px; }
   .tour-card { padding: 22px 20px 18px; }
+  /* landing: stack the CTA + feature chips so the hero fits a phone */
+  .l-content { padding: 16px 0; }
+  .l-brand { margin-bottom: 18px; }
+  .l-cta { flex-direction: column; margin-bottom: 30px; }
+  .l-enter, .l-tour { width: 100%; justify-content: center; }
+  .l-features { flex-direction: column; }
+  .l-feat { justify-content: flex-start; }
+  .l-foot { padding: 0 10px; }
+  /* verdict stat strip: stay readable when it wraps */
+  .vstat { min-width: calc(50% - 5px); }
 }

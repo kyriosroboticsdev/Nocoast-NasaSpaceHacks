@@ -619,10 +619,24 @@ function renderCompare() {
       <button class="btn ghost" id="add-spot" ${state.custom.length >= MAX_CUSTOM ? "disabled" : ""}>${icon("pin")}Add a spot</button></div>
     ${cards}`;
 }
-function renderSummary() {        // drawer, check mode: the site in view's verdict + one-line reason
+let lastSummaryVerdict = null;    // so the reveal animation fires on real verdict changes, not every re-render
+function headlineStats(id) {       // the three numbers that make the verdict land, at a glance
+  const checks = siteChecks(siteById(id)) || [];
+  const pick = (k) => checks.find((c) => c.k === k);
+  return ["power", "comms", "gap"].map(pick).filter(Boolean);
+}
+function renderSummary() {        // drawer, check mode: the site in view's verdict + the key numbers
   const v = verdictFor(state.focus);
-  return `<div class="summary">${state.loading ? "" : vbadge(v)}<p class="why">${esc(reason(state.focus, v))}</p>
-    ${state.pane !== "compare" ? `<button class="link" id="open-compare">Compare all ${allSites().length} sites</button>` : ""}</div>`;
+  const changed = !state.loading && v !== lastSummaryVerdict;
+  lastSummaryVerdict = state.loading ? lastSummaryVerdict : v;
+  const stats = state.loading ? [] : headlineStats(state.focus);
+  return `<div class="summary v-wrap-${v}${changed ? " reveal" : ""}">
+    <div class="verdict-head">${state.loading ? `<span class="v v-unknown">…</span>` : vbadge(v)}
+      <p class="why">${esc(reason(state.focus, v))}</p></div>
+    ${stats.length ? `<div class="verdict-stats">${stats.map((c, i) => `<div class="vstat vstat-${c.status}" style="--i:${i}">
+      <span class="vstat-l">${esc(c.label)}</span><b>${esc(String(c.value))}</b><span class="vstat-s">${esc(c.sub ?? "")}</span></div>`).join("")}</div>` : ""}
+    ${state.pane !== "compare" ? `<button class="link" id="open-compare">Compare all ${allSites().length} sites</button>` : ""}
+  </div>`;
 }
 function reason(id, v) {
   const m = state.mission.get(id), s = siteById(id)?.name ?? "";

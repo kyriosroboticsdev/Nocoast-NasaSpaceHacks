@@ -1,6 +1,8 @@
 """FastAPI server: Person 2 JSON API + verification dashboard.  Run:  python -m uvicorn backend.app:app"""
 from __future__ import annotations
 
+import logging
+import threading
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
@@ -19,6 +21,29 @@ app = FastAPI(title="Lunar Navigator: Sun, Earth & Communication")
 # App as /api). Read-only public GET API with no cookies, so any origin may read it.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
 DIST = ROOT / "dist"
+
+_log = logging.getLogger("uvicorn.error")
+
+
+@app.on_event("startup")
+def _prewarm_horizon_profiles() -> None:
+    """Warm the study-site horizon profiles at boot so the first real request isn't slow.
+
+    horizon_profile() for a fresh location ray-marches 1440 azimuths out to 400 km (~10-13 s), then caches
+    the result (memory + disk) for the life of the replica. These six sites are the dropdown options, so
+    computing them once at startup — before any user arrives — keeps that one-time cost off the request
+    path. Runs in a daemon thread so it never blocks startup or the health probe; per-site errors are logged
+    and skipped (a cold site just falls back to computing on first request, as before).
+    """
+    def run() -> None:
+        for s in SITES:
+            try:
+                terrain.horizon_profile(s["latitudeDeg"], s["longitudeEastDeg"])
+                _log.info("pre-warmed horizon profile: %s", s.get("siteId"))
+            except Exception:  # never let warming crash the worker
+                _log.warning("horizon pre-warm failed: %s", s.get("siteId"), exc_info=True)
+
+    threading.Thread(target=run, name="horizon-prewarm", daemon=True).start()
 
 
 def _times(start_utc: str, end_utc: str):

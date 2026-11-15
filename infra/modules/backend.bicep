@@ -58,8 +58,12 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'api'
           image: containerImage
           resources: {
-            cpu: json('1.0')
-            memory: '2Gi'
+            // /api/analyze loads DE421 and builds a multi-hundred-KB time series per call; at 1 cpu / 2Gi
+            // two concurrent analyses (plus the terrain/map calls the dashboard fires alongside) OOM-killed
+            // the container, returning 502 and surfacing as "couldn't calculate / network error" in the UI.
+            // 2 cpu / 4Gi gives headroom for the concurrent load and roughly halves the per-call time.
+            cpu: json('2.0')
+            memory: '4Gi'
           }
           env: [
             { name: 'AZURE_STORAGE_CONNECTION_STRING', secretRef: 'storage-connection' }

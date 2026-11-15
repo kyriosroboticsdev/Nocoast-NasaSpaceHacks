@@ -58,6 +58,22 @@ jobs:
           docker build -t "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}" -t "$ACR_NAME.azurecr.io/lunar-navigator-api:latest" .
           docker push --all-tags "$ACR_NAME.azurecr.io/lunar-navigator-api"
 
+      # TEMPORARY: diagnosing the image-pull failure. Remove once resolved.
+      - name: DIAGNOSE registry + container app state
+        run: |
+          echo "--- ACR public network access / admin ---"
+          az acr show --name "$ACR_NAME" --query "{name:name, publicNetworkAccess:publicNetworkAccess, adminEnabled:adminUserEnabled}" -o json
+          echo "--- ACR network rule set ---"
+          az acr show --name "$ACR_NAME" --query "networkRuleSet" -o json
+          echo "--- repository tags ---"
+          az acr repository show-tags --name "$ACR_NAME" --repository lunar-navigator-api -o table || echo "TAG LOOKUP FAILED"
+          echo "--- container app registries config + active image ---"
+          az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" \
+            --query "{provisioningState:properties.provisioningState, registries:properties.configuration.registries, activeImage:properties.template.containers[0].image}" -o json
+          echo "--- revisions ---"
+          az containerapp revision list --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" \
+            --query "[].{name:name, active:properties.active, provisioningState:properties.provisioningState, healthState:properties.healthState}" -o table
+
       # Re-set the registry credential on every deploy, not just at first create: Container Apps on
       # Express/Consumption (Azure for Students) needs the ACR admin username/password wired in as a
       # secret (see infra/modules/backend.bicep), and that secret can go stale (e.g. if the admin

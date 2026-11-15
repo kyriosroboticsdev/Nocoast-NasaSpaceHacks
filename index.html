@@ -46,12 +46,12 @@
       <section class="map-panel" id="map-panel" hidden aria-label="South pole map">
         <div class="map-head"><h2>South pole</h2><span id="map-count" class="tag"></span>
           <button class="tool icon" id="map-close" aria-label="Close map"><svg><use href="#i-cross"/></svg></button></div>
-        <p class="map-instruction">Click a spot to visit it. Drag to pan or scroll to zoom.</p>
+        <p class="map-instruction">Click any point to calculate power, sunlight and Earth contact. Drag to pan or scroll to zoom.</p>
         <details class="map-coordinates"><summary>Enter coordinates</summary>
         <form id="coord-form" class="coord-form">
           <label class="field">Latitude (°)<input id="c-lat" type="number" step="0.0001" min="-90" max="-75" placeholder="-89.45" required></label>
           <label class="field">Longitude (°E)<input id="c-lon" type="number" step="0.0001" min="-360" max="360" placeholder="222.6" required></label>
-          <button class="btn primary" type="submit"><svg><use href="#i-pin"/></svg>Add</button>
+          <button class="btn primary" type="submit"><svg><use href="#i-pin"/></svg>Calculate</button>
         </form>
         </details>
         <div id="map-wrap" class="map-wrap">

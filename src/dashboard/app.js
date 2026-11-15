@@ -382,16 +382,17 @@ function addSpot(lat, lon, saveSpot = true) {
   if (!(lat >= -90 && lat <= -75) || !(lon >= -360 && lon <= 360)) { setStatus("Use a latitude from -90 to -75 (the terrain data covers the south polar region).", "err"); return; }
   if (saveSpot && state.custom.length >= MAX_CUSTOM) { setStatus(`You can keep ${MAX_CUSTOM} custom spots. Remove one from the table first.`, "err"); return; }
   const n = state.custom.length ? Math.max(...state.custom.map((s) => +s.name.replace(/\D+/g, "") || 0)) + 1 : 1;
-  const s = { id: saveSpot ? `c-${Date.now()}` : "map-spot", name: saveSpot ? `Spot ${n}` : "Map selection",
-    lat: +lat.toFixed(4), lon: +(((lon % 360) + 360) % 360).toFixed(4), custom: true };
+  const s = { id: saveSpot ? `c-${Date.now()}` : "map-spot", name: saveSpot ? `Spot ${n}` : "Selected point",
+    lat: +lat.toFixed(6), lon: +(((lon % 360) + 360) % 360).toFixed(6) % 360, custom: true };
   if (saveSpot) { state.custom.push(s); save("customSitesV3", state.custom); }
   else {
     state.mapSpot = s;
     for (const cache of [state.results,state.power,state.mission,inputs]) cache.delete(s.id);
   }
   state.focus = s.id; state.days.clear(); state.dayRun++;
-  syncInputs(); renderMap(); drawScene(null); refresh();
-  setStatus("Working out the hills around your spot (a few seconds the first time)…", "busy");
+  syncInputs(); renderMap(); drawScene(null);
+  setMode("check"); setPane("results");
+  refresh();
 }
 function removeSpot(id) {
   state.custom = state.custom.filter((s) => s.id !== id); save("customSitesV3", state.custom);
@@ -456,16 +457,11 @@ mapWrap.addEventListener("pointerup", event => {
   if (moved || !state.mapMeta) return;
   const bounds = $("map-content").getBoundingClientRect();
   const x = (event.clientX-bounds.left)/bounds.width, y = (event.clientY-bounds.top)/bounds.height;
-  const nearest = allSites().map(site => {
-    const [sx,sy] = latLonToMap(site.lat,site.lon);
-    return {site, distance:Math.hypot((sx/1000-x)*bounds.width,(sy/1000-y)*bounds.height)};
-  }).sort((a,b)=>a.distance-b.distance)[0];
-  if (nearest?.distance < 14) selectSite(nearest.site.id);
-  else addSpot(...mapToLatLon(x,y),false);
+  addSpot(...mapToLatLon(x,y), false);
 });
 $("coord-form").addEventListener("submit", (e) => {
   e.preventDefault();
-  addSpot(parseFloat($("c-lat").value), parseFloat($("c-lon").value));
+  addSpot(parseFloat($("c-lat").value), parseFloat($("c-lon").value), false);
 });
 
 function untilNext(r, body) {
@@ -683,7 +679,9 @@ function renderSummary() {        // drawer, check mode: the site in view's verd
   const checks = pending(state.focus) ? [] : siteChecks(siteById(state.focus)) ?? [];
   const relayNote = state.relay.on && state.results.get(state.focus)?.relay
     ? `<p class="why">Earth contact includes a ${state.relay.sats}-satellite polar relay when the direct link is blocked.</p>` : "";
-  return `<div class="summary">${pending(state.focus) ? "" : vbadge(v)}<p class="why">${esc(reason(state.focus, v))}</p></div><div class="metric-readout">${checks.map(metricRow).join("")}</div>${relayNote}
+  const selected = siteById(state.focus);
+  const location = selected ? `<p class="selected-location">${esc(selected.name)} · ${Math.abs(selected.lat).toFixed(4)}°${selected.lat < 0 ? "S" : "N"}, ${selected.lon.toFixed(4)}°E</p>` : "";
+  return `${location}<div class="summary">${pending(state.focus) ? "" : vbadge(v)}<p class="why">${esc(reason(state.focus, v))}</p></div><div class="metric-readout">${checks.map(metricRow).join("")}</div>${relayNote}
     ${advanced ? gameBlock() : ""}<div class="summary-actions">
     ${state.pane !== "compare" ? `<button class="link" id="open-compare">Compare with another site</button>` : ""}</div>`;
 }
@@ -752,7 +750,9 @@ function selectSite(id) {
   if (!id || id === state.focus) return;
   state.focus = id;
   syncInputs();
-  renderAll();
+  setMode("check"); setPane("results");
+  if (!state.results.has(id)) refresh();
+  else renderAll();
 }
 $("pane-compare").addEventListener("click", (e) => {
   const del = e.target.closest("[data-del]"); if (del) { removeSpot(del.dataset.del); return; }
@@ -975,9 +975,6 @@ function missionFromNeeds(n) {
   for (const k of Object.keys(D.requirements)) requirements[k] = n[k];
   return { battery, requirements };
 }
-function lonNear(a, b) {
-  return Math.abs((((a - b) % 360) + 540) % 360 - 180) < 0.002;
-}
 function pushLanding() {
   if (!state.start || !state.end || state.end <= state.start) return;
   const site = siteById(state.focus);
@@ -1008,16 +1005,16 @@ function onNavigatorScenario(s) {
   const th = s.thresholds;
   if (s.primary.siteId === "custom" && s.primary.customLatDeg != null && s.primary.customLonEastDeg != null) {
     const lat = s.primary.customLatDeg, lon = s.primary.customLonEastDeg;
-    const match = allSites().find((x) => Math.abs(x.lat - lat) < 0.002 && lonNear(x.lon, lon));
-    if (match) { if (state.focus !== match.id) { state.focus = match.id; syncInputs(); renderAll(); } }
-    else { addSpot(lat, lon); return; }
+    const match = allSites().find((x) => Math.abs(x.lat - lat) < 0.000001 && Math.abs((((x.lon - lon) % 360) + 540) % 360 - 180) < 0.000001);
+    if (match) { if (state.focus !== match.id) selectSite(match.id); }
+    else { addSpot(lat, lon, false); return; }
   } else {
     const known = findSite(s.primary.siteId);
     if (known && !siteById(known.siteId)) {
       state.sites.push({ id: known.siteId, name: known.name, lat: known.latitudeDeg, lon: known.longitudeEastDeg });
     }
     if (siteById(s.primary.siteId) && state.focus !== s.primary.siteId) {
-      state.focus = s.primary.siteId; syncInputs(); renderAll();
+      selectSite(s.primary.siteId);
     }
   }
   const start = new Date(s.startUtc);

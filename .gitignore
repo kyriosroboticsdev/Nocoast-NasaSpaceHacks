@@ -2,9 +2,18 @@ node_modules/
 dist/
 .cache/
 
-# Person 2 (Python science backend)
+# Large lunar data — download via script, never commit
 data/
 exports/
+*.bsp
+*.bpc
+*.tls
+*.tf
+*.img
+*.tif
+*.IMG
+
+# Python / Node
 __pycache__/
 .venv/
 .pytest_cache/

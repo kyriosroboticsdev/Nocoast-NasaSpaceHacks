@@ -5,6 +5,7 @@ import { createSkyView } from "./sky3d.js";
 import { simulate, resultCsv, MODEL_ID } from "../power/model.mjs";
 import { simulateMission, DEFAULT_MISSION_SETTINGS } from "../power/mission.ts";
 import { initTour } from "./tour.js";
+import { showLanding } from "./landing.js";
 import { downloadCard, CARD_COLORS } from "./card.js";
 import { gameScore, scoreGrade, scoreTip, GAME } from "./game.js";
 
@@ -900,9 +901,15 @@ window.addEventListener("resize", () => drawStrip());
 
 (async function init() {
   renderSources(); renderNeedsBox();
-  // Welcome tutorial opens on every load (dismissible; reopen via the header "?"). Shown before data
-  // loads so it appears even if the science server is still starting. Skip with ?tour=0 for shared links.
-  if (new URLSearchParams(location.search).get("tour") !== "0") tour.open(0);
+  // Cinematic landing screen on every load (skip with ?land=0 for shared/deep links). "Enter" drops
+  // straight into the app; "Take the tour" runs the step-by-step tutorial (also on the header "?").
+  if (new URLSearchParams(location.search).get("land") !== "0") {
+    document.body.classList.add("pre-enter");
+    showLanding({
+      onEnter: () => document.body.classList.remove("pre-enter"),
+      onTour: () => { document.body.classList.remove("pre-enter"); tour.open(0); },
+    });
+  }
   try { [state.contract, state.mapMeta] = await Promise.all([api("contract"), api("polar_map/meta").catch(() => null)]); }
   catch (e) { setStatus(`Can't reach the science server (${e.message}). Start it with ./run.ps1.`, "err"); $("results").innerHTML = ""; return; }
   const c = state.contract, qs = new URLSearchParams(location.search);

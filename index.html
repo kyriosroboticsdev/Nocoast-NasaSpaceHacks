@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/src/dashboard/style.css">
 </head>
-<body>
+<body class="mission-workspace" data-panel="site">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></symbol>
   <symbol id="i-pause" viewBox="0 0 16 16"><path d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/></symbol>
@@ -26,30 +26,79 @@
   <symbol id="i-q" viewBox="0 0 16 16"><path d="M6 6.2a2 2 0 1 1 2.8 1.9c-.5.2-.8.6-.8 1.1V10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="12.6" r="1" fill="currentColor"/></symbol>
 </svg>
 
-<header class="bar">
-  <div class="brand"><span class="mark" aria-hidden="true"></span>NoCoast</div>
-  <nav class="modes" role="tablist" aria-label="Mode">
-    <button role="tab" data-mode="check" aria-selected="true">Check sites</button>
-    <button role="tab" data-mode="days" aria-selected="false">Find a landing day</button>
-  </nav>
-  <div id="status" class="status" role="status" aria-live="polite"></div>
-  <a class="navlink" href="/navigator.html" title="The team's earlier Lunar Landing Site Navigator">Navigator</a>
-  <label class="switch" title="Show technical terms, angles, sources and extra settings">
-    <input type="checkbox" id="advanced"><span class="track" aria-hidden="true"></span>Advanced
-  </label>
-</header>
 
-<div class="app">
-  <aside class="side" aria-label="Settings and comparison">
-    <div class="pane-tabs" role="tablist" aria-label="Side panel">
-      <button role="tab" id="tab-settings" data-pane="settings" aria-selected="true" aria-controls="pane-settings">Settings</button>
-      <button role="tab" id="tab-compare" data-pane="compare" aria-selected="false" aria-controls="pane-compare">Compare sites</button>
+<main class="workspace-scene" aria-label="Lunar mission workspace">
+    <div class="scene" id="scene">
+      <div id="sky3d" class="sky3d"></div>
+      <div class="scene-now" id="scene-now"></div>
+      <div class="scene-tools">
+        <div class="seg" id="view-seg" role="group" aria-label="Scene view">
+          <button data-view="site" aria-pressed="true">At the site</button>
+          <button data-view="terrain" aria-pressed="false">Above the site</button>
+        </div>
+        <button class="tool" id="map-toggle" aria-expanded="false" aria-controls="map-panel"><svg><use href="#i-map"/></svg>South pole map</button>
+        <button class="tool site-only" id="find-sun" title="Turn to face the Sun"><svg><use href="#i-sun"/></svg>Sun</button>
+        <button class="tool site-only" id="find-earth" title="Turn to face Earth"><svg><use href="#i-earth"/></svg>Earth</button>
+        <button class="tool icon site-only" id="reset-view" title="Reset view" aria-label="Reset view"><svg><use href="#i-reset"/></svg></button>
+      </div>
+      <p class="scene-hint">Drag to look around · scroll to zoom</p>
+      <section class="map-panel" id="map-panel" hidden aria-label="South pole map">
+        <div class="map-head"><h2>South pole</h2><span id="map-count" class="tag"></span>
+          <button class="tool icon" id="map-close" aria-label="Close map"><svg><use href="#i-cross"/></svg></button></div>
+        <p class="map-instruction">Click a spot to visit it. Drag to pan or scroll to zoom.</p>
+        <details class="map-coordinates"><summary>Enter coordinates</summary>
+        <form id="coord-form" class="coord-form">
+          <label class="field">Latitude (°)<input id="c-lat" type="number" step="0.0001" min="-90" max="-75" placeholder="-89.45" required></label>
+          <label class="field">Longitude (°E)<input id="c-lon" type="number" step="0.0001" min="-360" max="360" placeholder="222.6" required></label>
+          <button class="btn primary" type="submit"><svg><use href="#i-pin"/></svg>Add</button>
+        </form>
+        </details>
+        <div id="map-wrap" class="map-wrap">
+          <div id="map-content"><svg id="map-overlay" viewBox="0 0 1000 1000" aria-hidden="true"></svg></div>
+        </div>
+        <div class="map-zoom" role="group" aria-label="Map zoom">
+          <button type="button" id="map-out" aria-label="Zoom map out">−</button>
+          <button type="button" id="map-in" aria-label="Zoom map in">+</button>
+          <button type="button" id="map-reset">Reset map</button>
+        </div>
+      </section>
     </div>
-    <div id="pane-compare" class="pane" role="tabpanel" aria-labelledby="tab-compare" hidden></div>
-    <div id="pane-settings" class="pane" role="tabpanel" aria-labelledby="tab-settings">
-    <section class="group">
-      <h2>Mission</h2>
-      <label class="field">Site in view<select id="site"></select></label>
+
+
+  <header class="workspace-header">
+    <a class="brand" href="./" aria-label="NoCoast home"><img src="/branding/nocoast-icon.png" alt="" width="30" height="26">NoCoast</a>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </header>
+
+  <aside class="mission-sheet" id="mission-sheet" aria-label="Mission planner">
+    <div class="sheet-nav" id="sheet-nav" hidden>
+      <button type="button" id="sheet-back">All panels</button>
+      <button type="button" id="sheet-hide">Show terrain</button>
+    </div>
+    <section data-screen="site" aria-labelledby="choose-heading">
+      <h1 id="choose-heading" tabindex="-1">Choose a landing site</h1>
+      <label class="field"><span class="sr-only">Landing site</span><select id="site" disabled></select></label>
+      <button type="button" id="site-continue" class="btn primary sheet-primary" disabled>Explore this site</button>
+    </section>
+    <section data-screen="menu" hidden aria-labelledby="active-site">
+      <h1 id="active-site" tabindex="-1">Mission planner</h1>
+      <nav class="sheet-menu" aria-label="Site information">
+        <button type="button" data-open="results">Sunlight, power &amp; Earth contact</button>
+        <button type="button" data-open="dates">Mission dates</button>
+        <button type="button" data-open="compare">Compare landing sites</button>
+        <button type="button" data-open="equipment">Lander settings &amp; sources</button>
+      </nav>
+      <button type="button" data-open="site" class="sheet-link">Change landing site</button>
+    </section>
+    <section data-screen="results" hidden aria-labelledby="results-heading">
+      <h1 id="results-heading" tabindex="-1">Mission outlook</h1>
+      <div id="results" class="results"></div>
+    </section>
+    <section data-screen="settings" id="pane-settings" hidden aria-labelledby="settings-heading">
+      <h1 id="settings-heading" tabindex="-1">Mission settings</h1>
+      <label class="switch equipment-only"><input type="checkbox" id="advanced"><span class="track" aria-hidden="true"></span>Advanced settings</label>
+    <section class="group mission-fields">
+      <h2>Mission dates</h2>
       <div class="pair">
         <label class="field">Landing date<input type="date" id="land-date"></label>
         <label class="field">Stay
@@ -76,51 +125,26 @@
         <button class="btn ghost" id="p-csv"><svg><use href="#i-down"/></svg>Power CSV</button>
       </div>
     </footer>
-    </div>
-  </aside>
 
-  <main class="work">
-    <div class="scene" id="scene">
-      <div id="sky3d" class="sky3d"></div>
-      <iframe id="terrain-frame" class="terrain-frame" title="3D polar terrain explorer" loading="lazy"></iframe>
-      <div class="scene-now" id="scene-now"></div>
-      <div class="scene-tools">
-        <div class="seg" id="view-seg" role="group" aria-label="Scene view">
-          <button data-view="site" aria-pressed="true">At the site</button>
-          <button data-view="terrain" aria-pressed="false">Terrain overview</button>
-        </div>
-        <button class="tool" id="map-toggle" aria-expanded="false" aria-controls="map-panel"><svg><use href="#i-map"/></svg>Map</button>
-        <button class="tool site-only" id="find-sun" title="Turn to face the Sun"><svg><use href="#i-sun"/></svg>Sun</button>
-        <button class="tool site-only" id="find-earth" title="Turn to face Earth"><svg><use href="#i-earth"/></svg>Earth</button>
-        <button class="tool icon site-only" id="reset-view" title="Reset view" aria-label="Reset view"><svg><use href="#i-reset"/></svg></button>
+      <div class="modes dates-only" role="group" aria-label="Date tools">
+        <button type="button" data-mode="days" aria-pressed="false">Find a landing day</button>
       </div>
-      <p class="scene-hint">Drag to look around · scroll to zoom</p>
-      <section class="map-panel" id="map-panel" hidden aria-label="South pole map">
-        <div class="map-head"><h2>South pole</h2><span id="map-count" class="tag"></span>
-          <button class="tool icon" id="map-close" aria-label="Close map"><svg><use href="#i-cross"/></svg></button></div>
-        <p class="hint">Type coordinates, or click the map:</p>
-        <form id="coord-form" class="coord-form">
-          <label class="field">Latitude (°)<input id="c-lat" type="number" step="0.0001" min="-90" max="-75" placeholder="-89.45" required></label>
-          <label class="field">Longitude (°E)<input id="c-lon" type="number" step="0.0001" min="-360" max="360" placeholder="222.6" required></label>
-          <button class="btn primary" type="submit"><svg><use href="#i-pin"/></svg>Add</button>
-        </form>
-        <div id="map-wrap" class="map-wrap">
-          <svg id="map-overlay" viewBox="0 0 1000 1000" aria-hidden="true"></svg>
-        </div>
-      </section>
-    </div>
-
-    <section class="drawer" aria-label="Results">
+    </section>
+    <section data-screen="compare" hidden aria-labelledby="compare-heading">
+      <h1 id="compare-heading" tabindex="-1">Compare landing sites</h1>
+      <div id="pane-compare"></div>
+    </section>
+  </aside>
+  <button type="button" class="btn ghost sheet-reopen" id="sheet-reopen" hidden>Explore site</button>
+  <section class="mission-dock" id="mission-dock" aria-label="Mission timeline" hidden>
       <div class="timebar">
         <button class="play" id="play" aria-label="Play"><svg><use href="#i-play"/></svg></button>
         <div class="t-label" id="t-label"></div>
         <canvas id="strip" class="strip" aria-label="Mission timeline: drag to move through time"></canvas>
       </div>
-      <div id="results" class="results"></div>
-    </section>
-  </main>
-</div>
 
+  </section>
+</main>
 <div id="tooltip" role="tooltip"></div>
 <script type="module" src="/src/dashboard/app.js"></script>
 </body>

@@ -5,8 +5,6 @@ import { createSkyView } from "./sky3d.js";
 import { apiUrl } from "../apiBase.ts";
 import { simulate, resultCsv, MODEL_ID } from "../power/model.mjs";
 import { simulateMission, DEFAULT_MISSION_SETTINGS } from "../power/mission.ts";
-import { initTour } from "./tour.js";
-import { showLanding } from "./landing.js";
 import { downloadCard } from "./card.js";
 import { gameScore, scoreGrade, scoreTip } from "./game.js";
 
@@ -23,7 +21,7 @@ const D = DEFAULT_MISSION_SETTINGS;
 const NEEDS_DEFAULT = { loadW: 40, ...D.battery, ...D.requirements };   // Person 3 team defaults
 const PANEL_DEFAULT = { areaM2: 2, efficiency: 0.28, tiltDeg: 90, face: "auto" };
 const state = {
-  contract: null, sites: [], focus: null, custom: load("customSitesV3", []), view: "site", pane: load("paneV1", "settings"),
+  contract: null, sites: [], focus: null, custom: load("customSitesV3", []), view: "site", pane: "site",
   start: null, end: null, antenna: 0,
   results: new Map(), power: new Map(), mission: new Map(), faceDeg: new Map(),
   tIdx: 0, playing: false, mode: "check", loading: true,
@@ -79,9 +77,9 @@ function cached(key, fn) {
   if (!memo.has(key)) memo.set(key, fn().catch((e) => { memo.delete(key); throw e; }));
   return memo.get(key);
 }
-const allSites = () => [...state.sites, ...state.custom];
+const allSites = () => [...state.sites, ...state.custom, ...(state.mapSpot ? [state.mapSpot] : [])];
 const siteById = (id) => allSites().find((s) => s.id === id);
-const analyze = (s, start, end) => cached(`a|${s.id}|${utc(start)}|${utc(end)}|${state.antenna}|${state.relay.on}|${state.relay.sats}`, () =>
+const analyze = (s, start, end) => cached(`a|${s.id}|${s.lat}|${s.lon}|${utc(start)}|${utc(end)}|${state.antenna}|${state.relay.on}|${state.relay.sats}`, () =>
   api("analyze", { latitudeDeg: s.lat, longitudeEastDeg: s.lon, startUtc: utc(start), endUtc: utc(end),
     antennaMinElevationDeg: state.antenna, relay: state.relay.on, relaySats: state.relay.sats })
     .then((r) => ({ ...r, _t: r.series.timesUtc.map(Date.parse) })));
@@ -157,14 +155,16 @@ const VERDICT = { go: "GO", caution: "CAUTION", nogo: "NO-GO", unknown: "CAN'T T
 const vbadge = (v) => `<span class="v v-${v}">${VERDICT[v]}</span>`;
 
 // ============================================================ refresh
+let latestRefresh = 0;
 async function refresh() {
   const c = state.contract.time;
   if (!(state.start < state.end)) return setStatus("The end must be after the start.", "err");
   if (state.start < new Date(c.supportedStartUtc) || state.end > new Date(c.supportedEndUtc)) return setStatus("Dates must fall within 2027 (the data range).", "err");
   if ((state.end - state.start) / 1000 > c.maxMissionDurationSeconds) return setStatus("A stay can be at most 60 days.", "err");
   state.loading = true; state.fresh = new Set(); setStatus("Calculating…", "busy"); renderResults();
+  const run = ++latestRefresh;
   const start = state.start, end = state.end;
-  const stale = () => start !== state.start || end !== state.end;
+  const stale = () => run !== latestRefresh || start !== state.start || end !== state.end;
   const load = async (s) => {
     const [r, input] = await Promise.all([analyze(s, start, end), solarInput(s, start, end).catch((e) => ({ error: e.message }))]);
     if (stale()) return;
@@ -185,7 +185,7 @@ async function refresh() {
     if (stale()) return;
     state.loading = false; setStatus("");
     show();
-  } catch (e) { state.loading = false; setStatus(`Couldn't calculate: ${e.message}`, "err"); renderResults(); }
+  } catch (e) { if (stale()) return; state.loading = false; setStatus(`Couldn't calculate: ${e.message}`, "err"); renderResults(); }
   if (state.mode === "days") refreshDays();
 }
 const inputs = new Map();
@@ -333,7 +333,6 @@ function renderSources() {
 // ============================================================ 3D scene + "right now" readout
 let sky3d = null;
 function drawScene(r) {
-  if (state.view === "terrain") { postSky(); return; }
   if (!sky3d) {
     try { sky3d = createSkyView($("sky3d")); }
     catch { $("sky3d").innerHTML = `<p class="scene-empty">This browser can't show 3D (WebGL is off). The results below still work.</p>`; sky3d = false; }
@@ -341,32 +340,26 @@ function drawScene(r) {
   if (!sky3d) return;
   sky3d.setTexts({ sun: "Sun", earth: "Earth", sunHidden: "Sun (behind terrain)", earthHidden: "Earth (behind terrain)", lander: "Lander",
     compass: advanced ? [["0°", 0], ["90°", 90], ["180°", 180], ["270°", 270]] : [["N", 0], ["E", 90], ["S", 180], ["W", 270]] });
-  sky3d.setSite(siteById(state.focus));
+  const site = siteById(state.focus);
+  if (!site) return;
+  sky3d.setSite(site).catch(error => setStatus(`Terrain unavailable: ${error.message}`, "err"));
   sky3d.setResult(r);
-  sky3d.setTime(state.tIdx);
+  if (r) sky3d.setTime(Math.min(state.tIdx, r._t.length-1));
 }
-$("find-earth").addEventListener("click", () => sky3d?.aim("earth"));
-$("find-sun").addEventListener("click", () => sky3d?.aim("sun"));
+$("find-earth").addEventListener("click", () => { if (sky3d) { setView("site"); sky3d.aim("earth"); } });
+$("find-sun").addEventListener("click", () => { if (sky3d) { setView("site"); sky3d.aim("sun"); } });
 $("reset-view").addEventListener("click", () => sky3d?.resetView());
 
-// Scene view: standing at the site (our 3D sky) or Person 1's polar terrain explorer, fed the same Sun/Earth.
+// Both viewpoints use the same scene and the same site/time data.
 function setView(v) {
   state.view = v === "terrain" ? "terrain" : "site";
   document.querySelectorAll("#view-seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === state.view)));
-  $("scene").classList.toggle("terrain-view", state.view === "terrain");
-  if (state.view === "terrain" && !$("terrain-frame").src) $("terrain-frame").src = "/terrain.html?embed=1";
-  renderNow();
+  document.querySelector(".scene-hint").textContent = state.view === "terrain"
+    ? "Drag to orbit · Middle-drag to pan · Scroll to zoom"
+    : "Drag to look around · Scroll to zoom";
+  if (sky3d) sky3d.setMode(state.view === "terrain" ? "bird" : "lander");
 }
 document.querySelectorAll("#view-seg button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
-function postSky() {
-  const frame = $("terrain-frame"), r = state.results.get(state.focus), site = siteById(state.focus);
-  if (!frame.contentWindow || !r || !site) return;
-  const i = state.tIdx, s = r.series;
-  frame.contentWindow.postMessage({ type: "lunar-sky", siteId: site.id, timeUtc: s.timesUtc[i],
-    sunEnu: s.sunEnu[i], earthEnu: s.earthEnu[i], sunVisible: s.sunVisible[i], earthVisible: s.earthVisible[i] }, location.origin);
-}
-$("terrain-frame").addEventListener("load", () => setTimeout(postSky, 300));
-window.addEventListener("message", (e) => { if (e.origin === location.origin && e.data?.type === "lunar-sky-ready") postSky(); });
 
 // ============================================================ map + custom spots
 const MAX_CUSTOM = 4;
@@ -393,14 +386,19 @@ function renderMap() {
     <circle cx="500" cy="500" r="7" class="pole"/><text class="north" x="515" y="550">${advanced ? "90°S" : "South Pole"}</text>${marks}`;
   $("map-count").textContent = `${state.custom.length} of ${MAX_CUSTOM} custom spots`;
 }
-function addSpot(lat, lon) {
+function addSpot(lat, lon, saveSpot = true) {
   if (!(lat >= -90 && lat <= -75) || !(lon >= -360 && lon <= 360)) { setStatus("Use a latitude from -90 to -75 (the terrain data covers the south polar region).", "err"); return; }
-  if (state.custom.length >= MAX_CUSTOM) { setStatus(`You can keep ${MAX_CUSTOM} custom spots. Remove one from the table first.`, "err"); return; }
+  if (saveSpot && state.custom.length >= MAX_CUSTOM) { setStatus(`You can keep ${MAX_CUSTOM} custom spots. Remove one from the table first.`, "err"); return; }
   const n = state.custom.length ? Math.max(...state.custom.map((s) => +s.name.replace(/\D+/g, "") || 0)) + 1 : 1;
-  const s = { id: `c-${Date.now()}`, name: `Spot ${n}`, lat: +lat.toFixed(4), lon: +(((lon % 360) + 360) % 360).toFixed(4), custom: true };
-  state.custom.push(s); save("customSitesV3", state.custom);
+  const s = { id: saveSpot ? `c-${Date.now()}` : "map-spot", name: saveSpot ? `Spot ${n}` : "Map selection",
+    lat: +lat.toFixed(4), lon: +(((lon % 360) + 360) % 360).toFixed(4), custom: true };
+  if (saveSpot) { state.custom.push(s); save("customSitesV3", state.custom); }
+  else {
+    state.mapSpot = s;
+    for (const cache of [state.results,state.power,state.mission,inputs]) cache.delete(s.id);
+  }
   state.focus = s.id; state.days.clear(); state.dayRun++;
-  syncInputs(); renderMap(); refresh();
+  syncInputs(); renderMap(); drawScene(null); refresh();
   setStatus("Working out the hills around your spot (a few seconds the first time)…", "busy");
 }
 function removeSpot(id) {
@@ -415,14 +413,63 @@ $("map-toggle").addEventListener("click", () => {
   if (open) renderMap();
 });
 $("map-close").addEventListener("click", () => $("map-toggle").click());
-$("map-wrap").addEventListener("mousemove", (e) => {
-  const b = $("map-wrap").getBoundingClientRect(), [lat, lon] = mapToLatLon((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height);
-  tooltip(`${advanced ? `${lat.toFixed(4)}°, ${lon.toFixed(4)}°E` : `${(((90 + lat) * Math.PI) / 180 * 1737.4).toFixed(1)} km from the pole`}<br>Click to add this spot`, e);
+const mapView = { scale: 1, x: 0, y: 0 };
+const mapWrap = $("map-wrap");
+function updateMapTransform() {
+  const limit = 1-mapView.scale;
+  mapView.x = Math.min(0, Math.max(limit, mapView.x));
+  mapView.y = Math.min(0, Math.max(limit, mapView.y));
+  $("map-content").style.transform = `translate(${mapView.x*100}%, ${mapView.y*100}%) scale(${mapView.scale})`;
+  $("map-out").disabled = mapView.scale === 1;
+  $("map-in").disabled = mapView.scale === 8;
+}
+function zoomMap(factor, x = .5, y = .5) {
+  const next = Math.min(8, Math.max(1, mapView.scale*factor));
+  const ratio = next/mapView.scale;
+  mapView.x = x-(x-mapView.x)*ratio;
+  mapView.y = y-(y-mapView.y)*ratio;
+  mapView.scale = next;
+  updateMapTransform();
+}
+$("map-out").onclick = () => zoomMap(1/1.5);
+$("map-in").onclick = () => zoomMap(1.5);
+$("map-reset").onclick = () => { Object.assign(mapView,{scale:1,x:0,y:0}); updateMapTransform(); };
+updateMapTransform();
+mapWrap.addEventListener("wheel", event => {
+  event.preventDefault();
+  const bounds = mapWrap.getBoundingClientRect();
+  zoomMap(Math.exp(-event.deltaY*.002),(event.clientX-bounds.left)/bounds.width,(event.clientY-bounds.top)/bounds.height);
+}, {passive:false});
+let mapDrag;
+mapWrap.addEventListener("pointerdown", event => {
+  if (event.button !== 0 || !event.isPrimary) return;
+  mapDrag = {id:event.pointerId,x:event.clientX,y:event.clientY,offsetX:mapView.x,offsetY:mapView.y,moved:false};
+  mapWrap.setPointerCapture(event.pointerId);
 });
-$("map-wrap").addEventListener("mouseleave", () => tooltip(null));
-$("map-wrap").addEventListener("click", (e) => {
-  const b = $("map-wrap").getBoundingClientRect();
-  addSpot(...mapToLatLon((e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height));
+mapWrap.addEventListener("pointermove", event => {
+  if (mapDrag?.id !== event.pointerId) return;
+  const dx = event.clientX-mapDrag.x, dy = event.clientY-mapDrag.y;
+  mapDrag.moved ||= Math.hypot(dx,dy)>5;
+  if (!mapDrag.moved) return;
+  const bounds = mapWrap.getBoundingClientRect();
+  mapView.x = mapDrag.offsetX+dx/bounds.width;
+  mapView.y = mapDrag.offsetY+dy/bounds.height;
+  updateMapTransform();
+});
+mapWrap.addEventListener("pointercancel", () => {mapDrag = undefined;});
+mapWrap.addEventListener("pointerup", event => {
+  if (mapDrag?.id !== event.pointerId) return;
+  const moved = mapDrag.moved;
+  mapDrag = undefined;
+  if (moved || !state.mapMeta) return;
+  const bounds = $("map-content").getBoundingClientRect();
+  const x = (event.clientX-bounds.left)/bounds.width, y = (event.clientY-bounds.top)/bounds.height;
+  const nearest = allSites().map(site => {
+    const [sx,sy] = latLonToMap(site.lat,site.lon);
+    return {site, distance:Math.hypot((sx/1000-x)*bounds.width,(sy/1000-y)*bounds.height)};
+  }).sort((a,b)=>a.distance-b.distance)[0];
+  if (nearest?.distance < 14) selectSite(nearest.site.id);
+  else addSpot(...mapToLatLon(x,y),false);
 });
 $("coord-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -450,7 +497,8 @@ function powerAt(p, ms) {
 }
 function renderNow() {
   const r = state.results.get(state.focus);
-  if (!r) return;
+  if (r) state.tIdx = Math.min(state.tIdx,r._t.length-1);
+  if (!r) { $("scene-now").replaceChildren(); drawScene(null); return; }
   const i = state.tIdx, s = r.series, ms = r._t[i];
   $("t-label").innerHTML = `<b>Day ${dayOf(ms)}</b> ${fmtWhen(ms)}`;
   const line = (body, up, name) => {
@@ -593,21 +641,26 @@ function metricRow(c) {
     <span class="mv">${ICON[c.status] ? icon(ICON[c.status]) : ""}<b>${c.value}</b></span><span class="ms">${c.sub ?? ""}</span></div>`;
 }
 function renderCompare() {
-  const cards = allSites().map((s) => {
-    const sel = s.id === state.focus, checks = siteChecks(s);
-    const del = s.custom ? `<button class="del" data-del="${esc(s.id)}" aria-label="Remove ${esc(s.name)}" title="Remove">${icon("cross")}</button>` : "";
-    const body = checks ? checks.map(metricRow).join("")
-      : pending(s.id) ? `<div class="skel"><span class="bar"></span><span class="bar"></span></div>` : `<p class="hint">No data.</p>`;
-    return `<article class="card${sel ? " sel" : ""}" data-site="${esc(s.id)}" tabindex="0" role="button" aria-pressed="${sel}"
-        aria-label="${esc(s.name)}: ${checks ? VERDICT[verdictFor(s.id)] : "calculating"}. Show in the 3D view.">
-      <header><div><h3>${esc(s.name)}</h3><small>${where(s)}${s.custom ? " · your spot" : ""}</small></div>
-        ${checks ? vbadge(verdictFor(s.id)) : ""}${del}</header>
-      ${sel ? `<p class="in-view">${icon("check")}Showing in the 3D view</p>` : ""}
-      <div class="metrics">${body}</div></article>`;
+  const primary = siteById(state.focus);
+  const choices = allSites().filter(site=>site.id !== state.focus);
+  const secondary = choices.find(site=>site.id === state.compareSite) ?? choices[0];
+  if (!primary || !secondary) { $("pane-compare").textContent = "Choose two different sites to compare."; return; }
+  state.compareSite = secondary.id;
+  const options = choices.map(site=>`<option value="${esc(site.id)}" ${site.id===secondary.id?"selected":""}>${esc(site.name)}</option>`).join("");
+  const a = pending(primary.id) ? [] : siteChecks(primary) ?? [];
+  const b = pending(secondary.id) ? [] : siteChecks(secondary) ?? [];
+  const ids = new Set([...a,...b].map(metric=>metric.k));
+  const entries = [...ids].map(id=>{
+    const x = a.find(metric=>metric.k===id), y = b.find(metric=>metric.k===id);
+    return `<tr><th scope="row">${esc(x?.label ?? y.label)}</th><td>${esc(x?.value ?? "—")}</td><td>${esc(y?.value ?? "—")}</td></tr>`;
   }).join("");
-  $("pane-compare").innerHTML = `<div class="cmp-head"><p class="hint">Click a site to show it in the 3D view.</p>
-      <button class="btn ghost" id="add-spot" ${state.custom.length >= MAX_CUSTOM ? "disabled" : ""}>${icon("pin")}Add a spot</button></div>
-    ${cards}`;
+  const verdict = site => pending(site.id) ? "Calculating…" : vbadge(verdictFor(site.id));
+  $("pane-compare").innerHTML = `<label class="field">Compare with<select id="compare-site">${options}</select></label>
+    <table class="compare-table"><thead><tr><th scope="col">Measure</th><th scope="col">${esc(primary.name)}</th><th scope="col">${esc(secondary.name)}</th></tr></thead>
+    <tbody><tr><th scope="row">Mission outlook</th><td>${verdict(primary)}</td><td>${verdict(secondary)}</td></tr>${entries}</tbody></table>
+    <div class="actions"><button class="link" data-visit="${esc(secondary.id)}">Visit this site</button>
+    ${secondary.custom && secondary !== state.mapSpot ? `<button class="link" data-del="${esc(secondary.id)}">Remove saved spot</button>` : ""}
+    ${primary.custom && primary !== state.mapSpot ? `<button class="link" data-del="${esc(primary.id)}">Remove current spot</button>` : ""}</div>`;
 }
 const pending = (id) => state.loading && !state.fresh?.has(id);
 function gameBlock() {
@@ -622,11 +675,12 @@ function gameBlock() {
 }
 function renderSummary() {        // drawer, check mode: the site in view's verdict + one-line reason
   const v = verdictFor(state.focus);
+  const checks = pending(state.focus) ? [] : siteChecks(siteById(state.focus)) ?? [];
   const relayNote = state.relay.on && state.results.get(state.focus)?.relay
     ? `<p class="why">Earth contact includes a ${state.relay.sats}-satellite polar relay when the direct link is blocked.</p>` : "";
-  return `<div class="summary">${pending(state.focus) ? "" : vbadge(v)}<p class="why">${esc(reason(state.focus, v))}</p>${relayNote}
-    ${gameBlock()}
-    ${state.pane !== "compare" ? `<button class="link" id="open-compare">Compare all ${allSites().length} sites</button>` : ""}</div>`;
+  return `<div class="summary">${pending(state.focus) ? "" : vbadge(v)}<p class="why">${esc(reason(state.focus, v))}</p></div><div class="metric-readout">${checks.map(metricRow).join("")}</div>${relayNote}
+    ${advanced ? gameBlock() : ""}<div class="summary-actions">
+    ${state.pane !== "compare" ? `<button class="link" id="open-compare">Compare with another site</button>` : ""}</div>`;
 }
 function reason(id, v) {
   const m = state.mission.get(id), s = siteById(id)?.name ?? "";
@@ -686,22 +740,51 @@ $("results").addEventListener("click", (e) => {
   else if (b.id === "optimize-btn") void runOptimize();
   else if (b.id === "share-card") shareCard();
 });
-function selectSite(id) { if (id && id !== state.focus) { state.focus = id; syncInputs(); renderAll(); } }
+function selectSite(id) {
+  if (!id || id === state.focus) return;
+  state.focus = id;
+  syncInputs();
+  renderAll();
+}
 $("pane-compare").addEventListener("click", (e) => {
   const del = e.target.closest("[data-del]"); if (del) { removeSpot(del.dataset.del); return; }
   if (e.target.closest("#add-spot")) { if ($("map-panel").hidden) $("map-toggle").click(); $("c-lat").focus(); return; }
-  selectSite(e.target.closest(".card")?.dataset.site);
+  selectSite(e.target.closest("[data-visit]")?.dataset.visit);
 });
-$("pane-compare").addEventListener("keydown", (e) => {
-  if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("card")) { e.preventDefault(); selectSite(e.target.dataset.site); }
+$("pane-compare").addEventListener("change", event => {
+  if (event.target.id !== "compare-site") return;
+  state.compareSite = event.target.value;
+  renderCompare();
+  $("compare-site")?.focus();
 });
-function setPane(p) {
-  state.pane = p === "compare" ? "compare" : "settings"; save("paneV1", state.pane);
-  document.querySelectorAll(".pane-tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.pane === state.pane)));
-  $("pane-settings").hidden = state.pane !== "settings"; $("pane-compare").hidden = state.pane !== "compare";
-  renderResults();
+function setPane(p, focusHeading = true) {
+  state.pane = p;
+  document.body.dataset.panel = p;
+  const name = p === "dates" || p === "equipment" ? "settings" : p;
+  const panels = [...document.querySelectorAll("[data-screen]")];
+  for (const panel of panels) panel.hidden = panel.dataset.screen !== name;
+  $("settings-heading").textContent = p === "dates" ? "Mission dates" : "Lander settings";
+  $("sheet-nav").hidden = p === "site";
+  $("sheet-back").hidden = p === "menu";
+  $("sheet-reopen").hidden = true;
+  $("mission-sheet").hidden = false;
+  $("mission-sheet").scrollTop = 0;
+  $("mission-dock").hidden = p === "site";
+  if (focusHeading) panels.find(panel=>!panel.hidden)?.querySelector("h1")?.focus({preventScroll:true});
+  if (state.contract) { renderResults(); drawStrip(); }
 }
-document.querySelectorAll(".pane-tabs button").forEach((b) => b.addEventListener("click", () => setPane(b.dataset.pane)));
+document.querySelectorAll("[data-open]").forEach(button=>button.onclick = () => {
+  if (button.dataset.open === "results") setMode("check");
+  setPane(button.dataset.open);
+});
+$("site-continue").onclick = () => setPane("menu");
+$("sheet-back").onclick = () => setPane("menu");
+$("sheet-hide").onclick = () => {
+  $("mission-sheet").hidden = true;
+  $("sheet-reopen").hidden = false;
+  $("sheet-reopen").focus();
+};
+$("sheet-reopen").onclick = () => setPane(state.pane);
 
 // ============================================================ render + modes
 function renderRelayBox() {
@@ -779,12 +862,16 @@ function renderAll() {
 }
 function setMode(mode) {
   state.mode = mode === "days" ? "days" : "check";
-  document.querySelectorAll(".modes button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.mode === state.mode)));
+  document.querySelectorAll(".modes button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
   if (location.hash.slice(1) !== state.mode) history.replaceState(null, "", `${location.search}#${state.mode}`);
+  document.body.dataset.dateGrid = String(state.mode === "days");
   if (state.mode === "days" && !state.days.size) refreshDays();
   renderResults();
 }
-document.querySelectorAll(".modes button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
+document.querySelectorAll(".modes button").forEach((b) => b.addEventListener("click", () => {
+  setMode(b.dataset.mode);
+  setPane("results");
+}));
 $("advanced").addEventListener("change", () => {
   advanced = $("advanced").checked; document.body.classList.toggle("advanced", advanced); save("advancedMode", advanced);
   renderNeedsBox(); renderSources(); renderAll();
@@ -792,13 +879,14 @@ $("advanced").addEventListener("change", () => {
 
 // ============================================================ mission inputs
 function syncInputs() {
+  $("active-site").textContent = siteById(state.focus)?.name ?? "Mission planner";
   $("site").innerHTML = allSites().map((s) => `<option value="${esc(s.id)}" ${s.id === state.focus ? "selected" : ""}>${esc(s.name)}</option>`).join("");
   $("land-date").value = toDate(state.start); $("start").value = toDT(state.start); $("end").value = toDT(state.end);
   const days = Math.round((state.end - state.start) / 1000 / DAY);
   if ([...$("length").options].some((o) => +o.value === days)) $("length").value = String(days);
 }
 const newWindow = () => { state.tIdx = 0; state.days.clear(); state.dayRun++; syncInputs(); refresh(); };
-$("site").addEventListener("change", () => { state.focus = $("site").value; renderAll(); });
+$("site").addEventListener("change", () => selectSite($("site").value));
 $("land-date").addEventListener("change", () => {
   if (!$("land-date").value) return;
   const len = state.end - state.start;
@@ -849,12 +937,6 @@ document.addEventListener("mouseout", (e) => { if (e.target.closest?.("[data-tip
 window.addEventListener("resize", () => drawStrip());
 
 (async function init() {
-  const tour = initTour();
-  document.body.classList.add("pre-enter");
-  showLanding({
-    onEnter() { document.body.classList.remove("pre-enter"); },
-    onTour() { document.body.classList.remove("pre-enter"); tour.open(); },
-  });
   const share = document.createElement("button");
   share.className = "btn ghost share-btn";
   share.id = "share-card";
@@ -867,7 +949,7 @@ window.addEventListener("resize", () => drawStrip());
   const mapImg = Object.assign(document.createElement("img"), {
     id: "map-img", src: apiUrl("api/polar_map.png"),
     alt: "Shaded LOLA terrain map of the lunar south pole, about 120 km across" });
-  $("map-wrap").prepend(mapImg);
+  $("map-content").prepend(mapImg);
   try { [state.contract, state.mapMeta] = await Promise.all([api("contract"), api("polar_map/meta").catch(() => null)]); }
   catch (e) { setStatus(`Can't reach the science server (${e.message}). Start it with ./run.ps1.`, "err"); $("results").innerHTML = ""; return; }
   const c = state.contract, qs = new URLSearchParams(location.search);
@@ -883,6 +965,9 @@ window.addEventListener("resize", () => drawStrip());
   $("antenna").value = state.antenna;
   if (qs.get("t")) state.tIdx = Math.max(0, parseInt(qs.get("t"), 10) || 0);
   syncInputs(); renderNeedsBox(); renderPanelBox(); renderSources();
-  setPane(state.pane); setMode(location.hash.slice(1));
+  $("site").disabled = $("site-continue").disabled = false;
+  setPane("site", false);
+  setMode("check");
+  drawScene(null);
   refresh();
 })();

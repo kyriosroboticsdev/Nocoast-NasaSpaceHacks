@@ -42,10 +42,12 @@ Azure resource group (lunarnav-dev-rg by default)
   `AZURE_STORAGE_ACCOUNT_URL` (or `AZURE_STORAGE_CONNECTION_STRING`, for local testing) is set, so local
   dev and the offline demo path are unaffected. Wired into `scripts/fetch_data.py`.
 - `backend/pathfinding/` — the Earth<->Moon relay-satellite path search:
-  - `graph.py`: generic multi-objective weighted shortest path (plain Dijkstra, non-negative costs).
-    Combines distance, sunlit time, Earth-comm time and an obstacle penalty into one scalar cost per
-    edge. Has no notion of Earth/Moon/orbits — fully unit-tested on toy graphs
-    (`tests/test_pathfinding.py`).
+  - `graph.py`: generic multi-objective weighted shortest path (non-negative costs). Combines distance,
+    sunlit time, Earth-comm time and an obstacle penalty into one scalar cost per edge. Runs Dijkstra,
+    or A* when given an (admissible) heuristic — exact either way, but A* expands far fewer nodes as the
+    graph grows. Also takes an optional `edge_penalty` to charge costs that depend on the whole segment
+    (e.g. a keep-out zone a hop would pierce between two clear waypoints), not just its endpoints. Has
+    no notion of Earth/Moon/orbits — fully unit-tested on toy graphs (`tests/test_pathfinding.py`).
   - `earth_moon.py`: builds the concrete graph for this project — a straight Earth-Moon line (from the
     same bundled DE421 kernel already used by `backend/ephem.py`) with a ring of lateral waypoint
     choices at each step, each flagged sunlit/earth-visible/blocked via simple sphere-shadow and
@@ -55,8 +57,11 @@ Azure resource group (lunarnav-dev-rg by default)
     conics, no real obstacle catalog (debris, radiation belts) yet — `obstacles` is an empty list by
     default and accepts caller-supplied keep-out spheres. Swap the graph builder once real
     mission/orbit data is available; `graph.py` and the `/api/pathfind` route don't change.
-  - New route: `GET /api/pathfind?epochUtc=...&layers=...&lateralSteps=...&wDarkness=...&wNoComm=...`
+  - New route: `GET /api/pathfind?epochUtc=...&layers=...&lateralSteps=...&lateralRings=...&spacing=...&shadowSamples=...&wDarkness=...&wNoComm=...`
     returns the winning path's waypoints plus `sunlitFraction` / `earthCommFraction` / `totalDistanceKm`.
+    `lateralRings` adds concentric detour radii for finer paths; `spacing=cosine` clusters layers near
+    Earth/Moon where the shadow and comm edges fall; `shadowSamples>1` prices darkness/comms from the
+    fraction of each hop in shadow rather than its endpoint flag. The search runs A* (exact).
 
 ## What you need to provide
 

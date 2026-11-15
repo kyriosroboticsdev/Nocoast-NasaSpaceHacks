@@ -68,7 +68,10 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        minReplicas: 0
+        // Keep one replica warm. With minReplicas 0 the backend scaled to zero when idle, so the first
+        // page load after a lull hit an ~8s cold start and the dashboard's parallel data calls failed
+        // ("Failed to fetch" / "Terrain unavailable"). One always-on replica removes that cold start.
+        minReplicas: 1
         maxReplicas: 3
       }
     }

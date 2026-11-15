@@ -164,9 +164,9 @@ export async function startTerrain(root: ParentNode = document): Promise<Terrain
   const camera = new T.PerspectiveCamera(48,1,0.2,20000000);
   renderer.domElement.tabIndex = 0;
   renderer.domElement.setAttribute('aria-label','Lunar terrain. Click or tap to focus. Arrow keys pan the map.');
-  const light = new T.DirectionalLight(0xffffff,2.25);
+  const light = new T.DirectionalLight(0xffffff,1.25);
   light.position.set(-1,.45,-.68);
-  const ambient = new T.AmbientLight(0xffffff,1.35);
+  const ambient = new T.AmbientLight(0xffffff,0.75);
   scene.add(light,ambient);
   const defaultLightPos = light.position.clone();
   /**
@@ -174,12 +174,19 @@ export async function startTerrain(root: ParentNode = document): Promise<Terrain
    * the assessment at slider time; the world frame at the pole has +Y up,
    * -Z toward 0°E (local "north" for the cap) and +X toward 90°E, so this is a
    * cap-wide approximation — slope shading only, no cast shadows.
+   *
+   * Intensities are kept low enough that lit terrain doesn't clip to flat white under the renderer's
+   * default (NoToneMapping) output: with no tone-mapping curve, any point where
+   * albedo * (ambient + directional * NdotL) exceeds 1 renders as pure white regardless of how much it
+   * exceeds it, which erases the shading gradient a sphere needs to read as round rather than as a flat,
+   * evenly-lit disk — most visible at whole-Moon zoom, where the globe's only cue for depth is lighting
+   * (DEM relief is a fraction of a percent of the Moon's radius from that distance).
    */
   function setSunDirection(azimuthDeg: number | null, elevationDeg = 0) {
     if (azimuthDeg == null || !Number.isFinite(azimuthDeg)) {
       light.position.copy(defaultLightPos);
-      light.intensity = 2.25;
-      ambient.intensity = 1.35;
+      light.intensity = 1.25;
+      ambient.intensity = 0.75;
       return;
     }
     const az = T.MathUtils.degToRad(azimuthDeg);
@@ -191,8 +198,8 @@ export async function startTerrain(root: ParentNode = document): Promise<Terrain
     ).multiplyScalar(10);
     // Fade toward night as the sun sinks below the horizon.
     const dayFactor = T.MathUtils.clamp((elevationDeg + 1.5) / 3, 0.06, 1);
-    light.intensity = 2.6 * dayFactor;
-    ambient.intensity = 0.3 + 1.05 * dayFactor;
+    light.intensity = 1.45 * dayFactor;
+    ambient.intensity = 0.17 + 0.58 * dayFactor;
   }
   const globeMap = new T.TextureLoader().load(base+'terrain/lroc-color-2k.jpg');
   globeMap.colorSpace = T.SRGBColorSpace;
@@ -272,6 +279,25 @@ export async function startTerrain(root: ParentNode = document): Promise<Terrain
   // Mesh layer: one height function and one quadtree cube-sphere for the whole
   // Moon, drawn as an opaque fill with wire lines on top (see terrain/moonMesh.ts).
   const heightField = createHeightField(radius, overview, globalLdem);
+  // The photo-textured globe above is a perfect, undisplaced sphere — fine up close (the polar
+  // backdrop/detail meshes and the mesh-wireframe layer all displace by real elevation already), but
+  // at whole-Moon zoom a smooth ball with only a flat color texture reads as a disk, not a sphere:
+  // there's no shading gradient from actual terrain for the eye to pick up. Displace it by the same
+  // real height field everything else uses, once at startup — true scale, no exaggeration — and
+  // recompute normals so lighting responds to the real craters and basins.
+  {
+    const pos = globeShape.getAttribute('position');
+    const dir = new T.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      dir.fromBufferAttribute(pos, i).normalize();
+      const h = heightField.height(dir.x, dir.y, dir.z);
+      const r = radius + h;
+      pos.setXYZ(i, dir.x * r, dir.y * r, dir.z * r);
+    }
+    pos.needsUpdate = true;
+    globeShape.computeVertexNormals();
+    globeShape.computeBoundingSphere();
+  }
   const moonMesh = createMoonMesh({radius, center: moonCenter, field: heightField});
   moonMesh.group.visible = false;
   scene.add(moonMesh.group);

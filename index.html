@@ -3,219 +3,125 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lunar Navigator</title>
+  <title>NoCoast</title>
+  <meta name="description" content="Check whether a lunar south-pole landing site works on a given date: sunlight, solar power, battery and Earth contact.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/src/dashboard/style.css">
 </head>
 <body>
-<header class="topbar">
-  <div class="brand">
-    <span class="moon-icon"></span>
-    <div>
-      <div class="title">Lunar Navigator</div>
-      <div class="tagline" data-t="tagline"></div>
-    </div>
-  </div>
-  <nav class="tabs" role="tablist">
-    <button data-tab="overview" class="active" data-t="tabOverview"></button>
-    <button data-tab="compare" data-t="tabCompare"></button>
-    <button data-tab="dates" data-t="tabDates"></button>
-    <button data-tab="terrain" data-t="tabTerrain"></button>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><path d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></g></symbol>
+  <symbol id="i-earth" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2.5 6.5c2 .8 3.4.3 4.2 1.6.8 1.4-.6 2.4.4 3.6.6.7 1.7.9 2.4 2M9.5 2.3c-.6 1.2.2 2 1.4 2.2 1.3.2 2.3.9 2.9 2"/></g></symbol>
+  <symbol id="i-reset" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 8a5 5 0 1 0 1.5-3.6"/><path d="M3 2.5v2.5h2.5"/></g></symbol>
+  <symbol id="i-down" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></g></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-cross" viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 4.5v4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="8" cy="12" r="1.1" fill="currentColor"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 14.5s4.5-4.2 4.5-7.8a4.5 4.5 0 0 0-9 0c0 3.6 4.5 7.8 4.5 7.8z"/><circle cx="8" cy="6.7" r="1.6"/></g></symbol>
+  <symbol id="i-map" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M1.5 3.5 5.5 2l5 1.5 4-1.5v10.5l-4 1.5-5-1.5-4 1.5z"/><path d="M5.5 2v10.5M10.5 3.5V14"/></g></symbol>
+  <symbol id="i-q" viewBox="0 0 16 16"><path d="M6 6.2a2 2 0 1 1 2.8 1.9c-.5.2-.8.6-.8 1.1V10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="12.6" r="1" fill="currentColor"/></symbol>
+</svg>
+
+<header class="bar">
+  <div class="brand"><span class="mark" aria-hidden="true"></span>NoCoast</div>
+  <nav class="modes" role="tablist" aria-label="Mode">
+    <button role="tab" data-mode="check" aria-selected="true">Check sites</button>
+    <button role="tab" data-mode="days" aria-selected="false">Find a landing day</button>
   </nav>
-  <label class="mode-switch" title="Show technical terms and extra detail">
-    <span data-t="modeLabel"></span>
-    <input type="checkbox" id="advanced">
-    <span class="switch"></span>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <label class="switch" title="Show technical terms, angles, sources and extra settings">
+    <input type="checkbox" id="advanced"><span class="track" aria-hidden="true"></span>Advanced
   </label>
 </header>
 
-<section class="controls">
-  <div class="control">
-    <label data-t="ctlSite"></label>
-    <select id="site"></select>
-  </div>
-  <div class="control simple-only">
-    <label data-t="ctlLanding"></label>
-    <input type="date" id="land-date">
-  </div>
-  <div class="control simple-only">
-    <label data-t="ctlLength"></label>
-    <select id="length">
-      <option value="7">1 week</option>
-      <option value="14">2 weeks</option>
-      <option value="30" selected>30 days</option>
-      <option value="60">60 days</option>
-    </select>
-  </div>
-  <div class="control adv-only">
-    <label>Start (UTC)</label>
-    <input type="datetime-local" id="start" step="600">
-  </div>
-  <div class="control adv-only">
-    <label>End (UTC, exclusive)</label>
-    <input type="datetime-local" id="end" step="600">
-  </div>
-  <div class="control adv-only small">
-    <label>Antenna min. elevation (°)</label>
-    <input type="number" id="antenna" step="0.5" min="-5" max="60">
-  </div>
-  <div id="status" class="status"></div>
-</section>
-
-<main>
-  <!-- ============ OVERVIEW ============ -->
-  <section id="tab-overview" class="tab-page">
-    <div class="layout">
-      <div class="visuals">
-        <div class="card verdict" id="verdict"></div>
-
-        <div class="card now">
-          <div class="now-row" id="now-sun"></div>
-          <div class="now-row" id="now-earth"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-head">
-            <h2 data-t="skyTitle"></h2>
-            <p class="help" data-t="skyHelp"></p>
-          </div>
-          <div class="sky-tools">
-            <div class="seg" id="sky-view">
-              <button data-v="3d" class="active" data-t="view3d"></button>
-              <button data-v="flat" data-t="viewFlat"></button>
-            </div>
-            <div class="seg sky3d-only" id="sky-mode">
-              <button data-m="lander" class="active" data-t="modeLander"></button>
-              <button data-m="bird" data-t="modeBird"></button>
-            </div>
-            <div class="sky3d-only tool-btns">
-              <button class="btn small" id="find-earth" data-t="findEarth"></button>
-              <button class="btn small" id="find-sun" data-t="findSun"></button>
-              <button class="btn small" id="reset-view" data-t="resetView"></button>
-            </div>
-          </div>
-          <div id="sky3d" class="sky3d"></div>
-          <canvas id="sky" class="sky" hidden></canvas>
-          <div class="sky-legend">
-            <span><i class="dot sun"></i><span data-t="legSun"></span></span>
-            <span><i class="dot earth"></i><span data-t="legEarth"></span></span>
-            <span><i class="dash"></i><span data-t="legHidden"></span></span>
-          </div>
-          <div class="player">
-            <button id="play" aria-label="Play">▶</button>
-            <input type="range" id="t" min="0" max="1000" value="0">
-            <div id="t-label" class="t-label"></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-head">
-            <h2 data-t="tlTitle"></h2>
-            <p class="help" data-t="tlHelp"></p>
-          </div>
-          <canvas id="timeline" class="timeline"></canvas>
-        </div>
-
-        <div class="card">
-          <div class="card-head">
-            <h2 data-t="pwrTitle"></h2>
-            <p class="help" data-t="pwrHelp"></p>
-          </div>
-          <canvas id="power-chart" class="power-chart"></canvas>
-          <p id="power-note" class="help" hidden></p>
-        </div>
-
-        <div class="card">
-          <div class="card-head row-between">
-            <h2 data-t="schedTitle"></h2>
-            <button id="export" class="adv-only btn">⬇ Export for Quest (JSON)</button>
-          </div>
-          <div id="schedule"></div>
-        </div>
-      </div>
-
-      <aside class="numbers card">
-        <div id="numbers"></div>
-        <div id="needs-box" class="panel-box"></div>
-        <div id="panel-box" class="panel-box"></div>
-      </aside>
+<div class="app">
+  <aside class="side" aria-label="Settings and comparison">
+    <div class="pane-tabs" role="tablist" aria-label="Side panel">
+      <button role="tab" id="tab-settings" data-pane="settings" aria-selected="true" aria-controls="pane-settings">Settings</button>
+      <button role="tab" id="tab-compare" data-pane="compare" aria-selected="false" aria-controls="pane-compare">Compare sites</button>
     </div>
-  </section>
+    <div id="pane-compare" class="pane" role="tabpanel" aria-labelledby="tab-compare" hidden></div>
+    <div id="pane-settings" class="pane" role="tabpanel" aria-labelledby="tab-settings">
+    <section class="group">
+      <h2>Mission</h2>
+      <label class="field">Site in view<select id="site"></select></label>
+      <div class="pair">
+        <label class="field">Landing date<input type="date" id="land-date"></label>
+        <label class="field">Stay
+          <select id="length">
+            <option value="7">7 days</option><option value="14">14 days</option>
+            <option value="28">28 days</option><option value="60">60 days</option>
+          </select>
+        </label>
+      </div>
+      <div class="adv-only">
+        <label class="field">Start (UTC)<input type="datetime-local" id="start" step="600"></label>
+        <label class="field">End (UTC)<input type="datetime-local" id="end" step="600"></label>
+        <label class="field">Antenna min. elevation (°)<input type="number" id="antenna" step="0.5" min="-5" max="60"></label>
+      </div>
+    </section>
 
-  <!-- ============ COMPARE ============ -->
-  <section id="tab-compare" class="tab-page" hidden>
-    <div class="card">
-      <div class="card-head">
-        <h2 data-t="cmpTitle"></h2>
-        <p class="help" data-t="cmpHelp"></p>
+    <section class="group" id="needs-box"></section>
+    <section class="group" id="panel-box"></section>
+
+    <footer class="sources">
+      <p id="sources-line"></p>
+      <div class="adv-only actions">
+        <button class="btn ghost" id="export"><svg><use href="#i-down"/></svg>Quest JSON</button>
+        <button class="btn ghost" id="p-csv"><svg><use href="#i-down"/></svg>Power CSV</button>
       </div>
-      <div id="compare-grid" class="compare-grid"></div>
+    </footer>
     </div>
-    <div class="card">
-      <div class="card-head">
-        <h2 data-t="tlTitle"></h2>
-      </div>
-      <canvas id="cmp-timeline" class="timeline"></canvas>
-    </div>
-    <div class="card">
-      <div class="card-head">
-        <h2 data-t="mapTitle"></h2>
-        <p class="help" data-t="mapHelp"></p>
-      </div>
-      <div class="map-layout">
-        <div id="map-wrap">
-          <img id="map" src="/api/polar_map.png" alt="Shaded terrain map of the lunar south pole">
-          <svg id="map-overlay"></svg>
+  </aside>
+
+  <main class="work">
+    <div class="scene" id="scene">
+      <div id="sky3d" class="sky3d"></div>
+      <iframe id="terrain-frame" class="terrain-frame" title="3D polar terrain explorer" loading="lazy"></iframe>
+      <div class="scene-now" id="scene-now"></div>
+      <div class="scene-tools">
+        <div class="seg" id="view-seg" role="group" aria-label="Scene view">
+          <button data-view="site" aria-pressed="true">At the site</button>
+          <button data-view="terrain" aria-pressed="false">Terrain overview</button>
         </div>
-        <div id="custom-list" class="custom-list"></div>
+        <button class="tool" id="map-toggle" aria-expanded="false" aria-controls="map-panel"><svg><use href="#i-map"/></svg>Map</button>
+        <button class="tool site-only" id="find-sun" title="Turn to face the Sun"><svg><use href="#i-sun"/></svg>Sun</button>
+        <button class="tool site-only" id="find-earth" title="Turn to face Earth"><svg><use href="#i-earth"/></svg>Earth</button>
+        <button class="tool icon site-only" id="reset-view" title="Reset view" aria-label="Reset view"><svg><use href="#i-reset"/></svg></button>
       </div>
-    </div>
-  </section>
-
-  <!-- ============ BEST LANDING DAYS ============ -->
-  <section id="tab-dates" class="tab-page" hidden>
-    <div class="layout">
-      <div class="visuals">
-        <div class="card">
-          <div class="card-head row-between">
-            <div>
-              <h2 data-t="calTitle"></h2>
-              <p class="help" data-t="calHelp"></p>
-            </div>
-            <select id="cal-metric"></select>
-          </div>
-          <div id="calendar"></div>
-          <div id="cal-legend" class="cal-legend"></div>
+      <p class="scene-hint">Drag to look around · scroll to zoom</p>
+      <section class="map-panel" id="map-panel" hidden aria-label="South pole map">
+        <div class="map-head"><h2>South pole</h2><span id="map-count" class="tag"></span>
+          <button class="tool icon" id="map-close" aria-label="Close map"><svg><use href="#i-cross"/></svg></button></div>
+        <p class="hint">Type coordinates, or click the map:</p>
+        <form id="coord-form" class="coord-form">
+          <label class="field">Latitude (°)<input id="c-lat" type="number" step="0.0001" min="-90" max="-75" placeholder="-89.45" required></label>
+          <label class="field">Longitude (°E)<input id="c-lon" type="number" step="0.0001" min="-360" max="360" placeholder="222.6" required></label>
+          <button class="btn primary" type="submit"><svg><use href="#i-pin"/></svg>Add</button>
+        </form>
+        <div id="map-wrap" class="map-wrap">
+          <img src="/api/polar_map.png" alt="Shaded LOLA terrain map of the lunar south pole, about 120 km across">
+          <svg id="map-overlay" viewBox="0 0 1000 1000" aria-hidden="true"></svg>
         </div>
-      </div>
-      <aside class="numbers card">
-        <h2 data-t="delayTitle"></h2>
-        <p class="help" data-t="delayHelp"></p>
-        <input type="range" id="delay" min="0" max="30" value="0">
-        <div id="delay-label" class="delay-label"></div>
-        <div id="delay-result"></div>
-      </aside>
+      </section>
     </div>
-  </section>
 
-  <!-- ============ 3D TERRAIN (Person 1 explorer, fed with Person 2 Sun/Earth data) ============ -->
-  <section id="tab-terrain" class="tab-page" hidden>
-    <div class="card">
-      <div class="card-head">
-        <h2 data-t="t3Title"></h2>
-        <p class="help" data-t="t3Help"></p>
+    <section class="drawer" aria-label="Results">
+      <div class="timebar">
+        <button class="play" id="play" aria-label="Play"><svg><use href="#i-play"/></svg></button>
+        <div class="t-label" id="t-label"></div>
+        <canvas id="strip" class="strip" aria-label="Mission timeline: drag to move through time"></canvas>
       </div>
-      <div class="player">
-        <button id="play3" aria-label="Play">▶</button>
-        <input type="range" id="t3" min="0" max="1000" value="0">
-        <div id="t3-label" class="t-label"></div>
-      </div>
-      <div class="sky-legend" id="t3-status"></div>
-      <iframe id="terrain-frame" class="terrain-frame" title="3D lunar terrain explorer" loading="lazy"></iframe>
-    </div>
-  </section>
-</main>
+      <div id="results" class="results"></div>
+    </section>
+  </main>
+</div>
 
-<div id="tooltip"></div>
+<div id="tooltip" role="tooltip"></div>
 <script type="module" src="/src/dashboard/app.js"></script>
 </body>
 </html>

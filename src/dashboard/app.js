@@ -12,9 +12,9 @@ import { initTour } from "./tour.js";
 import { showLanding } from "./landing.js";
 import { downloadCard } from "./card.js";
 import { gameScore, scoreGrade, scoreTip } from "./game.js";
-import { findSite } from "../scenario/catalog.ts";
+import { findSite, SITE_CATALOG } from "../scenario/catalog.ts";
 import {
-  applyLandingScenario, bootLandingNavigator, ensureLandingTerrain, isLandingSync, setLandingSun, subscribeLandingScenario,
+  applyLandingScenario, bootLandingNavigator, ensureLandingTerrain, isLandingSync, setLandingSun, subscribeLandingAssessment, subscribeLandingScenario,
 } from "../app.ts";
 
 const DAY = 86400;
@@ -130,6 +130,7 @@ const vbadge = (v) => `<span class="v v-${v}">${VERDICT[v]}</span>`;
 // ============================================================ refresh
 let refreshRun = 0;
 async function refresh() {
+  if (!state.contract) { renderAll(); return; }
   const run = ++refreshRun;
   state.dayRun++;
   const c = state.contract.time;
@@ -760,7 +761,6 @@ function shareCard() {
   }, `nocoast-${site?.id || "site"}.png`);
 }
 function renderAll() {
-  if (!state.contract) return;
   renderResults(); renderNow(); renderPanelBox(); renderMap();
 }
 function setMode(mode) {
@@ -783,25 +783,32 @@ function syncInputs() {
   const days = Math.round((state.end - state.start) / 1000 / DAY);
   if ([...$("length").options].some((o) => +o.value === days)) $("length").value = String(days);
 }
+function clampStay() {
+  const endUtc = state.contract?.time?.supportedEndUtc;
+  if (!endUtc || !state.end) return;
+  const max = new Date(endUtc);
+  if (state.end > max) state.end = max;
+}
 const newWindow = () => { state.tIdx = 0; state.days.clear(); state.dayRun++; syncInputs(); refresh(); };
 $("site").addEventListener("change", () => { state.focus = $("site").value; renderAll(); });
 $("land-date").addEventListener("change", () => {
-  if (!$("land-date").value) return;
+  if (!$("land-date").value || !state.start) return;
   const len = state.end - state.start;
   state.start = new Date($("land-date").value + "T00:00:00Z"); state.end = new Date(state.start.getTime() + len);
-  const max = new Date(state.contract.time.supportedEndUtc); if (state.end > max) state.end = max;
+  clampStay();
   newWindow();
 });
 $("length").addEventListener("change", () => {
+  if (!state.start) return;
   state.end = new Date(state.start.getTime() + +$("length").value * DAY * 1000);
-  const max = new Date(state.contract.time.supportedEndUtc); if (state.end > max) state.end = max;
+  clampStay();
   newWindow();
 });
 $("start").addEventListener("change", () => { if ($("start").value) { state.start = new Date($("start").value + ":00Z"); newWindow(); } });
 $("end").addEventListener("change", () => { if ($("end").value) { state.end = new Date($("end").value + ":00Z"); newWindow(); } });
 $("antenna").addEventListener("change", () => {
   const v = parseFloat($("antenna").value);
-  state.antenna = Number.isFinite(v) ? v : state.contract.visibility.antennaMinElevationDeg; newWindow();
+  state.antenna = Number.isFinite(v) ? v : (state.contract?.visibility?.antennaMinElevationDeg ?? state.antenna); newWindow();
 });
 
 // ============================================================ exports, tooltips, boot
@@ -834,6 +841,19 @@ document.addEventListener("mouseover", (e) => { const k = e.target.closest?.("[d
 document.addEventListener("mouseout", (e) => { if (e.target.closest?.("[data-tip]")) tooltip(null); });
 window.addEventListener("resize", () => drawStrip());
 
+function angDiff(a, b) {
+  return Math.abs((((a - b) % 360) + 540) % 360 - 180);
+}
+function meanSunAzimuth(samples) {
+  let x = 0, y = 0, n = 0;
+  for (const s of samples ?? []) {
+    if (s.sunlit === false || !Number.isFinite(s.sunAz)) continue;
+    const r = s.sunAz * Math.PI / 180;
+    x += Math.sin(r); y += Math.cos(r); n++;
+  }
+  if (!n) return null;
+  return (Math.atan2(x, y) * 180 / Math.PI + 360) % 360;
+}
 function panelAzimuth() {
   const p = state.panel;
   if (p.face !== "auto") return +p.face || 0;
@@ -897,12 +917,16 @@ function onNavigatorScenario(s) {
     state.start = start; state.end = end; state.tIdx = 0; syncInputs(); refresh(); return;
   }
   const currentAz = panelAzimuth();
+  const trackSun = state.panel.face === "auto";
   const panelDirty = Math.abs(state.panel.areaM2 - th.panelAreaM2) > 1e-6
     || Math.abs(state.panel.efficiency - th.panelEfficiency) > 1e-6
     || Math.abs(state.panel.tiltDeg - th.panelTiltDeg) > 1e-6
-    || Math.abs(currentAz - th.panelAzimuthDeg) > 0.75;
+    || (!trackSun && angDiff(currentAz, th.panelAzimuthDeg) > 0.75);
   if (panelDirty) {
-    state.panel = { areaM2: th.panelAreaM2, efficiency: th.panelEfficiency, tiltDeg: th.panelTiltDeg, face: String(Math.round(th.panelAzimuthDeg)) };
+    state.panel = {
+      areaM2: th.panelAreaM2, efficiency: th.panelEfficiency, tiltDeg: th.panelTiltDeg,
+      face: trackSun ? "auto" : String(Math.round(th.panelAzimuthDeg)),
+    };
     save("panelV2", state.panel); renderPanelBox(); recomputeAll();
   }
   const needsDirty = state.needs.loadW !== th.batteryFloorW || JSON.stringify(missionFromNeeds(state.needs)) !== JSON.stringify(s.missionSettings);
@@ -923,6 +947,15 @@ function onNavigatorScenario(s) {
 (async function init() {
   bootLandingNavigator();
   subscribeLandingScenario(onNavigatorScenario);
+  subscribeLandingAssessment((assessment) => {
+    if (state.panel.face !== "auto") return;
+    const az = meanSunAzimuth(assessment.samples);
+    if (az == null) return;
+    const prev = state.faceDeg.get(state.focus);
+    if (prev != null && angDiff(prev, az) < 0.75) return;
+    state.faceDeg.set(state.focus, az);
+    pushLanding();
+  });
   const tour = initTour();
   document.body.classList.add("pre-enter");
   showLanding({
@@ -943,7 +976,22 @@ function onNavigatorScenario(s) {
     alt: "Shaded LOLA terrain map of the lunar south pole, about 120 km across" });
   $("map-wrap").prepend(mapImg);
   try { [state.contract, state.mapMeta] = await Promise.all([api("contract"), api("polar_map/meta").catch(() => null)]); }
-  catch (e) { setStatus(`Can't reach the science server (${e.message}). Start it with ./run.ps1.`, "err"); $("results").innerHTML = ""; return; }
+  catch (e) {
+    setStatus(`Can't reach the science server (${e.message}). Onboard sunlight, power, and Earth grades still follow the settings on this page.`, "err");
+    state.loading = false;
+    if (!state.start) {
+      state.sites = SITE_CATALOG.map((s) => ({ id: s.siteId, name: s.name, lat: s.latitudeDeg, lon: s.longitudeEastDeg }));
+      state.focus = state.sites[0].id;
+      state.start = new Date("2027-01-15T00:00:00Z");
+      state.end = new Date(state.start.getTime() + 14 * DAY * 1000);
+      state.antenna = 5;
+      syncInputs();
+      renderNeedsBox();
+      renderPanelBox();
+      renderAll();
+    }
+    return;
+  }
   const c = state.contract, qs = new URLSearchParams(location.search);
   advanced = qs.has("advanced") ? qs.get("advanced") === "1" : !!load("advancedMode", false);
   $("advanced").checked = advanced; document.body.classList.toggle("advanced", advanced);

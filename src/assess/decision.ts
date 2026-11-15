@@ -116,6 +116,42 @@ export function scoreAssessment(a: MissionAssessment): number {
     ? a.mission.viability.score : -Infinity;
 }
 
+/**
+ * Grade the landing the user actually configured.
+ * Certified terrain validation stays on `qualifiedForMissionDecision`; this grade still
+ * moves when site, date, stay, power, or Earth-contact requirements change.
+ */
+export function plannerViability(a: MissionAssessment): ViabilityGrade {
+  const mission = a.mission;
+  const met = mission?.viability.requirementsMet;
+  if (met === true) return 'GO';
+  if (met === false && mission) {
+    const required = mission.parameters.requirements.minPowerAvailabilityFraction;
+    const power = mission.summary.powerAvailabilityFraction;
+    const outage = mission.summary.longestPowerOutageSeconds ?? 0;
+    const powerMet = power != null && (required >= 1 - 1e-9 ? outage === 0 : power + 1e-12 >= required);
+    return powerMet ? 'RISKY' : 'NO-GO';
+  }
+  if (a.sunlightPct >= 40 && a.earthLosPct >= 40) return 'GO';
+  if (a.sunlightPct >= 20 && a.earthLosPct >= 20) return 'RISKY';
+  if (a.meanPowerW == null && a.sunlightPct <= 0 && a.earthLosPct <= 0) return 'UNKNOWN';
+  return a.samples.length ? 'NO-GO' : 'UNKNOWN';
+}
+
+/** Rankable score for planner search, including preliminary terrain. */
+export function plannerScore(a: MissionAssessment): number {
+  if (a.mission?.viability.score != null) return a.mission.viability.score;
+  if (plannerViability(a) === 'UNKNOWN') return -Infinity;
+  return a.sunlightPct * 0.45 + a.earthLosPct * 0.35 + a.simultaneousPct * 0.2;
+}
+
+function byAuthorityThenScore(a: RankedSite, b: RankedSite): number {
+  const tierOrder = { study: 0, overview: 1, sphere: 2 };
+  const td = tierOrder[a.authorityTier] - tierOrder[b.authorityTier];
+  if (td !== 0) return td;
+  return b.score - a.score;
+}
+
 export function rankAssessments(
   rows: Array<{
     siteId: string;
@@ -142,29 +178,57 @@ export function rankAssessments(
       score: scoreAssessment(r.assessment),
       assessment: r.assessment,
     }))
-    .sort((a, b) => {
-      // Hard tier order: study → overview → sphere, then score within tier.
-      const tierOrder = { study: 0, overview: 1, sphere: 2 };
-      const td = tierOrder[a.authorityTier] - tierOrder[b.authorityTier];
-      if (td !== 0) return td;
-      return b.score - a.score;
-    });
+    .sort(byAuthorityThenScore);
+}
+
+/** Same columns as mission ranking, but preliminary terrain still produces an adoptable list. */
+export function rankPlannerAssessments(
+  rows: Array<{
+    siteId: string;
+    label: string;
+    publishedLabel: string;
+    assessment: MissionAssessment;
+  }>,
+): RankedSite[] {
+  return rows
+    .map(r => ({
+      siteId: r.siteId,
+      label: r.label,
+      publishedLabel: r.publishedLabel,
+      horizonModel: r.assessment.horizonModel,
+      ephemerisSource: r.assessment.ephemerisSource,
+      authorityTier: authorityTier(r.assessment.horizonModel),
+      viability: plannerViability(r.assessment),
+      viabilityReason: r.assessment.viabilityReason,
+      sunlightPct: r.assessment.sunlightPct,
+      earthLosPct: r.assessment.earthLosPct,
+      simultaneousPct: r.assessment.simultaneousPct,
+      meanPowerW: r.assessment.meanPowerW,
+      score: plannerScore(r.assessment),
+      assessment: r.assessment,
+    }))
+    .filter(r => r.score > -Infinity && r.viability !== 'UNKNOWN')
+    .sort(byAuthorityThenScore);
 }
 
 export function buildDateSuggestions(
   baseline: MissionAssessment,
   candidates: Array<{ offsetDays: number; startUtc: string; assessment: MissionAssessment }>,
+  opts?: { planner?: boolean },
 ): DateSuggestion[] {
-  const baseScore = scoreAssessment(baseline);
+  const baseScore = opts?.planner ? plannerScore(baseline) : scoreAssessment(baseline);
   return candidates
-    .filter(c => c.assessment.mission?.viability.qualifiedForMissionDecision)
+    .filter(c => opts?.planner
+      ? plannerViability(c.assessment) !== 'UNKNOWN'
+      : !!c.assessment.mission?.viability.qualifiedForMissionDecision)
     .map(c => {
-      const score = scoreAssessment(c.assessment);
+      const score = opts?.planner ? plannerScore(c.assessment) : scoreAssessment(c.assessment);
+      const viability = opts?.planner ? plannerViability(c.assessment) : c.assessment.viability;
       const sign = c.offsetDays > 0 ? '+' : '';
       return {
         offsetDays: c.offsetDays,
         startUtc: c.startUtc,
-        viability: c.assessment.viability,
+        viability,
         sunlightPct: c.assessment.sunlightPct,
         earthLosPct: c.assessment.earthLosPct,
         simultaneousPct: c.assessment.simultaneousPct,

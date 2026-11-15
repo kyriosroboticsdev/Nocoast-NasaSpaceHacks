@@ -42,7 +42,8 @@ import {
   instantStatusClass,
   instantStatusFromSample,
   instantStatusLabel,
-  rankAssessments,
+  plannerViability,
+  rankPlannerAssessments,
   slipStartUtc,
   type DateSuggestion,
   type RankedSite,
@@ -434,14 +435,15 @@ function paintInstantChip(id: string, a: MissionAssessment, scrubIso: string) {
 
 function paintNogoPrompt(a: MissionAssessment) {
   const prompt = el('nogo-prompt-a');
-  if (a.viability === 'GO' || a.viability === 'UNKNOWN') {
+  const grade = plannerViability(a);
+  if (grade === 'GO' || grade === 'UNKNOWN') {
     prompt.hidden = true;
     prompt.textContent = '';
     return;
   }
   prompt.hidden = false;
   const action =
-    a.viability === 'NO-GO'
+    grade === 'NO-GO'
       ? 'Try “Rank known sites”, “Suggest better dates”, or the ±7/14-day buttons — the tool will hunt for a combination that works.'
       : 'A nearby week or site may be safer — try “Suggest better dates” or compare with Site B.';
   prompt.textContent = `${plainConsequence(a, getScenario().thresholds)} ${action}`;
@@ -484,12 +486,23 @@ function paintMetricPrimers(a: MissionAssessment, slot: 'a' | 'b') {
     `Sun + Earth together ${fmtPct(a.simultaneousPct)} (~${bothH} h); powered Earth contact ${fmtAvailability(a.mission?.summary.jointAvailabilityFraction)} includes battery support.${unk}`;
 }
 
+function gradeReason(a: MissionAssessment): string {
+  const grade = plannerViability(a);
+  if (a.viability !== 'UNKNOWN') return a.viabilityReason;
+  const source = embeddedRoots ? 'landing-page requirements' : 'mission requirements';
+  if (grade === 'GO') return `Power and Earth contact meet the ${source} for this site and stay.`;
+  if (grade === 'RISKY') return 'Earth contact or another requirement is short, even if the panels can carry the load.';
+  if (grade === 'NO-GO') return `Power or Earth contact misses the ${source} for this site and stay.`;
+  return a.viabilityReason;
+}
+
 function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = {}) {
   if (!assessA) return;
   el('metrics-a-title').textContent = assessA.siteLabel;
+  const gradeA = plannerViability(assessA);
   const viabA = el('viability-a');
-  viabA.textContent = `${viabilityIcon(assessA.viability)} ${missionGrade(assessA)} · ${assessA.viabilityReason}`;
-  viabA.className = `viability ${viabilityClass(assessA.viability)}`;
+  viabA.textContent = `${viabilityIcon(gradeA)} ${missionGrade(assessA)} · ${gradeReason(assessA)}`;
+  viabA.className = `viability ${viabilityClass(gradeA)}`;
   paintInstantChip('instant-a', assessA, state.scrubUtc);
   el('plain-summary-a').textContent = plainSummary(assessA, state.thresholds);
   renderSimpleCards(el('simple-cards-a'), assessA);
@@ -502,9 +515,10 @@ function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = 
   if (assessB && state.compareEnabled) {
     el('metrics-b').hidden = false;
     el('metrics-b-title').textContent = assessB.siteLabel;
+    const gradeB = plannerViability(assessB);
     const viabB = el('viability-b');
-    viabB.textContent = `${viabilityIcon(assessB.viability)} ${missionGrade(assessB)} · ${assessB.viabilityReason}`;
-    viabB.className = `viability ${viabilityClass(assessB.viability)}`;
+    viabB.textContent = `${viabilityIcon(gradeB)} ${missionGrade(assessB)} · ${gradeReason(assessB)}`;
+    viabB.className = `viability ${viabilityClass(gradeB)}`;
     paintInstantChip('instant-b', assessB, state.scrubUtc);
     el('plain-summary-b').textContent = plainSummary(assessB, state.thresholds);
     renderSimpleCards(el('simple-cards-b'), assessB);
@@ -866,6 +880,7 @@ async function recompute(state: ScenarioState) {
     }
     if (token !== recomputeToken) return;
     paintAssessment(state, { syncUrlNow: true });
+    publishLandingAssessment();
     el('status').textContent = '';
     void refreshIlluminationOverlay(state);
     void refreshAntennaLinkQuality(state);
@@ -948,11 +963,11 @@ function syncControlsFromState(state: ScenarioState) {
   recomputeTimer = window.setTimeout(() => void recompute(state), 60);
 }
 
-function renderRankList(rows: RankedSite[]) {
+function renderRankList(rows: RankedSite[], emptyHint?: string) {
   const list = el('rank-list');
   list.replaceChildren();
   if (!rows.length) {
-    list.innerHTML = '<p class="empty-hint">Click “Rank known sites” to score every catalog site (+ current custom Site A) for this window. Incomplete or preliminary solar cases are excluded.</p>';
+    list.innerHTML = `<p class="empty-hint">${emptyHint ?? 'Click “Rank known sites” to score every catalog site for this date and mission setup.'}</p>`;
     return;
   }
   rows.forEach((row, i) => {
@@ -988,11 +1003,11 @@ function renderRankList(rows: RankedSite[]) {
   });
 }
 
-function renderSearchList(rows: SearchHit[]) {
+function renderSearchList(rows: SearchHit[], emptyHint = 'Click “Find best location” to rank the south-pole grid for this site, date, and mission setup.') {
   const list = el('search-list');
   list.replaceChildren();
   if (!rows.length) {
-    list.innerHTML = '<p class="empty-hint">Solar ranking requires matching ephemeris and validated terrain. The current analytic search grid cannot support power rankings.</p>';
+    list.innerHTML = `<p class="empty-hint">${emptyHint}</p>`;
     return;
   }
   rows.forEach((row, i) => {
@@ -1040,11 +1055,12 @@ async function runFindBestLocation() {
       region,
       topN,
       stepHours: 2,
+      planner: true,
     });
     if (token !== searchToken) return;
     lastSearchHits = hits;
     lastDecisionKey = decisionKey(state);
-    renderSearchList(hits);
+    renderSearchList(hits, 'No places in this region could be scored for the current site, date, and mission setup.');
     syncTerrainToScenario(state, { fly: false });
     const note = el('neighborhood-note');
     note.innerHTML = `<strong>Find best location</strong> scored <strong>${assessed}</strong> coarse candidates
@@ -1052,8 +1068,8 @@ async function runFindBestLocation() {
       with <strong>LOLA 320 m overview</strong> horizons + analytic ephemeris (badged). Top ${hits.length} shown as amber ◆ markers.
       ${limitations}`;
     el('search-status').textContent = hits.length
-      ? `Top ${hits.length} of ${assessed} · overview LOLA · analytic`
-      : assessed ? `No solar-qualified candidates (${assessed} assessed)` : 'No candidates in region';
+      ? `Top ${hits.length} of ${assessed} · overview LOLA · this mission window`
+      : assessed ? `No ranked places (${assessed} assessed)` : 'No candidates in region';
   } catch (error) {
     if (token !== searchToken) return;
     console.error(error);
@@ -1066,7 +1082,7 @@ function renderDateList(rows: DateSuggestion[]) {
   const list = el('date-list');
   list.replaceChildren();
   if (!rows.length) {
-    list.innerHTML = '<p class="empty-hint">Suggest dates to compare validated terrain cases. Incomplete or preliminary solar cases are excluded.</p>';
+    list.innerHTML = '<p class="empty-hint">Click “Suggest better dates” to score nearby launch dates for this site and mission setup.</p>';
     return;
   }
   rows.slice(0, 6).forEach((row, i) => {
@@ -1123,9 +1139,9 @@ async function runRankSites() {
     }
     const rows = await Promise.all(jobs);
     if (token !== rankToken) return;
-    lastRanked = rankAssessments(rows);
+    lastRanked = rankPlannerAssessments(rows);
     lastDecisionKey = decisionKey(state);
-    renderRankList(lastRanked);
+    renderRankList(lastRanked, 'No catalog site could be scored for this date and mission setup.');
     el('rank-status').textContent = `${lastRanked.length} sites · tiered LOLA→overview→sphere · ${state.startUtc.slice(0, 10)} · ${state.durationHours} h`;
   } catch (error) {
     if (token !== rankToken) return;
@@ -1158,7 +1174,7 @@ async function runSuggestDates() {
       }),
     );
     if (token !== dateToken) return;
-    lastDateSuggestions = buildDateSuggestions(assessA, candidates);
+    lastDateSuggestions = buildDateSuggestions(assessA, candidates, { planner: true });
     lastDecisionKey = decisionKey(state);
     renderDateList(lastDateSuggestions);
     const best = lastDateSuggestions[0];
@@ -1321,7 +1337,10 @@ function wireUi() {
       batteryFloorW: Number(el<HTMLInputElement>('battery-floor').value),
     });
   };
-  for (const id of ['min-earth-el', 'panel-area', 'panel-eff', 'panel-tilt', 'panel-azimuth', 'battery-floor']) el(id).onchange = th;
+  // On the landing page those inputs are hidden duplicates. The sidebar owns them and pushes the scenario.
+  if (!embeddedRoots) {
+    for (const id of ['min-earth-el', 'panel-area', 'panel-eff', 'panel-tilt', 'panel-azimuth', 'battery-floor']) el(id).onchange = th;
+  }
   for (const id of ['antenna-boresight-az', 'antenna-boresight-el', 'antenna-beamwidth']) {
     el(id).onchange = () => void refreshAntennaLinkQuality(getScenario());
   }
@@ -1633,6 +1652,19 @@ export function applyLandingScenario(input: LandingScenarioInput) {
 
 export function subscribeLandingScenario(listener: (state: ReturnType<typeof getScenario>) => void) {
   return subscribeScenario(listener);
+}
+
+const landingAssessmentListeners = new Set<(assessment: MissionAssessment) => void>();
+
+export function subscribeLandingAssessment(listener: (assessment: MissionAssessment) => void) {
+  landingAssessmentListeners.add(listener);
+  if (assessA) listener(assessA);
+  return () => { landingAssessmentListeners.delete(listener); };
+}
+
+function publishLandingAssessment() {
+  if (!embeddedRoots || !assessA) return;
+  for (const listener of landingAssessmentListeners) listener(assessA);
 }
 
 if (document.getElementById('mode-planner')) void boot();

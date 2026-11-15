@@ -4,6 +4,7 @@
  * easier to understand without changing the underlying assessment.
  */
 import type { MissionAssessment } from '../assess/windows';
+import { plannerViability } from '../assess/decision';
 import type { ScenarioThresholds } from '../scenario/types';
 import { fmtPower } from './format';
 
@@ -49,11 +50,12 @@ function powerClause(a: MissionAssessment, th: ScenarioThresholds): string | nul
 }
 
 function verdictClause(a: MissionAssessment): string {
-  if (a.viability === 'UNKNOWN') return a.mission?.summary.complete
-    ? 'These are preliminary estimates. Terrain validation is still pending, so a mission grade is unavailable.'
+  const grade = plannerViability(a);
+  if (grade === 'UNKNOWN') return a.mission?.summary.complete
+    ? 'There is not enough complete power and contact data to grade this stay.'
     : 'There is not enough data to judge this stay.';
-  if (a.viability === 'GO') return 'Overall, this looks like a good time to land: power and Earth contact both look promising.';
-  if (a.viability === 'RISKY') {
+  if (grade === 'GO') return 'Overall, this looks like a good time to land: power and Earth contact both look promising.';
+  if (grade === 'RISKY') {
     return 'Overall, this could work, but it comes with risks. Extra battery capacity or a relay satellite may help.';
   }
   return 'Overall, this site and date are not a good fit. Try a different week or landing site.';

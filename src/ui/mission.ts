@@ -5,6 +5,7 @@ import { panelFromThresholds } from '../power/adapter';
 import { studyContexts } from '../power/contexts';
 import { analyzeDelaysResponsive, delayOffsets, optimizeMission, type OptimizationReport, type DelayReport } from '../power/planning';
 import type { MissionAssessment } from '../assess/windows';
+import { plannerViability } from '../assess/decision';
 import { fmtEnergy, fmtPower, fmtDuration } from './format';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -13,9 +14,11 @@ let active: AbortController | null = null, jobId = 0, fingerprint = '';
 export function missionAnalysisExport() { return { panelSiteOptimization: optimization, landingDelayAnalysis: delays }; }
 export { fmtDuration } from './format';
 export function missionGrade(a: MissionAssessment) {
-  if (a.mission?.viability.score == null) return 'UNKNOWN · incomplete mission data';
+  const grade = plannerViability(a);
+  if (grade === 'UNKNOWN') return 'UNKNOWN · incomplete mission data';
+  if (a.mission?.viability.requirementsMet == null) return `${grade} · sunlight and Earth contact`;
   const pass = a.mission.viability.requirementsMet ? 'requirements met' : 'requirements unmet';
-  return a.mission.viability.qualifiedForMissionDecision ? `${a.viability} · ${pass}` : `PRELIMINARY · ${pass}`;
+  return `${grade} · ${pass}`;
 }
 export function appendBatteryChart(host: HTMLElement, a: MissionAssessment) {
   if (!a.mission) return;

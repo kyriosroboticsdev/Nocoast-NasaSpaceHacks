@@ -121,6 +121,23 @@
 #navigator-port .mission-table-scroll th, #navigator-port .mission-table-scroll td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
 #navigator-port .slope-slot-area { border-left: 3px solid #2dae9d; padding: 8px 12px; margin: 12px 0; }
 #navigator-port .landing-owned { display: none !important; }
+#navigator-port .has-metric-help,
+#navigator-port .metric-label-row { position: relative; display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+#navigator-port .metric-help {
+  width: 18px; height: 18px; min-height: 18px; padding: 0; border-radius: 50%;
+  font: 700 0.65rem/1 "IBM Plex Mono", ui-monospace, monospace;
+}
+#navigator-port .metric-tooltip {
+  display: none; position: absolute; z-index: 30; left: 0; top: calc(100% + 6px);
+  width: min(280px, 70vw); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: #0b131ef5; color: #d7e6f7; font: 500 0.72rem/1.35 "Public Sans", system-ui, sans-serif;
+  letter-spacing: 0; text-transform: none; box-shadow: 0 8px 24px #0008; pointer-events: none;
+}
+#navigator-port .metric-label-row:hover .metric-tooltip,
+#navigator-port .metric-label-row:focus-within .metric-tooltip,
+#navigator-port .has-metric-help:hover > .metric-tooltip,
+#navigator-port .has-metric-help:focus-within > .metric-tooltip,
+#navigator-port .metric-help:focus-visible + .metric-tooltip { display: block; }
 body:not(.show-tech) .expert-only { display: none !important; }
 body.hide-b #metrics-b { display: none; }
 body.hide-b #navigator-port .assess-cluster { grid-template-columns: 1fr minmax(220px, 280px); }

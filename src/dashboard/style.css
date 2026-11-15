@@ -39,8 +39,8 @@ h2 { margin: 0; }
 
 /* ---------- top bar (NASA blue) */
 .bar {
-  background: var(--nasa-blue); display: flex; align-items: center; gap: 28px; padding: 0 20px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, .35);
+  height: 52px; background: var(--nasa-blue); display: flex; align-items: center; gap: 28px; padding: 0 20px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .35); overflow: hidden;
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
 .mark { width: 18px; height: 18px; border-radius: 50%; background: var(--nasa-red); box-shadow: inset -4px -3px 0 rgba(0, 0, 0, .25); }
@@ -68,7 +68,10 @@ h2 { margin: 0; }
 .switch input:focus-visible + .track { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* ---------- layout */
-.app { display: grid; grid-template-columns: minmax(280px, 21%) 1fr; min-height: 0; height: calc(100dvh - 52px); }
+.app {
+  display: grid; grid-template-columns: minmax(280px, 21%) 1fr; min-height: 0;
+  height: calc(100dvh - 52px); max-height: calc(100dvh - 52px); overflow: hidden;
+}
 .side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 0 18px 18px; display: flex; flex-direction: column; }
 .pane-tabs { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 -18px; padding: 12px 18px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .pane-tabs button { height: 34px; border-radius: var(--r); border: 1px solid var(--line-2); background: none; color: var(--muted); font-weight: 600; font-size: 13px; transition: background .15s, color .15s, border-color .15s; }
@@ -105,7 +108,7 @@ h2 { margin: 0; }
 .skel .bar { width: 100%; }
 .summary { display: flex; align-items: center; gap: 12px; padding: 12px 0 4px; flex-wrap: wrap; }
 .summary .why { margin: 0; flex: 1; min-width: 260px; }
-.work { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.work { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
 
 /* ---------- sidebar */
 .group { padding: 16px 0 18px; border-bottom: 1px solid var(--line); }
@@ -139,7 +142,7 @@ body.advanced .actions.adv-only { display: flex; }
 .btn.ghost:hover { background: var(--panel-2); }
 
 /* ---------- 3D scene */
-.scene { position: relative; flex: 1; min-height: 300px; background: #000; overflow: hidden; }
+.scene { position: relative; flex: 1 1 auto; min-height: 0; background: #000; overflow: hidden; }
 .sky3d { position: absolute; inset: 0; touch-action: none; }
 .sky3d canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 .sky3d canvas:active { cursor: grabbing; }
@@ -209,14 +212,14 @@ body.advanced .actions.adv-only { display: flex; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 
 /* ---------- results drawer */
-.drawer { background: var(--panel); border-top: 1px solid var(--line); max-height: 46vh; display: flex; flex-direction: column; min-height: 0; }
+.drawer { background: var(--panel); border-top: 1px solid var(--line); max-height: 46vh; display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; overflow: hidden; }
 .timebar { display: grid; grid-template-columns: 36px 180px 1fr; align-items: center; gap: 14px; padding: 12px 20px 10px; border-bottom: 1px solid var(--line); }
 .play { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--nasa-blue); color: #fff; display: grid; place-items: center; transition: background .15s; }
 .play:hover { background: #1550b8; }
 .t-label { font-size: 13px; color: var(--muted); line-height: 1.3; }
 .t-label b { display: block; color: var(--text); font-size: 14px; font-weight: 600; }
 .strip { width: 100%; height: 64px; cursor: ew-resize; touch-action: none; }
-.results { overflow: auto; padding: 4px 20px 16px; }
+.results { overflow: auto; flex: 1 1 auto; min-height: 0; padding: 4px 20px 16px; }
 .del { background: none; border: 1px solid transparent; color: var(--faint); width: 26px; height: 26px; border-radius: var(--r); display: grid; place-items: center; }
 .del:hover { color: var(--text); border-color: var(--line-2); }
 .del svg { width: 12px; height: 12px; }
@@ -267,7 +270,7 @@ table.days { border-collapse: separate; border-spacing: 3px; }
   .bar { flex-wrap: wrap; gap: 8px 16px; padding: 8px 16px; }
   .modes { height: 40px; order: 3; width: 100%; }
   .modes button { flex: 1; }
-  .app { display: flex; flex-direction: column; height: auto; }
+  .app { display: flex; flex-direction: column; height: auto; max-height: none; overflow: visible; }
   .work { order: 1; }
   .scene { min-height: 52vh; flex: none; }
   .scene-now { max-width: calc(100% - 28px); top: 56px; }

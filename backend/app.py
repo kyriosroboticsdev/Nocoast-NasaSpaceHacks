@@ -19,7 +19,6 @@ app = FastAPI(title="Lunar Navigator: Sun, Earth & Communication")
 # App as /api). Read-only public GET API with no cookies, so any origin may read it.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
 DIST = ROOT / "dist"
-SOLAR_SITE_IDS = {"connecting-ridge-cr1", "shackleton-rim-sr1"}
 
 
 def _times(start_utc: str, end_utc: str):
@@ -201,10 +200,12 @@ def local_terrain(latitudeDeg: float = Query(..., ge=-90, le=-60),
 @app.get("/api/terrain_slopes")
 def terrain_slopes(latitudeDeg: float = Query(..., ge=-90, le=-60),
                    longitudeEastDeg: float = Query(..., ge=-360, le=360),
-                   halfExtentM: float = Query(620, ge=100, le=2000), n: int = Query(249, ge=17, le=401)):
-    """Preliminary local slope screen from the 5 m DEM only, in degrees from radial up."""
+                   halfExtentM: float = Query(620, ge=100, le=2000), n: int = Query(249, ge=17, le=401),
+                   resolution: str = "auto"):
+    """Local slope estimate at the available native DEM resolution, in degrees from radial up."""
     try:
-        return slopes.local_slope_grid(round(latitudeDeg, 6), round(longitudeEastDeg % 360, 6), halfExtentM, n)
+        return slopes.local_slope_grid(round(latitudeDeg, 6), round(longitudeEastDeg % 360, 6),
+                                       halfExtentM, n, resolution)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     except OSError as e:

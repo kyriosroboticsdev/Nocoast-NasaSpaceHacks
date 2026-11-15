@@ -137,3 +137,5 @@ back to the bundled/offline data otherwise, so the app always works without it. 
 | [docs/solar/MISSION_MODEL.md](./docs/solar/MISSION_MODEL.md) | Battery assumptions, score policy, and landing-delay analysis |
 
 Panel generation, battery dispatch, and landing-delay comparisons live in `src/power/`. Visibility owns terrain obstruction; solar consumes that mask once. Missing inputs stay unknown.
+
+Coordinate support across slopes, panel/date studies, search and exports is documented in [Location features](docs/LOCATION_FEATURES.md).

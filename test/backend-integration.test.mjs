@@ -214,3 +214,21 @@ test('pending terrain validation does not override GO, CAUTION or NO-GO and miss
   assert.equal(missionVerdict(simulateStay(missing, panel, 40, settings(), full).mission), 'unknown');
   assert.equal(s.provenance.visibility.validation.status, 'pending');
 });
+
+import { studyContexts } from '../.cache/solar-tests/power/contexts.js';
+import { createDefaultScenario } from '../.cache/solar-tests/scenario/types.js';
+import { analyzeDelays } from '../.cache/solar-tests/power/planning.js';
+test('selected custom points retain canonical backend identities in panel and delay contexts', async t => {
+  const { backend } = coordinateFixture(), input = backend.solarInput;
+  backend.site = { ...input.site, terrainQuality: 'contract', rankable: true, horizonSource: 'test' };
+  backend.horizon = { azimuthStartDeg: 0, azimuthStepDeg: 1, sampleCount: 360, elevationDeg: Array(360).fill(0) };
+  backend.series = { timesUtc: input.samples.map(s => s.timeUtc),
+    sunAzimuthDeg: [0, 0, 0], sunElevationDeg: [90, 90, 90], earthAzimuthDeg: [0, 0, 0], earthElevationDeg: [10, 10, 10] };
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => backend }));
+  const state = createDefaultScenario();
+  state.startUtc = start; state.durationHours = 1 / 3; state.compareEnabled = false;
+  state.primary = { id: 'A', siteId: 'custom', customLatDeg: input.site.latitudeDeg, customLonEastDeg: input.site.longitudeEastDeg };
+  const contexts = await studyContexts(state, [0], '/custom-panel-identity-test/');
+  assert.equal(contexts[0].siteId, input.siteId);
+  assert.equal(analyzeDelays(contexts, panel, 40, settings()).cases.length, 1);
+});

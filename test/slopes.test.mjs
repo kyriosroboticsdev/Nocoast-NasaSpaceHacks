@@ -73,3 +73,12 @@ test('area formatting retains units and distinguishes unknown from zero', () => 
   assert.equal(formatSlopeArea(null), 'Unknown'); assert.equal(formatSlopeArea(0), '0 m²');
   assert.equal(formatSlopeArea(25), '25 m²'); assert.equal(formatSlopeArea(1e6), '1.000 km²');
 });
+
+test('coarse slope estimates retain their native resolution and reject false 5 m labels', () => {
+  const g = { ...grid(), modelId: 'lola-dem-central-normal-radial-up-v1', n: 15, halfExtentM: 620,
+    gridSpacingM: 1240 / 14, gradientBaselineM: 2480 / 14, demPixelSpacingM: 80,
+    slopeDeg: Array(225).fill(null), centerSlopeDeg: null, knownFraction: 0 };
+  assert.equal(validateSlopeGrid(g, site).demPixelSpacingM, 80);
+  assert.throws(() => validateSlopeGrid({ ...g, modelId: 'pgda-5m-central-normal-radial-up-v1' }, site));
+  assert.throws(() => validateSlopeGrid({ ...g, demPixelSpacingM: 240 }, site));
+});

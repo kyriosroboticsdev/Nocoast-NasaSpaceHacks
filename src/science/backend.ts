@@ -186,7 +186,7 @@ export function backendHorizonProfile(a: BackendAnalysis, siteId: string): Horiz
     },
     spacingDeg: azimuthStepDeg,
     // Both tiers are measured DEM, not a sphere guess — ranks as study-grade either way (authorityTier()).
-    model: 'lola_terrain',
+    model: fiveMeter ? 'lola_terrain' : 'lola_overview_coarse',
     sources: [fiveMeter
       ? 'Person 2 backend — PGDA 5 m DEM (Skyfield + JPL DE421)'
       : 'Person 2 backend — LOLA 80 m/240 m band (Skyfield + JPL DE421)'],

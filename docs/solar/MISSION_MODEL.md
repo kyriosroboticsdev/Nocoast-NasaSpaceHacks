@@ -136,8 +136,8 @@ retained as provenance and does not alter the calculated grade.
 ## P2: tested choices and worst cases
 
 Power inputs now support coordinate-based locations when matching Sun and terrain
-metadata is available. The finite P2 study below retains CR1 and SR1 as reference
-comparison cases; it does not limit the dashboard location calculator. Tilt spans 0–180° and bearing 0–360°
+metadata is available. The finite P2 study uses the currently selected Site A and Site B, including
+custom points. Each delay reevaluates the actual chosen coordinates. Tilt spans 0–180° and bearing 0–360°
 exclusive, with configurable 5/15/30/45/90° grid spacing. Duplicate horizontal
 normals are removed. The current orientation is always included, even off-grid.
 No automatic change to area, efficiency, battery or consumption is allowed.

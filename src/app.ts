@@ -348,7 +348,7 @@ async function computeSlot(state: ScenarioState, slot: 'A' | 'B', override?: {
   // Person 2 backend (live Skyfield + JPL DE421 + real PGDA/LOLA DEM) — tried first for south-polar points,
   // where it actually has terrain data. Fails soft to the bundled/sphere chain below when unreachable (no
   // local backend running), out of its supported mission window, or outside its DEM coverage.
-  if (!useAdopted && coords.latitudeDeg <= -75) {
+  if (coords.latitudeDeg <= -75) {
     const endUtc = new Date(Date.parse(startUtc) + state.durationHours * 3600_000).toISOString();
     const backend = await fetchBackendAnalysis(
       coords.latitudeDeg, coords.longitudeEastDeg, startUtc, endUtc, state.thresholds.minEarthElevationDeg, base,
@@ -1019,7 +1019,7 @@ function renderSearchList(rows: SearchHit[], emptyHint = 'Click “Find best loc
       <span class="rank-pos">#${i + 1}</span>
       <span class="rank-body">
         <strong>${row.publishedLabel} · ${Math.abs(row.latitudeDeg).toFixed(3)}°S ${row.longitudeEastDeg.toFixed(2)}°E</strong>
-        <span class="rank-metrics">${row.viability} · both ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)} · avg ${fmtPower(row.meanPowerW)} (needs ${fmtPower(getScenario().thresholds.batteryFloorW)}) · overview LOLA</span>
+        <span class="rank-metrics">${row.viability} · both ${fmtPct(row.simultaneousPct)} · sun ${fmtPct(row.sunlightPct)} · Earth ${fmtPct(row.earthLosPct)} · avg ${fmtPower(row.meanPowerW)} (needs ${fmtPower(getScenario().thresholds.batteryFloorW)}) · ${authorityBadge(row.horizonModel, row.ephemerisSource)}</span>
       </span>
       <span class="rank-adopt">Adopt</span>`;
     item.onclick = () => adoptSearchHit(row);
@@ -1049,7 +1049,7 @@ async function runFindBestLocation() {
         : { kind: 'cap' as const };
 
     el('search-status').textContent = 'Scoring…';
-    const { hits, assessed, limitations } = await rankSearchCandidates({
+    let { hits, assessed, limitations } = await rankSearchCandidates({
       catalog: searchCatalog,
       state,
       region,
@@ -1058,6 +1058,19 @@ async function runFindBestLocation() {
       planner: true,
     });
     if (token !== searchToken) return;
+    const refined: SearchHit[] = [];
+    for (const [index, hit] of hits.entries()) {
+      if (token !== searchToken) return;
+      el('search-status').textContent = `Calculating location ${index + 1} of ${hits.length}…`;
+      const assessment = await computeSlot(state, 'A', { siteId: 'custom',
+        customLatDeg: hit.latitudeDeg, customLonEastDeg: hit.longitudeEastDeg });
+      if (token !== searchToken) return;
+      const ranked = rankPlannerAssessments([{ siteId: hit.siteId, label: hit.label,
+        publishedLabel: hit.publishedLabel, assessment }])[0];
+      if (ranked) refined.push({ ...hit, ...ranked,
+        surfaceElevationM: assessment.solarInput?.site.surfaceElevationM ?? hit.surfaceElevationM });
+    }
+    hits = refined.sort((a, b) => b.score - a.score);
     lastSearchHits = hits;
     lastDecisionKey = decisionKey(state);
     renderSearchList(hits, 'No places in this region could be scored for the current site, date, and mission setup.');
@@ -1065,7 +1078,7 @@ async function runFindBestLocation() {
     const note = el('neighborhood-note');
     note.innerHTML = `<strong>Find best location</strong> scored <strong>${assessed}</strong> coarse candidates
       (${searchCatalog.region.label}${region.kind === 'around' ? `, ≤${region.radiusKm} km of Site A` : ''})
-      with <strong>LOLA 320 m overview</strong> horizons + analytic ephemeris (badged). Top ${hits.length} shown as amber ◆ markers.
+      with coarse overview geometry, then recalculated the shortlisted ${hits.length} locations using their actual coordinates and the live science backend when available. Results are a shortlist, not an exhaustive global optimum.
       ${limitations}`;
     el('search-status').textContent = hits.length
       ? `Top ${hits.length} of ${assessed} · overview LOLA · this mission window`

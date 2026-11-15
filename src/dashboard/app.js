@@ -10,6 +10,7 @@ import { createRequestQueue } from "./requests.mjs";
 import { timelineFromWindows } from "../science/assessment.ts";
 import { downloadCard } from "./card.js";
 import { gameScore, scoreGrade, scoreTip } from "./game.js";
+import { applyUrlParams, getScenario } from "../scenario/state.ts";
 import { findSite, SITE_CATALOG } from "../scenario/catalog.ts";
 import {
   applyLandingScenario, bootLandingNavigator, ensureLandingTerrain, isLandingSync, setLandingSun, subscribeLandingAssessment, subscribeLandingScenario,
@@ -65,7 +66,11 @@ const dayOf = (ms) => Math.floor((ms - state.start.getTime()) / 1000 / DAY) + 1;
 // calls makes it run out of memory and restart. Keep at most two requests in flight.
 const slot = createRequestQueue(2);
 async function api(path, params = {}) {
-  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null)).toString();
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    for (const item of Array.isArray(value) ? value : [value]) if (item != null) search.append(key, String(item));
+  }
+  const q = search.toString();
   return slot(async () => {
     const r = await fetch(apiUrl(`api/${path}${q ? "?" + q : ""}`));
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
@@ -830,13 +835,16 @@ async function runOptimize() {
   setStatus("Searching sites and landing days…", "busy");
   try {
     const out = await api("optimize", {
+      extraSites: allSites().filter(s => s.custom).map(s => `${s.lat},${s.lon}`),
       firstDayUtc: utc(state.start), sweepDays: 14, missionSeconds: (state.end - state.start) / 1000,
       antennaMinElevationDeg: state.antenna, relay: state.relay.on, relaySats: state.relay.sats,
     });
     const best = out.best;
     if (!best?.bestDateUtc) { setStatus("No ranked landing day in this window.", "err"); return; }
     const len = state.end - state.start;
-    if (siteById(best.id)) state.focus = best.id;
+    const target = siteById(best.id) ?? allSites().find(s => Math.abs(s.lat - best.latitudeDeg) < 1e-6
+      && Math.abs((((s.lon - best.longitudeEastDeg) % 360) + 540) % 360 - 180) < 1e-6);
+    if (target) state.focus = target.id;
     state.start = new Date(best.bestDateUtc);
     state.end = new Date(state.start.getTime() + len);
     state.tIdx = 0;
@@ -922,15 +930,16 @@ $("antenna").addEventListener("change", () => {
 
 // ============================================================ exports, tooltips, boot
 $("export").addEventListener("click", () => {
-  const q = new URLSearchParams({ startUtc: utc(state.start), endUtc: utc(state.end), antennaMinElevationDeg: state.antenna });
-  const site = siteById(state.focus);
-  if (site.custom) {
-    const { _t, ...clean } = state.results.get(site.id) ?? {};
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([JSON.stringify(clean)], { type: "application/json" })),
-      download: `spot_${site.lat}_${site.lon}_${toDate(state.start)}.json` });
-    a.click(); return;
-  }
-  window.location.href = apiUrl(`api/export/${encodeURIComponent(state.focus)}?${q}`);
+  const site = siteById(state.focus), result = state.results.get(state.focus);
+  if (!site || !result || pending(site.id)) return setStatus("Wait for this location's calculation before exporting.", "busy");
+  const { _t, ...analysis } = result;
+  const report = { site: { ...site }, startUtc: utc(state.start), endUtc: utc(state.end),
+    relay: { ...state.relay }, analysis, solar: state.power.get(site.id) ?? null,
+    mission: state.mission.get(site.id) ?? null, panel: { ...state.panel }, needs: { ...state.needs } };
+  const a = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(new Blob([JSON.stringify(report)], { type: "application/json" })),
+    download: `mission_${site.lat}_${site.lon}_${toDate(state.start)}.json` });
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 $("p-csv").addEventListener("click", () => {
   const p = state.power.get(state.focus); if (!p) return;
@@ -1051,6 +1060,7 @@ function onNavigatorScenario(s) {
   if (best !== state.tIdx) { state.tIdx = best; renderNow(); }
 }
 (async function init() {
+  applyUrlParams(location.search);
   bootLandingNavigator();
   subscribeLandingScenario(onNavigatorScenario);
   subscribeLandingAssessment((assessment) => {
@@ -1106,6 +1116,31 @@ function onNavigatorScenario(s) {
   state.focus = siteById(qs.get("site")) ? qs.get("site") : state.sites[0].id;
   state.start = new Date(c.time.defaultStartUtc); state.end = new Date(state.start.getTime() + 14 * DAY * 1000);
   state.antenna = c.visibility.antennaMinElevationDeg;
+  const shared = getScenario();
+  if (qs.has("site")) {
+    if (shared.primary.siteId === "custom" && shared.primary.customLatDeg != null && shared.primary.customLonEastDeg != null) {
+      state.mapSpot = { id: "map-spot", name: "Selected point", custom: true,
+        lat: shared.primary.customLatDeg, lon: shared.primary.customLonEastDeg % 360 };
+      state.focus = state.mapSpot.id;
+    } else {
+      const known = findSite(shared.primary.siteId);
+      if (known && !siteById(known.siteId)) state.sites.push({ id: known.siteId, name: known.name, lat: known.latitudeDeg, lon: known.longitudeEastDeg });
+      if (siteById(shared.primary.siteId)) state.focus = shared.primary.siteId;
+    }
+  }
+  if (qs.has("date")) state.start = new Date(shared.startUtc);
+  state.end = new Date(state.start.getTime() + (qs.has("hours") ? shared.durationHours : 336) * 3600000);
+  const th = shared.thresholds;
+  if (qs.has("minEl")) state.antenna = th.minEarthElevationDeg;
+  if (qs.has("area")) state.panel.areaM2 = th.panelAreaM2;
+  if (qs.has("eff")) state.panel.efficiency = th.panelEfficiency;
+  if (qs.has("tilt")) state.panel.tiltDeg = th.panelTiltDeg;
+  if (qs.has("panelAzimuthDeg")) state.panel.face = String(th.panelAzimuthDeg);
+  if (qs.has("floor")) state.needs.loadW = th.batteryFloorW;
+  if (qs.has("battery")) Object.assign(state.needs, shared.missionSettings.battery);
+  if (qs.has("requirements")) Object.assign(state.needs, shared.missionSettings.requirements);
+  if (qs.has("siteB")) state.compareSite = shared.secondary.siteId;
+  clampStay();
   for (const id of ["start", "end"]) { $(id).min = toDT(new Date(c.time.supportedStartUtc)); $(id).max = toDT(new Date(c.time.supportedEndUtc)); }
   $("land-date").min = toDate(new Date(c.time.supportedStartUtc));
   $("land-date").max = toDate(new Date(new Date(c.time.supportedEndUtc).getTime() - DAY * 1000));

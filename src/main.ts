@@ -39,6 +39,14 @@ export type TerrainApi = {
   setCatalogMarkersVisible: (visible: boolean) => void;
   setSearchMarkersVisible: (visible: boolean) => void;
   onMarkerClick: (cb: TerrainMarkerClickCallback | undefined) => void;
+  /**
+   * Display-grade sun shading: drive the scene light from the observer sun
+   * azimuth/elevation at the current slider time. Pass null to restore the
+   * neutral studio light. Never authoritative — the science pane is.
+   */
+  setSunDirection: (azimuthDeg: number | null, elevationDeg?: number) => void;
+  /** Replace the illumination-overlay dots (independent of setMarkers). */
+  setOverlayMarkers: (markers: TerrainMarkerSpec[]) => void;
 };
 type Grid = {x: number; y: number; width: number; spacing: number; values: Float32Array};
 
@@ -151,7 +159,34 @@ export async function startTerrain(): Promise<TerrainApi> {
   renderer.domElement.setAttribute('aria-label','Lunar terrain. Click or tap to focus. Arrow keys pan the map.');
   const light = new T.DirectionalLight(0xffffff,2.25);
   light.position.set(-1,.45,-.68);
-  scene.add(light,new T.AmbientLight(0xffffff,1.35));
+  const ambient = new T.AmbientLight(0xffffff,1.35);
+  scene.add(light,ambient);
+  const defaultLightPos = light.position.clone();
+  /**
+   * Display-grade sun shading. Azimuth/elevation are the observer values from
+   * the assessment at slider time; the world frame at the pole has +Y up,
+   * -Z toward 0°E (local "north" for the cap) and +X toward 90°E, so this is a
+   * cap-wide approximation — slope shading only, no cast shadows.
+   */
+  function setSunDirection(azimuthDeg: number | null, elevationDeg = 0) {
+    if (azimuthDeg == null || !Number.isFinite(azimuthDeg)) {
+      light.position.copy(defaultLightPos);
+      light.intensity = 2.25;
+      ambient.intensity = 1.35;
+      return;
+    }
+    const az = T.MathUtils.degToRad(azimuthDeg);
+    const el = T.MathUtils.degToRad(Math.max(elevationDeg, -3));
+    light.position.set(
+      Math.cos(el) * Math.sin(az),
+      Math.sin(el),
+      -Math.cos(el) * Math.cos(az),
+    ).multiplyScalar(10);
+    // Fade toward night as the sun sinks below the horizon.
+    const dayFactor = T.MathUtils.clamp((elevationDeg + 1.5) / 3, 0.06, 1);
+    light.intensity = 2.6 * dayFactor;
+    ambient.intensity = 0.3 + 1.05 * dayFactor;
+  }
   const globeMap = new T.TextureLoader().load(base+'terrain/lroc-color-2k.jpg');
   globeMap.colorSpace = T.SRGBColorSpace;
   globeMap.wrapS = T.RepeatWrapping;
@@ -191,6 +226,36 @@ export async function startTerrain(): Promise<TerrainApi> {
   }
   polarSurface.onBeforeCompile = applyPolarImagery;
   polarSurface.customProgramCacheKey = () => 'polar-imagery';
+  /**
+   * The only photographic texture available (lroc-color-2k.jpg) is a 2048 px whole-Moon mosaic — at
+   * the 5-20 m detail window's scale (a few hundred meters across) that texture has no real detail
+   * left to sample, so reusing polarSurface as-is renders as a near-flat, untextured grey patch once
+   * zoomed in (the crater-like look at that range comes entirely from DEM-driven lighting, not the
+   * texture). Layer a cheap procedural regolith grain on top for the detail mesh only, so close-range
+   * terrain doesn't read as a bare clay model — display-grade only, never affects elevation data.
+   */
+  const detailSurface = polarSurface.clone();
+  detailSurface.onBeforeCompile = shader => {
+    applyPolarImagery(shader);
+    shader.fragmentShader = shader.fragmentShader.replace('diffuseColor *= textureGrad(map, uv, dx, dy);', `
+      diffuseColor *= textureGrad(map, uv, dx, dy);
+      vec2 worldXY = p * ${radius.toFixed(1)};
+      float grain = mix(0.92, 1.06, regolithNoise(worldXY * 0.6));
+      float patchTone = mix(0.95, 1.04, regolithNoise(worldXY * 0.012 + 37.0));
+      diffuseColor.rgb *= grain * patchTone;
+    `);
+    shader.fragmentShader = `
+      float regolithHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+      float regolithNoise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        float a = regolithHash(i), b = regolithHash(i + vec2(1.0, 0.0));
+        float c = regolithHash(i + vec2(0.0, 1.0)), d = regolithHash(i + vec2(1.0, 1.0));
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+      }
+    ` + shader.fragmentShader;
+  };
+  detailSurface.customProgramCacheKey = () => 'detail-regolith';
   // Materials of the lunar-surface and elevation layers (polar DEM meshes).
   const materials = {
     relief: polarSurface,
@@ -328,7 +393,7 @@ export async function startTerrain(): Promise<TerrainApi> {
   function showDetail(grid: Grid, key: string) {
     removeDetail();
     const matKey = solidLayer();
-    detail = meshFor(grid, materials[matKey], overview);
+    detail = meshFor(grid, matKey === 'relief' ? detailSurface : materials[matKey], overview);
     currentGrid = grid;
     currentKey = key;
     const span = (size-1)*grid.spacing;
@@ -417,7 +482,10 @@ export async function startTerrain(): Promise<TerrainApi> {
   };
   const markerRoot = new T.Group();
   scene.add(markerRoot);
+  const overlayMarkerRoot = new T.Group();
+  scene.add(overlayMarkerRoot);
   let liveMarkers: LiveMarker[] = [];
+  let liveOverlayMarkers: LiveMarker[] = [];
   let catalogVisible = true;
   let searchVisible = true;
   let markerClickCb: TerrainMarkerClickCallback | undefined;
@@ -481,6 +549,36 @@ export async function startTerrain(): Promise<TerrainApi> {
         (spec.category !== 'search' || searchVisible);
       markerRoot.add(mesh);
       liveMarkers.push({ spec, x, y, mesh });
+    }
+  }
+
+  /** Small flat non-interactive dots, independent of the catalog/search/chosen/compare markers
+   * above — e.g. a sampled illumination/visibility overlay. Reuses the same per-category color so
+   * the two layers read as related without colliding (overlay dots are smaller and never clickable). */
+  function setOverlayMarkers(markers: TerrainMarkerSpec[]) {
+    for (const m of liveOverlayMarkers) {
+      overlayMarkerRoot.remove(m.mesh);
+      m.mesh.geometry.dispose();
+      (m.mesh.material as T.Material).dispose();
+    }
+    liveOverlayMarkers = [];
+    for (const spec of markers) {
+      const rho = 2 * radius * Math.tan(T.MathUtils.degToRad((spec.latitudeDeg + 90) / 2));
+      const lon = T.MathUtils.degToRad(spec.longitudeEastDeg);
+      const x = rho * Math.sin(lon);
+      const y = rho * Math.cos(lon);
+      const mesh = new T.Mesh(
+        new T.CircleGeometry(0.6, 10),
+        new T.MeshBasicMaterial({
+          color: markerColor(spec.category),
+          depthTest: false,
+          transparent: true,
+          opacity: 0.6,
+        }),
+      );
+      mesh.renderOrder = 2;
+      overlayMarkerRoot.add(mesh);
+      liveOverlayMarkers.push({ spec, x, y, mesh });
     }
   }
 
@@ -741,6 +839,16 @@ export async function startTerrain(): Promise<TerrainApi> {
       m.mesh.scale.setScalar(scale);
       m.mesh.lookAt(camera.position);
     }
+    for (const m of liveOverlayMarkers) {
+      const local = currentGrid ? heightAt(currentGrid, m.x, m.y) : NaN;
+      const h = meshOn ? heightField.heightAtPolar(m.x, m.y)
+        : Number.isFinite(local) ? local : heightAt(overview, m.x, m.y);
+      const base = Number.isFinite(h) ? h : 0;
+      m.mesh.position.copy(world(m.x, m.y, base + 6));
+      const dist = camera.position.distanceTo(m.mesh.position);
+      m.mesh.scale.setScalar(T.MathUtils.clamp(dist * 0.01, 3, 12000));
+      m.mesh.lookAt(camera.position);
+    }
     renderer.render(scene,camera);
   });
 
@@ -778,6 +886,8 @@ export async function startTerrain(): Promise<TerrainApi> {
     },
     isPickMode: () => pickMode,
     setMarkers,
+    setOverlayMarkers,
+    setSunDirection,
     setCatalogMarkersVisible(visible) {
       catalogVisible = visible;
       for (const m of liveMarkers) {

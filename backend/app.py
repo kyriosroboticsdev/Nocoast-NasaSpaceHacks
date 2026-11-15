@@ -122,19 +122,37 @@ def polar_map_png():
 @app.get("/api/pathfind")
 def pathfind(epochUtc: str = TIME["defaultStartUtc"], layers: int = Query(24, ge=2, le=200),
              lateralSteps: int = Query(4, ge=3, le=12), lateralSpreadKm: float = Query(3000.0, gt=0),
+             lateralRings: int = Query(1, ge=1, le=6), spacing: str = Query("uniform", pattern="^(uniform|cosine)$"),
+             shadowSamples: int = Query(1, ge=1, le=32),
              wDistance: float = Query(1.0, ge=0), wDarkness: float = Query(1.0, ge=0),
              wNoComm: float = Query(1.0, ge=0)):
     """Best Earth<->Moon relay-satellite path at a single epoch: a weighted multi-objective shortest
     path that trades off sunlit time (no battery reliance), obstacle avoidance, Earth-comm time and
     distance (see backend/pathfinding/). First-pass model: a straight-line corridor with lateral detour
     options, no propagated trajectory and no real obstacle catalog yet
-    (backend/pathfinding/earth_moon.py)."""
+    (backend/pathfinding/earth_moon.py). `lateralRings` adds concentric detour radii for finer paths;
+    `spacing=cosine` clusters layers near Earth/Moon where the shadow and comm edges fall; `shadowSamples`
+    > 1 prices darkness/comms from the fraction of each hop in shadow/out-of-comm instead of its endpoint.
+    The search is A* (exact, but faster than plain Dijkstra as the corridor grows)."""
     epoch = parse_utc(epochUtc)
+    obstacles: list[earth_moon.Obstacle] = []  # no real keep-out catalog wired in yet
     nodes, edges = earth_moon.build_corridor_graph(epoch, layers=layers, lateral_steps=lateralSteps,
-                                                    lateral_spread_km=lateralSpreadKm)
+                                                    lateral_spread_km=lateralSpreadKm,
+                                                    lateral_rings=lateralRings, spacing=spacing,
+                                                    obstacles=obstacles)
     weights = Weights(distance=wDistance, darkness=wDarkness, no_comm=wNoComm)
+    goal = earth_moon.goal_id(layers)
+    heuristic = earth_moon.distance_heuristic(nodes, goal, weights)
+    # Edge-level keep-out avoidance (segments a long hop would pierce between two clear waypoints).
+    # No-op while the catalog is empty; applied automatically once obstacles are supplied.
+    edge_penalty = earth_moon.segment_obstacle_penalty(obstacles, weights) if obstacles else None
+    # Edge-sampled shadow/comm: price darkness/lost-comms by the fraction of each hop in shadow, not
+    # just the destination node's flag. Only worth it when the hops are long enough to dip through
+    # shadow between two lit waypoints; opt in with shadowSamples > 1.
+    lighting = earth_moon.segment_lighting(epoch, shadowSamples) if shadowSamples > 1 else None
     try:
-        result = shortest_path(nodes, edges, earth_moon.start_id(), earth_moon.goal_id(layers), weights)
+        result = shortest_path(nodes, edges, earth_moon.start_id(), goal, weights,
+                               heuristic=heuristic, edge_penalty=edge_penalty, lighting=lighting)
     except (NoPathError, KeyError) as e:
         raise HTTPException(400, str(e)) from e
     return {

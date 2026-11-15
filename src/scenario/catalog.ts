@@ -2,9 +2,17 @@ import type { SiteCatalogEntry } from './types';
 
 /**
  * Curated landing sites for rapid comparison.
- * Study sites (CR1/SR1) match sites.json and ship LOLA terrain horizons.
- * Other curated / Apollo / CLPS / international entries use sphere_optimistic —
- * UI must surface that flag so planners do not treat them as measured.
+ * Study sites (CR1/SR1) match sites.json and ship bundled LOLA terrain horizons offline.
+ * Four of the "curated" entries (Malapert Massif, Peak Near Shackleton, de Gerlache Rim 1,
+ * Leibnitz Beta Plateau) are the other official NASA Artemis III candidate landing regions with a
+ * real published PGDA 5 m DEM (pgda.gsfc.nasa.gov/products/78) — coordinates and elevation here are
+ * computed directly from those GeoTIFFs (tile center, bilinear sample), not approximated. They get a
+ * real measured horizon from the live Person 2 backend (contract/lunar-navigator.v0.1.json lists all
+ * six real tiles), but — like every non-CR1/SR1 entry — fall back to sphere_optimistic in the
+ * static/offline build, since no bundled horizon JSON exists for them yet. UI must surface that flag
+ * so planners never treat an un-upgraded entry as measured.
+ * The remaining curated / Apollo / CLPS / international entries have no published 5 m DEM at all and
+ * always use sphere_optimistic.
  */
 export const SITE_CATALOG: SiteCatalogEntry[] = [
   {
@@ -39,40 +47,62 @@ export const SITE_CATALOG: SiteCatalogEntry[] = [
   },
   {
     siteId: 'malapert-massif',
-    name: 'Malapert Massif ridge',
+    name: 'Malapert Massif',
     publishedLabel: 'MAL',
-    latitudeDeg: -85.99,
-    longitudeEastDeg: 2.0,
-    surfaceElevationM: 4500,
+    latitudeDeg: -85.994785,
+    longitudeEastDeg: 359.764216,
+    surfaceElevationM: 4783.796733394672,
     observerHeightAboveGroundM: 2,
     category: 'curated',
-    notes: 'Elevated ridge often discussed for polar illumination and Earth view. Outside dense 87°S mosaic detail.',
+    notes: 'Official NASA Artemis III candidate landing region. Real LOLA 5 m PGDA elevation data exists '
+      + '(pgda.gsfc.nasa.gov, Site23) — shows a measured terrain horizon when the live science backend is '
+      + 'running (see docs/PERSON2_COMMS.md), sphere-optimistic in the offline/bundled demo otherwise.',
     horizonStatus: 'sphere_fallback',
     horizonModel: 'sphere_optimistic',
   },
   {
     siteId: 'peak-near-shackleton',
-    name: 'Peak near Shackleton',
+    name: 'Peak Near Shackleton',
     publishedLabel: 'PNS',
-    latitudeDeg: -89.54,
-    longitudeEastDeg: 222.0,
-    surfaceElevationM: 1800,
+    latitudeDeg: -88.811008,
+    longitudeEastDeg: 123.690068,
+    surfaceElevationM: 1645.248585134862,
     observerHeightAboveGroundM: 2,
     category: 'curated',
-    notes: 'Representative near-pole ridge crest for comparison demos.',
+    notes: 'Official NASA Artemis III candidate landing region. Real LOLA 5 m PGDA elevation data exists '
+      + '(pgda.gsfc.nasa.gov, Site07) — shows a measured terrain horizon when the live science backend is '
+      + 'running, sphere-optimistic in the offline/bundled demo otherwise.',
     horizonStatus: 'sphere_fallback',
     horizonModel: 'sphere_optimistic',
   },
   {
-    siteId: 'de-gerlache-ridge',
-    name: 'de Gerlache ridge',
-    publishedLabel: 'DGR',
-    latitudeDeg: -88.5,
-    longitudeEastDeg: 270.0,
-    surfaceElevationM: 1200,
+    siteId: 'de-gerlache-rim-1',
+    name: 'de Gerlache Rim 1',
+    publishedLabel: 'DGR1',
+    latitudeDeg: -88.683418,
+    longitudeEastDeg: 292.067900,
+    surfaceElevationM: 1793.7308968628276,
     observerHeightAboveGroundM: 2,
     category: 'curated',
-    notes: 'South-polar ridge area of interest for illumination studies.',
+    notes: 'Official NASA Artemis III candidate landing region. Real LOLA 5 m PGDA elevation data exists '
+      + '(pgda.gsfc.nasa.gov, Site11) — shows a measured terrain horizon when the live science backend is '
+      + 'running, sphere-optimistic in the offline/bundled demo otherwise.',
+    horizonStatus: 'sphere_fallback',
+    horizonModel: 'sphere_optimistic',
+  },
+  {
+    siteId: 'leibnitz-beta-plateau',
+    name: 'Leibnitz Beta Plateau',
+    publishedLabel: 'LBP',
+    latitudeDeg: -85.426577,
+    longitudeEastDeg: 31.742761,
+    surfaceElevationM: 6398.685706239586,
+    observerHeightAboveGroundM: 2,
+    category: 'curated',
+    notes: 'Official NASA Artemis III candidate landing region — one of the highest-elevation candidates '
+      + '(a mountain plateau, favorable for near-continuous sunlight). Real LOLA 5 m PGDA elevation data '
+      + 'exists (pgda.gsfc.nasa.gov, Site20) — shows a measured terrain horizon when the live science '
+      + 'backend is running, sphere-optimistic in the offline/bundled demo otherwise.',
     horizonStatus: 'sphere_fallback',
     horizonModel: 'sphere_optimistic',
   },
@@ -102,30 +132,36 @@ export const SITE_CATALOG: SiteCatalogEntry[] = [
     horizonStatus: 'sphere_fallback',
     horizonModel: 'sphere_optimistic',
   },
-  // ---- CLPS / commercial-style targets (approximate public coords; sphere horizons) ----
+  // ---- CLPS / commercial-style targets (confirmed landing coordinates where available; sphere horizons) ----
   {
-    siteId: 'clps-im1-region',
-    name: 'IM-1 region (Malapert A area)',
+    siteId: 'clps-im1-odysseus',
+    name: 'IM-1 Odysseus · Malapert A',
     publishedLabel: 'IM1',
     latitudeDeg: -80.13,
     longitudeEastDeg: 1.44,
-    surfaceElevationM: 2000,
+    surfaceElevationM: 2579,
     observerHeightAboveGroundM: 2,
     category: 'clps',
-    notes: 'Representative Intuitive Machines IM-1 south-polar approach region. Sphere horizon only.',
+    notes: 'Confirmed actual landing site of Intuitive Machines’ Odysseus (22 Feb 2024, first US lunar soft '
+      + 'landing since Apollo 17), verified by LRO/LROC imagery at 80.13°S 1.44°E, 2579 m elevation, '
+      + 'near the Malapert A crater. Sphere horizon in this tool (no published 5 m PGDA DEM at this location).',
     horizonStatus: 'sphere_fallback',
     horizonModel: 'sphere_optimistic',
   },
   {
-    siteId: 'clps-viper-naberius',
-    name: 'VIPER / Nobile vicinity',
-    publishedLabel: 'VIP',
-    latitudeDeg: -85.42,
-    longitudeEastDeg: 31.35,
-    surfaceElevationM: 900,
+    siteId: 'clps-im2-athena',
+    name: 'IM-2 Athena · Mons Mouton',
+    publishedLabel: 'IM2',
+    latitudeDeg: -84.7906,
+    longitudeEastDeg: 29.1957,
+    surfaceElevationM: 5321.132013645425,
     observerHeightAboveGroundM: 2,
     category: 'clps',
-    notes: 'Approximate VIPER exploration vicinity near Nobile. Sphere horizon; not an official NASA landing pin.',
+    notes: 'Confirmed actual landing site of Intuitive Machines’ Athena (6 Mar 2025) at 84.7906°S '
+      + '29.1957°E on Mons Mouton — the southernmost lunar landing to date, and the high plateau '
+      + 'originally the planned site of NASA’s cancelled VIPER rover before IM-2 took the slot. '
+      + 'Elevation measured from the real LOLA 80 m polar DEM (no 5 m PGDA tile at this location, so '
+      + 'horizon stays sphere-optimistic in this tool; the elevation figure itself is real LOLA data).',
     horizonStatus: 'sphere_fallback',
     horizonModel: 'sphere_optimistic',
   },

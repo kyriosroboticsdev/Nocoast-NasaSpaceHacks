@@ -17,6 +17,7 @@ env:
   RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'lunarnav-dev-rg' }}
   ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
   CONTAINER_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_NAME || 'lunarnavdev-api' }}
+  STATIC_WEB_APP_NAME: ${{ vars.AZURE_STATIC_WEB_APP_NAME || 'lunarnavdev-web' }}
 
 jobs:
   backend:
@@ -40,6 +41,12 @@ jobs:
 
       # az acr build builds the image inside ACR itself and pushes it — no local Docker daemon or
       # registry login needed on the runner.
+      # The registry name carries a uniqueString() suffix from infra/main.bicep; look it up unless the
+      # AZURE_ACR_NAME repo variable pins it.
+      - name: Resolve registry name
+        if: ${{ env.ACR_NAME == '' }}
+        run: echo "ACR_NAME=$(az acr list -g "$RESOURCE_GROUP" --query '[0].name' -o tsv)" >> "$GITHUB_ENV"
+
       - name: Build + push backend image
         run: |
           az acr build \
@@ -60,6 +67,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Azure login (OIDC)
+        if: ${{ vars.AZURE_CLIENT_ID != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure login (service principal)
+        if: ${{ vars.AZURE_CLIENT_ID == '' }}
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Fetch the Static Web App deploy token at run time instead of storing it as a repo secret.
+      - name: Get Static Web App deploy token
+        run: |
+          token=$(az staticwebapp secrets list --name "$STATIC_WEB_APP_NAME" -g "$RESOURCE_GROUP" --query properties.apiKey -o tsv)
+          echo "::add-mask::$token"
+          echo "SWA_TOKEN=$token" >> "$GITHUB_ENV"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -70,7 +98,7 @@ jobs:
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          azure_static_web_apps_api_token: ${{ env.SWA_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: "dist"

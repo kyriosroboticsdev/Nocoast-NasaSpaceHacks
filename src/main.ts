@@ -391,7 +391,7 @@ export async function startTerrain(): Promise<TerrainApi> {
     status.textContent = `Loading ${5*stride} m terrain…`;
     const params = new URLSearchParams({column:String(column),row:String(row),stride:String(stride)});
     const cachedSite = stride === 1 && (key === '17664/22272/1' || key === '19328/21120/1');
-    const path = cachedSite ? `terrain/focus/${column}-${row}.bin` : `terrain/window?${params}`;
+    const path = cachedSite ? `terrain/focus/${column}-${row}.bin` : `api/terrain/window?${params}`;
     void fetch(base+path,{signal:controller.signal})
       .then(async response => {
         if (!response.ok) throw new Error(String(response.status));

@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import analysis, polarmap, terrain
+from . import analysis, polarmap, terrain, terrain_window
 from .config import CONTRACT, ROOT, SITES, TIME, parse_utc
 from .pathfinding import earth_moon
 from .pathfinding.graph import NoPathError, Weights, shortest_path
@@ -150,6 +150,22 @@ def pathfind(epochUtc: str = TIME["defaultStartUtc"], layers: int = Query(24, ge
         "obstaclesTouched": result.obstacles_touched,
         "cost": result.cost,
     }
+
+
+@app.get("/api/terrain/window")
+def terrain_window_route(column: int = Query(..., ge=0), row: int = Query(..., ge=0), stride: int = Query(...)):
+    """257x257 float32 LE heights from the NASA 5 m polar mosaic; production twin of the Vite dev
+    middleware in vite.config.mjs (see backend/terrain_window.py)."""
+    try:
+        data, source = terrain_window.window_bytes(column, row, stride)
+    except terrain_window.InvalidWindow as e:
+        raise HTTPException(400, str(e)) from e
+    except terrain_window.Busy as e:
+        raise HTTPException(503, str(e)) from e
+    except Exception as e:
+        raise HTTPException(502, "Could not read the NASA terrain mosaic") from e
+    return Response(data, media_type="application/octet-stream",
+                    headers={"Cache-Control": "public, max-age=86400", "X-Terrain-Source": source})
 
 
 # Production: serve the built website (`npm run build` -> dist/) from the same server as the API.

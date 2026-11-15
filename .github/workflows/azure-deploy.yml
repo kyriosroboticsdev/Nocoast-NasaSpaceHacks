@@ -61,11 +61,6 @@ jobs:
           docker build -t "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}" -t "$ACR_NAME.azurecr.io/lunar-navigator-api:latest" .
           docker push --all-tags "$ACR_NAME.azurecr.io/lunar-navigator-api"
 
-      # azure-infra.yml (which would apply infra/modules/frontend.bicep's `linkedBackends` sub-resource)
-      # has never actually been run — this environment was hand-provisioned via `az` CLI during the
-      # Azure-for-Students workarounds. Confirmed via diagnostics: SWA sku is correctly Standard, but
-      # `az staticwebapp backends show` returns `[]` — no backend was ever linked, hence /api/* 404s on
-      # the public URL even though the Container App itself is healthy. Link it directly, idempotently.
       # Best-effort, non-blocking: linking the backend is what makes /api/* same-origin on the public
       # SWA URL (see src/science/backend.ts — the frontend already calls relative `api/...` paths).
       # Confirmed via a raw ARM REST PUT to the linkedBackends resource (bypassing the CLI, whose

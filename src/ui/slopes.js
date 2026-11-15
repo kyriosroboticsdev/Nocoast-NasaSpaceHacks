@@ -53,7 +53,7 @@ export function createSlopeView(host, onChange = () => {}, requestUrl = path => 
     el('slope-area-value').textContent = formatSlopeArea(area?.withinAreaM2 ?? null);
     el('slope-area-detail').textContent = area
       ? `${area.withinPatchFraction == null ? 'Within-limit area unknown' : `${(100 * area.withinPatchFraction).toFixed(1)}% of the full window mapped at ≤${limit}°`}. ${formatSlopeArea(area.unknownAreaM2)} unknown out of ${formatSlopeArea(area.totalAreaM2)}.`
-      : current && !inCoverageRegion(current) ? 'No 5 m terrain coverage outside the south polar region. Choose a polar study site.' : 'Waiting for the selected site’s terrain.';
+      : current && !inCoverageRegion(current) ? 'No terrain coverage in the available polar DEMs at this location.' : 'Waiting for the selected site’s terrain.';
     el('slope-comparison-note').textContent = `Same 1.24 × 1.24 km window at each site · limit ≤${limit}° · estimated planimetric area.`;
     const rows = el('slope-comparison-rows'); rows.replaceChildren();
     for (const site of sites) {
@@ -81,7 +81,7 @@ export function createSlopeView(host, onChange = () => {}, requestUrl = path => 
       comparisonState.set(k, 'loading'); renderAreas();
       const timeout = setTimeout(() => request.abort('timeout'), 30000);
       try {
-        const params = new URLSearchParams({ latitudeDeg: String(site.lat), longitudeEastDeg: String(site.lon) });
+        const params = new URLSearchParams({ latitudeDeg: String(site.lat), longitudeEastDeg: String(site.lon), resolution: "auto" });
         const response = await fetch(requestUrl(`api/terrain_slopes?${params}`), { signal: request.signal });
         if (!response.ok) throw new Error('Area request failed.');
         const data = validateSlopeGrid(await response.json(), site);
@@ -116,15 +116,24 @@ export function createSlopeView(host, onChange = () => {}, requestUrl = path => 
     cursor.setAttribute('cx', String(100 * (cell.col + 0.5) / grid.n));
     cursor.setAttribute('cy', String(100 * (grid.n - cell.row - 0.5) / grid.n));
   }
+  function renderRaster() {
+    if (!grid) return;
+    canvas.width = canvas.height = grid.n;
+    canvas.getContext('2d').putImageData(new ImageData(slopeRaster(grid, limit), grid.n, grid.n), 0, 0);
+  }
+  const visibility = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) requestAnimationFrame(renderRaster);
+  });
+  visibility.observe(canvas);
   function paint() {
     legend();
     renderAreas();
     if (!grid) return;
-    canvas.width = canvas.height = grid.n;
-    canvas.getContext('2d').putImageData(new ImageData(slopeRaster(grid, limit), grid.n, grid.n), 0, 0);
+    renderRaster();
+    requestAnimationFrame(renderRaster);
     const s = slopeSummary(grid, limit);
     el('slope-stats').textContent = `${(100 * grid.knownFraction).toFixed(1)}% of samples known. ${s.withinFraction == null ? 'Within-limit fraction unknown.' : `${(100 * s.withinFraction).toFixed(1)}% of known samples at or below ${limit}°.`}`;
-    el('slope-resolution').textContent = `${(2 * grid.halfExtentM / 1000).toFixed(2)} km square · ${grid.gridSpacingM} m grid · ${grid.demPixelSpacingM} m DEM pixels · ${grid.gradientBaselineM} m difference baseline. Gray: missing data, grid edge or tile seam.`;
+    el('slope-resolution').textContent = `${(2 * grid.halfExtentM / 1000).toFixed(2)} km square · ${Number(grid.gridSpacingM.toFixed(2))} m grid · ${grid.demPixelSpacingM} m DEM pixels · ${Number(grid.gradientBaselineM.toFixed(2))} m difference baseline. Gray: missing data, grid edge or tile seam.`;
     inspect();
   }
   async function load(force = false) {
@@ -138,16 +147,16 @@ export function createSlopeView(host, onChange = () => {}, requestUrl = path => 
     renderAreas();
     el('slope-inspection').textContent = 'No sample loaded.'; el('slope-center').disabled = true;
     el('slope-retry').hidden = true; host.setAttribute('aria-busy', 'true');
-    el('slope-status').textContent = 'Loading 5 m terrain slopes…';
+    el('slope-status').textContent = 'Calculating terrain slopes for the selected coordinates…';
     if (!inCoverageRegion(site)) {
-      el('slope-status').textContent = 'No 5 m terrain coverage outside the south polar region. Choose a polar study site.';
+      el('slope-status').textContent = 'No terrain coverage in the available polar DEMs at this location.';
       controller = null; host.setAttribute('aria-busy', 'false'); return;
     }
     const timeout = setTimeout(() => request.abort('timeout'), 30000);
     try {
       let data = cache.get(nextKey);
       if (!data || force) {
-        const params = new URLSearchParams({ latitudeDeg: String(site.lat), longitudeEastDeg: String(site.lon) });
+        const params = new URLSearchParams({ latitudeDeg: String(site.lat), longitudeEastDeg: String(site.lon), resolution: "auto" });
         const r = await fetch(requestUrl(`api/terrain_slopes?${params}`), { signal: request.signal });
         if (!r.ok) throw new Error(r.status === 503 ? 'Terrain files are unavailable on the science server.' : `Slope request failed (${r.status}).`);
         data = validateSlopeGrid(await r.json(), site);
@@ -159,7 +168,7 @@ export function createSlopeView(host, onChange = () => {}, requestUrl = path => 
       grid = data; cell = { row: (grid.n - 1) / 2, col: (grid.n - 1) / 2 };
       const known = grid.slopeDeg.some(v => v !== null);
       map.hidden = false; el('slope-center').disabled = false;
-      el('slope-status').textContent = known ? '5 m DEM slope screen. Independent of sunlight and panel settings.' : 'No 5 m slope coverage here. Gray means unknown; try CR1 or SR1.';
+      el('slope-status').textContent = known ? `${grid.demPixelSpacingM} m DEM slope estimate${grid.demPixelSpacingM > 5 ? ' — coarse terrain; small features are unresolved' : ''}. Independent of sunlight and panel settings.` : 'No usable DEM coverage here. Gray means unknown.';
       paint();
     } catch (e) {
       if (controller !== request || (request.signal.aborted && request.signal.reason !== 'timeout')) return;

@@ -10,14 +10,16 @@ export function slopeBand(value, limit) {
 }
 export function validateSlopeGrid(data, site) {
   if (!data || data.artifactType !== 'terrain-slope-grid' || data.schemaVersion !== '1.0'
-    || data.modelId !== 'pgda-5m-central-normal-radial-up-v1' || data.frameId !== 'MOON_ME_DE421'
+    || !['pgda-5m-central-normal-radial-up-v1', 'lola-dem-central-normal-radial-up-v1'].includes(data.modelId) || data.frameId !== 'MOON_ME_DE421'
     || data.referenceRadiusM !== 1737400 || data.rowOrder !== 'south-to-north' || data.columnOrder !== 'west-to-east'
     || data.validationStatus !== 'preliminary') throw new Error('Unsupported slope data or coordinate frame.');
   const { n, halfExtentM, gridSpacingM, slopeDeg } = data;
-  if (!Number.isInteger(n) || n < 17 || n > 401 || n % 2 !== 1 || !Number.isFinite(halfExtentM)
+  if (!Number.isInteger(n) || n < 3 || n > 401 || n % 2 !== 1 || !Number.isFinite(halfExtentM)
     || halfExtentM < 100 || halfExtentM > 2000 || !Number.isFinite(gridSpacingM) || gridSpacingM < 5
     || Math.abs(gridSpacingM - 2 * halfExtentM / (n - 1)) > 1e-9
-    || data.demPixelSpacingM !== 5 || Math.abs(data.gradientBaselineM - 2 * gridSpacingM) > 1e-9
+    || (data.demPixelSpacingM === 5 && n < 17)
+    || ![5, 80, 240].includes(data.demPixelSpacingM) || gridSpacingM < data.demPixelSpacingM
+    || (data.modelId === 'pgda-5m-central-normal-radial-up-v1' && data.demPixelSpacingM !== 5) || Math.abs(data.gradientBaselineM - 2 * gridSpacingM) > 1e-9
     || !Number.isFinite(data.gradientBaselineM) || !Array.isArray(slopeDeg) || slopeDeg.length !== n * n
     || slopeDeg.some(v => v !== null && (!Number.isFinite(v) || v < 0 || v > 90))) {
     throw new Error('Invalid slope grid or sample spacing.');

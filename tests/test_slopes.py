@@ -116,3 +116,34 @@ def test_route_rejects_bad_grids_and_returns_missing_data_errors(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         terrain_slopes(-89, 0, 620, 249)
     assert exc.value.status_code == 503
+
+@pytest.mark.parametrize('scale,expected_n', [(80, 15), (240, 5)])
+def test_auto_resolution_uses_native_coarse_grid_without_faking_fine_slopes(monkeypatch, scale, expected_n):
+    class MissingFine:
+        name = 'fine-gap'
+        def height(self, lat, lon):
+            return np.full(lat.shape, np.nan)
+    class Coarse:
+        name = 'real-coarse-fixture'
+        def height(self, lat, lon):
+            return np.full(lat.shape, 1200.)
+    monkeypatch.setattr(slopes.terrain, 'sources', lambda: {5.0: [MissingFine()], float(scale): [Coarse()]})
+    slopes.local_slope_grid.cache_clear()
+    d = slopes.local_slope_grid(-88.123, 125.432, resolution='auto')
+    assert d['demPixelSpacingM'] == scale and d['n'] == expected_n
+    assert d['gridSpacingM'] >= scale and d['gradientBaselineM'] >= 2 * scale
+    assert d['modelId'] == 'lola-dem-central-normal-radial-up-v1'
+    assert d['halfExtentM'] == 620 and d['fineElevationFraction'] == 0
+    assert d['centerSlopeDeg'] == pytest.approx(0, abs=1e-5)
+    assert 0 < d['knownFraction'] < 1
+    assert d['sources'] == ['real-coarse-fixture']
+    fine = slopes.local_slope_grid(-88.123, 125.432, resolution='fine')
+    assert fine['knownFraction'] == 0 and fine['demPixelSpacingM'] == 5
+    slopes.local_slope_grid.cache_clear()
+
+
+def test_auto_resolution_keeps_fine_grid_at_catalog_site():
+    s = __import__('backend.config', fromlist=['SITES']).SITES[2]
+    d = slopes.local_slope_grid(s['latitudeDeg'], s['longitudeEastDeg'], resolution='auto')
+    assert d['demPixelSpacingM'] == 5 and d['n'] == 249
+    assert d['centerSlopeDeg'] is not None

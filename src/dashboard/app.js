@@ -10,6 +10,7 @@ import { createRequestQueue } from "./requests.mjs";
 import { timelineFromWindows } from "../science/assessment.ts";
 import { downloadCard } from "./card.js";
 import { gameScore, scoreGrade, scoreTip } from "./game.js";
+import { applyUrlParams, getScenario } from "../scenario/state.ts";
 import { findSite, SITE_CATALOG } from "../scenario/catalog.ts";
 import {
   applyLandingScenario, bootLandingNavigator, ensureLandingTerrain, isLandingSync, setLandingSun, subscribeLandingAssessment, subscribeLandingScenario,
@@ -67,7 +68,11 @@ const dayOf = (ms) => Math.floor((ms - state.start.getTime()) / 1000 / DAY) + 1;
 // calls makes it run out of memory and restart. Keep at most two requests in flight.
 const slot = createRequestQueue(2);
 async function api(path, params = {}) {
-  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null)).toString();
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    for (const item of Array.isArray(value) ? value : [value]) if (item != null) search.append(key, String(item));
+  }
+  const q = search.toString();
   return slot(async () => {
     const r = await fetch(apiUrl(`api/${path}${q ? "?" + q : ""}`));
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
@@ -384,16 +389,17 @@ function addSpot(lat, lon, saveSpot = true) {
   if (!(lat >= -90 && lat <= -75) || !(lon >= -360 && lon <= 360)) { setStatus("Use a latitude from -90 to -75 (the terrain data covers the south polar region).", "err"); return; }
   if (saveSpot && state.custom.length >= MAX_CUSTOM) { setStatus(`You can keep ${MAX_CUSTOM} custom spots. Remove one from the table first.`, "err"); return; }
   const n = state.custom.length ? Math.max(...state.custom.map((s) => +s.name.replace(/\D+/g, "") || 0)) + 1 : 1;
-  const s = { id: saveSpot ? `c-${Date.now()}` : "map-spot", name: saveSpot ? `Spot ${n}` : "Map selection",
-    lat: +lat.toFixed(4), lon: +(((lon % 360) + 360) % 360).toFixed(4), custom: true };
+  const s = { id: saveSpot ? `c-${Date.now()}` : "map-spot", name: saveSpot ? `Spot ${n}` : "Selected point",
+    lat: +lat.toFixed(6), lon: +(((lon % 360) + 360) % 360).toFixed(6) % 360, custom: true };
   if (saveSpot) { state.custom.push(s); save("customSitesV3", state.custom); }
   else {
     state.mapSpot = s;
     for (const cache of [state.results,state.power,state.mission,inputs]) cache.delete(s.id);
   }
   state.focus = s.id; state.days.clear(); state.dayRun++;
-  syncInputs(); renderMap(); drawScene(null); refresh();
-  setStatus("Working out the hills around your spot (a few seconds the first time)…", "busy");
+  syncInputs(); renderMap(); drawScene(null);
+  setMode("check"); setPane("results");
+  refresh();
 }
 function removeSpot(id) {
   state.custom = state.custom.filter((s) => s.id !== id); save("customSitesV3", state.custom);
@@ -458,16 +464,11 @@ mapWrap.addEventListener("pointerup", event => {
   if (moved || !state.mapMeta) return;
   const bounds = $("map-content").getBoundingClientRect();
   const x = (event.clientX-bounds.left)/bounds.width, y = (event.clientY-bounds.top)/bounds.height;
-  const nearest = allSites().map(site => {
-    const [sx,sy] = latLonToMap(site.lat,site.lon);
-    return {site, distance:Math.hypot((sx/1000-x)*bounds.width,(sy/1000-y)*bounds.height)};
-  }).sort((a,b)=>a.distance-b.distance)[0];
-  if (nearest?.distance < 14) selectSite(nearest.site.id);
-  else addSpot(...mapToLatLon(x,y),false);
+  addSpot(...mapToLatLon(x,y), false);
 });
 $("coord-form").addEventListener("submit", (e) => {
   e.preventDefault();
-  addSpot(parseFloat($("c-lat").value), parseFloat($("c-lon").value));
+  addSpot(parseFloat($("c-lat").value), parseFloat($("c-lon").value), false);
 });
 
 function untilNext(r, body) {
@@ -685,7 +686,9 @@ function renderSummary() {        // drawer, check mode: the site in view's verd
   const checks = pending(state.focus) ? [] : siteChecks(siteById(state.focus)) ?? [];
   const relayNote = state.relay.on && state.results.get(state.focus)?.relay
     ? `<p class="why">Earth contact includes a ${state.relay.sats}-satellite polar relay when the direct link is blocked.</p>` : "";
-  return `<div class="summary">${pending(state.focus) ? "" : vbadge(v)}<p class="why">${esc(reason(state.focus, v))}</p></div><div class="metric-readout">${checks.map(metricRow).join("")}</div>${relayNote}
+  const selected = siteById(state.focus);
+  const location = selected ? `<p class="selected-location">${esc(selected.name)} · ${Math.abs(selected.lat).toFixed(4)}°${selected.lat < 0 ? "S" : "N"}, ${selected.lon.toFixed(4)}°E</p>` : "";
+  return `${location}<div class="summary">${pending(state.focus) ? "" : vbadge(v)}<p class="why">${esc(reason(state.focus, v))}</p></div><div class="metric-readout">${checks.map(metricRow).join("")}</div>${relayNote}
     ${advanced ? gameBlock() : ""}<div class="summary-actions">
     ${state.pane !== "compare" ? `<button class="link" id="open-compare">Compare with another site</button>` : ""}</div>`;
 }
@@ -754,7 +757,9 @@ function selectSite(id) {
   if (!id || id === state.focus) return;
   state.focus = id;
   syncInputs();
-  renderAll();
+  setMode("check"); setPane("results");
+  if (!state.results.has(id)) refresh();
+  else renderAll();
 }
 $("pane-compare").addEventListener("click", (e) => {
   const del = e.target.closest("[data-del]"); if (del) { removeSpot(del.dataset.del); return; }
@@ -832,13 +837,16 @@ async function runOptimize() {
   setStatus("Searching sites and landing days…", "busy");
   try {
     const out = await api("optimize", {
+      extraSites: allSites().filter(s => s.custom).map(s => `${s.lat},${s.lon}`),
       firstDayUtc: utc(state.start), sweepDays: 14, missionSeconds: (state.end - state.start) / 1000,
       antennaMinElevationDeg: state.antenna, relay: state.relay.on, relaySats: state.relay.sats,
     });
     const best = out.best;
     if (!best?.bestDateUtc) { setStatus("No ranked landing day in this window.", "err"); return; }
     const len = state.end - state.start;
-    if (siteById(best.id)) state.focus = best.id;
+    const target = siteById(best.id) ?? allSites().find(s => Math.abs(s.lat - best.latitudeDeg) < 1e-6
+      && Math.abs((((s.lon - best.longitudeEastDeg) % 360) + 540) % 360 - 180) < 1e-6);
+    if (target) state.focus = target.id;
     state.start = new Date(best.bestDateUtc);
     state.end = new Date(state.start.getTime() + len);
     state.tIdx = 0;
@@ -924,15 +932,16 @@ $("antenna").addEventListener("change", () => {
 
 // ============================================================ exports, tooltips, boot
 $("export").addEventListener("click", () => {
-  const q = new URLSearchParams({ startUtc: utc(state.start), endUtc: utc(state.end), antennaMinElevationDeg: state.antenna });
-  const site = siteById(state.focus);
-  if (site.custom) {
-    const { _t, ...clean } = state.results.get(site.id) ?? {};
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([JSON.stringify(clean)], { type: "application/json" })),
-      download: `spot_${site.lat}_${site.lon}_${toDate(state.start)}.json` });
-    a.click(); return;
-  }
-  window.location.href = apiUrl(`api/export/${encodeURIComponent(state.focus)}?${q}`);
+  const site = siteById(state.focus), result = state.results.get(state.focus);
+  if (!site || !result || pending(site.id)) return setStatus("Wait for this location's calculation before exporting.", "busy");
+  const { _t, ...analysis } = result;
+  const report = { site: { ...site }, startUtc: utc(state.start), endUtc: utc(state.end),
+    relay: { ...state.relay }, analysis, solar: state.power.get(site.id) ?? null,
+    mission: state.mission.get(site.id) ?? null, panel: { ...state.panel }, needs: { ...state.needs } };
+  const a = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(new Blob([JSON.stringify(report)], { type: "application/json" })),
+    download: `mission_${site.lat}_${site.lon}_${toDate(state.start)}.json` });
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 $("p-csv").addEventListener("click", () => {
   const p = state.power.get(state.focus); if (!p) return;
@@ -977,9 +986,6 @@ function missionFromNeeds(n) {
   for (const k of Object.keys(D.requirements)) requirements[k] = n[k];
   return { battery, requirements };
 }
-function lonNear(a, b) {
-  return Math.abs((((a - b) % 360) + 540) % 360 - 180) < 0.002;
-}
 function pushLanding() {
   if (!state.start || !state.end || state.end <= state.start) return;
   const site = siteById(state.focus);
@@ -1010,16 +1016,16 @@ function onNavigatorScenario(s) {
   const th = s.thresholds;
   if (s.primary.siteId === "custom" && s.primary.customLatDeg != null && s.primary.customLonEastDeg != null) {
     const lat = s.primary.customLatDeg, lon = s.primary.customLonEastDeg;
-    const match = allSites().find((x) => Math.abs(x.lat - lat) < 0.002 && lonNear(x.lon, lon));
-    if (match) { if (state.focus !== match.id) { state.focus = match.id; syncInputs(); renderAll(); } }
-    else { addSpot(lat, lon); return; }
+    const match = allSites().find((x) => Math.abs(x.lat - lat) < 0.000001 && Math.abs((((x.lon - lon) % 360) + 540) % 360 - 180) < 0.000001);
+    if (match) { if (state.focus !== match.id) selectSite(match.id); }
+    else { addSpot(lat, lon, false); return; }
   } else {
     const known = findSite(s.primary.siteId);
     if (known && !siteById(known.siteId)) {
       state.sites.push({ id: known.siteId, name: known.name, lat: known.latitudeDeg, lon: known.longitudeEastDeg });
     }
     if (siteById(s.primary.siteId) && state.focus !== s.primary.siteId) {
-      state.focus = s.primary.siteId; syncInputs(); renderAll();
+      selectSite(s.primary.siteId);
     }
   }
   const start = new Date(s.startUtc);
@@ -1069,6 +1075,7 @@ if (PRESENT) {
   };
 }
 (async function init() {
+  applyUrlParams(location.search);
   bootLandingNavigator();
   subscribeLandingScenario(onNavigatorScenario);
   subscribeLandingAssessment((assessment) => {
@@ -1124,6 +1131,31 @@ if (PRESENT) {
   state.focus = siteById(qs.get("site")) ? qs.get("site") : state.sites[0].id;
   state.start = new Date(c.time.defaultStartUtc); state.end = new Date(state.start.getTime() + 14 * DAY * 1000);
   state.antenna = c.visibility.antennaMinElevationDeg;
+  const shared = getScenario();
+  if (qs.has("site")) {
+    if (shared.primary.siteId === "custom" && shared.primary.customLatDeg != null && shared.primary.customLonEastDeg != null) {
+      state.mapSpot = { id: "map-spot", name: "Selected point", custom: true,
+        lat: shared.primary.customLatDeg, lon: shared.primary.customLonEastDeg % 360 };
+      state.focus = state.mapSpot.id;
+    } else {
+      const known = findSite(shared.primary.siteId);
+      if (known && !siteById(known.siteId)) state.sites.push({ id: known.siteId, name: known.name, lat: known.latitudeDeg, lon: known.longitudeEastDeg });
+      if (siteById(shared.primary.siteId)) state.focus = shared.primary.siteId;
+    }
+  }
+  if (qs.has("date")) state.start = new Date(shared.startUtc);
+  state.end = new Date(state.start.getTime() + (qs.has("hours") ? shared.durationHours : 336) * 3600000);
+  const th = shared.thresholds;
+  if (qs.has("minEl")) state.antenna = th.minEarthElevationDeg;
+  if (qs.has("area")) state.panel.areaM2 = th.panelAreaM2;
+  if (qs.has("eff")) state.panel.efficiency = th.panelEfficiency;
+  if (qs.has("tilt")) state.panel.tiltDeg = th.panelTiltDeg;
+  if (qs.has("panelAzimuthDeg")) state.panel.face = String(th.panelAzimuthDeg);
+  if (qs.has("floor")) state.needs.loadW = th.batteryFloorW;
+  if (qs.has("battery")) Object.assign(state.needs, shared.missionSettings.battery);
+  if (qs.has("requirements")) Object.assign(state.needs, shared.missionSettings.requirements);
+  if (qs.has("siteB")) state.compareSite = shared.secondary.siteId;
+  clampStay();
   for (const id of ["start", "end"]) { $(id).min = toDT(new Date(c.time.supportedStartUtc)); $(id).max = toDT(new Date(c.time.supportedEndUtc)); }
   $("land-date").min = toDate(new Date(c.time.supportedStartUtc));
   $("land-date").max = toDate(new Date(new Date(c.time.supportedEndUtc).getTime() - DAY * 1000));

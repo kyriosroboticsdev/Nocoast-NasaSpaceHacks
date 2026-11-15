@@ -139,7 +139,7 @@ function renderOptimization(report: OptimizationReport) {
     });
   }
   for (const excluded of report.exclusions) note(host, `${siteLabel(excluded.siteId)} excluded: ${excluded.reason}`);
-  if (!report.best) note(host, 'No complete cases to optimize. Use covered CR1/SR1 dates and inspect horizon/data gaps.');
+  if (!report.best) note(host, 'No complete cases to optimize. Inspect the selected locations, dates and source-data gaps.');
 }
 function renderDelays(report: DelayReport) {
   const host = el('delay-results'); host.replaceChildren();

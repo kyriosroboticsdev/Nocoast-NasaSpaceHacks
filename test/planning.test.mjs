@@ -159,3 +159,20 @@ test('landing-delay results do not require an upstream terrain validation declar
   const result = analyzeDelays([c], panel, 0, settings());
   assert.equal(result.cases[0].viability.qualifiedForMissionDecision, true);
 });
+
+import { selectedMissionSites } from '../.cache/solar-tests/power/contexts.js';
+test('optimization and delays follow chosen catalog and custom coordinates', () => {
+  const state = createDefaultScenario();
+  state.primary = { id: 'A', siteId: 'peak-near-shackleton' };
+  state.secondary = { id: 'B', siteId: 'custom', customLatDeg: -88.125, customLonEastDeg: 45 };
+  state.compareEnabled = true;
+  const sites = selectedMissionSites(state);
+  assert.equal(sites.length, 2);
+  assert.equal(sites[0].siteId, 'peak-near-shackleton');
+  assert.equal(sites[1].latitudeDeg, -88.125);
+  assert.equal(sites[1].longitudeEastDeg, 45);
+  state.primary = { ...state.secondary, id: 'A' };
+  assert.equal(selectedMissionSites(state).length, 1);
+  state.compareEnabled = false;
+  assert.equal(selectedMissionSites(state)[0].latitudeDeg, -88.125);
+});

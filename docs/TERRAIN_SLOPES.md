@@ -1,5 +1,17 @@
 # Local terrain-slope screening
 
+Current coordinate support: every selected catalog or custom point is requested
+by latitude/longitude. The active slope map follows Site A when its coordinates
+change, even if the view previously showed Site B. `/api/terrain_slopes` defaults
+to `resolution=auto`; use `resolution=fine` for the original fine-only behavior.
+Auto uses the 5 m tiles where they cover the window, otherwise a uniform 80 m or
+240 m DEM when available. It never mixes resolutions inside a derivative stencil
+or samples more densely than the source pixels. The 1.24 km comparison window
+is retained, while returned `n`, grid spacing, source and model ID disclose the
+actual resolution. A coarse slope estimate does not resolve small hazards.
+The original fine-only algorithm and evidence below remain applicable to fine mode.
+
+
 Integrated with `main` commit `2c59193` (the same tracked content as `preview`
 `3284b18`). Open **Terrain slopes and area comparison** below the Planner's 3D
 viewer. Choose locations with the existing **Site A** and **Site B** controls;
@@ -51,7 +63,7 @@ requested grid. It is not a ring of hazardous ground.
 over 1.24 km square, at 5 m spacing. Rows run south to north; columns west to east.
 The client flips rows for a north-up raster. Longitude is east-positive.
 
-The backend uses the **existing PGDA 5 m surface elevation tiles**. Their heights
+In fine mode the backend uses the **existing PGDA 5 m surface elevation tiles**. Their heights
 are bilinearly sampled at points on the same spherical local grid used by the
 terrain viewer. It does not use procedural texture, display lighting, vertical
 exaggeration, observer height, or the 80/240 m fallback DEMs for this product.

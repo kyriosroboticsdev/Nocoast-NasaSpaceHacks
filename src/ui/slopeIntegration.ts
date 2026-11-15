@@ -38,6 +38,8 @@ export function wireSlopeIntegration(): (state: ScenarioState) => void {
     const next = [siteFrom(state.primary), ...(state.compareEnabled ? [siteFrom(state.secondary)] : [])];
     const nextSignature = JSON.stringify(next);
     if (nextSignature === signature) return; // scrub, date and panel changes do not change terrain
+    const primaryChanged = !sites[0] || sites[0].lat !== next[0].lat || sites[0].lon !== next[0].lon;
+    if (primaryChanged) selected = 'A';
     signature = nextSignature; sites = next;
     if (!sites.some(s => s.id === selected)) selected = 'A';
     picker.replaceChildren(...sites.map(site => {

@@ -1,5 +1,15 @@
 # Terrain slope screen
 
+Coordinate extension: the UI requests `resolution=auto` for the selected point.
+Fine responses retain the original model ID. Coarse responses use
+`lola-dem-central-normal-radial-up-v1`, with `demPixelSpacingM` 80 or 240 and a
+smaller odd `n` (at least 3). Grid spacing must be at least the DEM pixel spacing;
+the difference baseline remains twice the grid spacing. Both modes preserve the
+requested window, coordinate identity, nulls, coverage and explicit source labels.
+Changing Site A resets the slope picker to that active point. The fine-mode
+contract below describes the original 5 m case only.
+
+
 Purpose: inspect steepness around the selected landing site alongside power and
 communication conditions. Add a collapsible section below the current Planner's
 3D viewer; retain its dark palette, Site A/B controls and mission results. A separate flat,

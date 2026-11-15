@@ -26,7 +26,7 @@ param projectName string = 'lunarnav'
 param envName string = 'dev'
 
 @description('Azure region for all resources.')
-param location string = 'eastus2'
+param location string = 'westus2'
 
 @description('Name of the resource group to create/use.')
 param resourceGroupName string = '${projectName}-${envName}-rg'
@@ -43,7 +43,7 @@ module storage 'modules/storage.bicep' = {
   scope: rg
   params: {
     location: location
-    storageAccountName: toLower('${nameBase}data${uniqueString(rg.id)}')
+    storageAccountName: take(toLower('${nameBase}${uniqueString(rg.id)}'), 24) // storage names: 3-24 lowercase alphanumerics
   }
 }
 

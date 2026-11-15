@@ -7,7 +7,7 @@ name: Azure deploy (app)
 on:
   workflow_dispatch: {}
   push:
-    branches: [main]
+    branches: [main, preview]
 
 permissions:
   id-token: write
@@ -39,21 +39,13 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # az acr build builds the image inside ACR itself and pushes it — no local Docker daemon or
-      # registry login needed on the runner.
-      # The registry name carries a uniqueString() suffix from infra/main.bicep; look it up unless the
-      # AZURE_ACR_NAME repo variable pins it.
-      - name: Resolve registry name
-        if: ${{ env.ACR_NAME == '' }}
-        run: echo "ACR_NAME=$(az acr list -g "$RESOURCE_GROUP" --query '[0].name' -o tsv)" >> "$GITHUB_ENV"
-
+      # Build on the runner and push: ACR Tasks (`az acr build`) is disabled on Azure for Students
+      # subscriptions (TasksOperationsNotAllowed).
       - name: Build + push backend image
         run: |
-          az acr build \
-            --registry "$ACR_NAME" \
-            --image "lunar-navigator-api:${{ github.sha }}" \
-            --image "lunar-navigator-api:latest" \
-            .
+          az acr login --name "$ACR_NAME"
+          docker build -t "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}" -t "$ACR_NAME.azurecr.io/lunar-navigator-api:latest" .
+          docker push --all-tags "$ACR_NAME.azurecr.io/lunar-navigator-api"
 
       - name: Deploy image to Container App
         run: |

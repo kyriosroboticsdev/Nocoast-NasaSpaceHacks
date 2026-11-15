@@ -9,7 +9,7 @@ on:
       location:
         description: "Azure region"
         required: false
-        default: "eastus2"
+        default: "westus2"
 
 permissions:
   id-token: write   # for OIDC login (azure/login@v2 with federated credentials)

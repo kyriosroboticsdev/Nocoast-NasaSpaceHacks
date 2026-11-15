@@ -7,7 +7,10 @@ name: Azure deploy (app)
 on:
   workflow_dispatch: {}
   push:
-    branches: [main, preview]
+    # Prod deploys from `main` only. There is a single (production) Static Web App + Container App,
+    # so deploying `preview` here overwrote prod with a stale, backend-less build. Deploy preview to a
+    # dedicated staging SWA if one is ever provisioned; until then it must not ship to prod.
+    branches: [main]
 
 permissions:
   id-token: write

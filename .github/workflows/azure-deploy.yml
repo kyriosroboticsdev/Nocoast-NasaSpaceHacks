@@ -89,10 +89,14 @@ jobs:
             # idle, so the first visitor after a lull hit an ~8s cold start; the dashboard fires several
             # data calls at once during activation and they failed with "Failed to fetch" / "Terrain
             # unavailable". A warm replica removes the cold start.
+            # --cpu 2 --memory 4.0Gi: /api/analyze is memory-heavy and concurrent calls OOM-killed the
+            # container at 1 cpu / 2Gi (502s surfaced as "couldn't calculate / network error"). More
+            # headroom stops the crash and speeds up each analysis.
             if az containerapp update \
                  --name "$CONTAINER_APP_NAME" \
                  --resource-group "$RESOURCE_GROUP" \
                  --min-replicas 1 --max-replicas 3 \
+                 --cpu 2 --memory 4.0Gi \
                  --image "$IMAGE:${{ github.sha }}"; then
               echo "Deploy succeeded on attempt $attempt."
               exit 0

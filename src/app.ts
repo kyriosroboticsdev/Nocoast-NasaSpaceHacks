@@ -1,4 +1,6 @@
 import './style.css';
+import './ui/slopes.css';
+import { wireSlopeIntegration } from './ui/slopeIntegration';
 import { startTerrain, type TerrainApi, type TerrainMarkerSpec } from './main';
 import { CATALOG_GROUP_LABELS, SITE_CATALOG, resolveSiteCoords } from './scenario/catalog';
 import {
@@ -1236,6 +1238,9 @@ function wireUi() {
 async function boot() {
   applyUrlParams(location.search);
   wireUi();
+  const syncSlopes = wireSlopeIntegration();
+  syncSlopes(getScenario());
+  subscribeScenario(syncSlopes);
   syncControlsFromState(getScenario());
   subscribeScenario(syncControlsFromState);
 

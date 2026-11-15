@@ -1,0 +1,71 @@
+/* Local slope screen: scientific colors stay readable independently of scene lighting. */
+.slope-view[hidden], .slope-view [hidden] { display: none !important; }
+.slope-view { position: absolute; inset: 64px 0 0; overflow-y: auto; padding: 0 22px 22px; min-height: 0; }
+.slope-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+.slope-heading h2 { font-size: 18px; margin: 0 0 4px; }
+.slope-heading p { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.slope-tag { border: 1px solid var(--line-2); border-radius: 4px; padding: 3px 8px; font-size: 12px; color: var(--muted); }
+.slope-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(205px, 245px); gap: 24px; max-width: 1100px; }
+.slope-figure, .slope-info { min-width: 0; }
+.slope-map-wrap { position: relative; width: min(100%, 560px, max(240px, calc(100vh - 580px))); aspect-ratio: 1; border: 1px solid var(--line-2); background: #646e82; }
+#slope-canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; cursor: crosshair; touch-action: manipulation; }
+.slope-marks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.slope-center { fill: none; stroke: #fff; stroke-width: .8; filter: drop-shadow(0 0 1px #000); }
+.slope-cursor { fill: none; stroke: #fff; stroke-width: .45; filter: drop-shadow(0 0 1px #000); }
+.slope-north, .slope-east { position: absolute; padding: 3px 7px; background: #060b18e8; color: var(--text); font-size: 12px; font-weight: 600; pointer-events: none; }
+.slope-north { top: 8px; left: 50%; transform: translateX(-50%); }
+.slope-east { top: 50%; right: 8px; transform: translateY(-50%); }
+.slope-info .field { max-width: 200px; }
+.slope-info input { min-height: 44px; }
+.slope-info p { margin: 10px 0; }
+.slope-error { color: #ffb2ad; font-size: 13px; }
+.slope-error:empty { display: none; }
+.slope-legend { display: grid; gap: 9px; margin: 20px 0; font-size: 13px; }
+.slope-legend span { display: flex; gap: 8px; align-items: center; }
+.slope-legend i { width: 15px; height: 15px; flex: none; border-radius: 2px; }
+.slope-legend .lower { background: #2dae9d; }.slope-legend .near { background: #edc058; }
+.slope-legend .above { background: #e86668; }.slope-legend .unknown { background: #646e82; }
+.slope-readout { font-size: 14px; font-weight: 600; min-height: 3em; }
+.slope-stats { font-size: 13px; }
+.slope-area-summary { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 16px; }
+.slope-area-summary > span { display: block; color: var(--muted); font-size: 12px; }
+.slope-area-summary > strong { display: block; font-size: 27px; font-weight: 600; margin-top: 3px; }
+.slope-area-summary p { line-height: 1.5; }
+.slope-comparison { margin-top: 18px; max-width: 650px; }
+.slope-comparison h3 { font-size: 14px; margin: 0 0 6px; }
+.slope-comparison .hint { margin: 6px 0; }
+.slope-table-wrap { overflow-x: auto; margin: 8px 0; }
+.slope-comparison table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.slope-comparison th, .slope-comparison td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.slope-comparison th { font-weight: 500; }.slope-comparison td { white-space: nowrap; }
+.slope-comparison thead { color: var(--muted); }
+.slope-comparison tr.selected { background: #0b3d912e; }
+.slope-warning { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+.slope-view button { min-height: 44px; white-space: normal; height: auto; padding-top: 8px; padding-bottom: 8px; }
+@media (max-width: 1100px) {
+  .slope-layout { grid-template-columns: minmax(0, 1fr); }
+  .slope-map-wrap { max-width: 480px; }
+  .slope-info { max-width: 560px; }
+}
+@media (max-width: 600px) {
+  .slope-map-wrap { width: 100%; }
+  .slope-view { position: relative; inset: auto; overflow: visible; padding: 70px 16px 20px; }
+  .slope-heading { gap: 8px; }.slope-heading h2 { font-size: 17px; }
+  .slope-tag { padding: 3px 5px; font-size: 11px; }
+  /* Retain reachability of the third view before slope mode is selected. */
+}
+
+/* Planner integration: an in-flow section under the current 3D viewer. */
+.slope-integrated { min-width: 0; }
+.slope-integrated > details > summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.slope-integrated .control-hint { margin: 8px 0 12px; }
+.slope-integrated #slope-slot { max-width: 100%; margin: 6px 0 18px; }
+.slope-integrated .slope-view { --bg: #060d1c; --text: #edf4ff; --line-2: #3d536d; position: relative; inset: auto; padding: 0; min-height: 0; overflow: visible; }
+.slope-integrated .slope-map-wrap { width: min(100%, 420px); }
+.slope-integrated .slope-layout { grid-template-columns: minmax(0, 1fr) minmax(240px, 320px); }
+.slope-integrated .slope-info .field { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
+.slope-integrated .hint { position: static; left: auto; bottom: auto; z-index: auto; display: block; max-width: none; padding: 0; border: 0; border-radius: 0; background: none; color: var(--muted); font-size: 12px; }
+.slope-integrated .btn.ghost { background: #132239; border: 1px solid #3d536d; border-radius: 6px; color: #edf4ff; }
+.slope-slot-area { border-left: 3px solid #2dae9d; padding: 8px 12px; margin: 12px 0; color: #c8d7e9; font-size: 13px; }
+.slope-integrated :focus-visible { outline: 2px solid #80baff; outline-offset: 3px; }
+@media (max-width: 900px) { .slope-integrated .slope-layout { grid-template-columns: minmax(0, 1fr); } }

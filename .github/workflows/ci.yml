@@ -37,6 +37,10 @@ jobs:
         if: hashFiles('**/*.py') != ''
         run: ruff check . --output-format=github
 
+      - name: Download NASA fixtures for science tests
+        if: hashFiles('scripts/fetch_data.py') != ''
+        run: python -m scripts.fetch_data
+
       - name: Tests (pytest)
         if: hashFiles('**/test_*.py', '**/*_test.py') != ''
         run: pytest -q

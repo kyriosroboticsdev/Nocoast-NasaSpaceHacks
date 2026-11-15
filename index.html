@@ -4,15 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b3d91">
+  <link rel="icon" type="image/png" href="/branding/favicon.png">
   <title>Lunar Landing Site Navigator</title>
 </head>
 <body>
   <main>
     <header class="app-header" data-tour="mode">
-      <div>
-        <p class="eyebrow">NOCOAST · NASA SPACE APPS · SOUTH POLE</p>
-        <h1>Lunar Landing Site Navigator</h1>
-        <p class="tagline" id="mode-tagline">Find, compare, and decide landing sites and dates for solar power and direct-to-Earth communications.</p>
+      <div class="brand-row">
+        <span class="brand-badge"><img src="/branding/nocoast-icon.png" alt="" width="40" height="34"></span>
+        <div>
+          <p class="eyebrow">NOCOAST · NASA SPACE APPS 2026 · SOUTH POLE</p>
+          <h1>Lunar Landing Site Navigator</h1>
+          <p class="tagline" id="mode-tagline">Find, compare, and decide landing sites and dates for solar power and direct-to-Earth communications.</p>
+        </div>
       </div>
       <div class="header-actions">
         <div class="mode-toggle" role="group" aria-label="Application mode">
@@ -292,8 +296,8 @@
             <canvas id="skyline" width="800" height="140" aria-label="Horizon skyline with Sun and Earth"></canvas>
           </div>
           <div class="viz-block" data-tour="timeline">
-            <h3>Mission timeline · when you have sun, Earth, or both</h3>
-            <canvas id="timeline" width="800" height="120" aria-label="Sunlight and Earth contact timeline"></canvas>
+            <h3>Mission calendar · when you have sun, Earth, or both <span class="viz-hint">(click a moment to jump the time slider)</span></h3>
+            <canvas id="timeline" width="800" height="190" role="img" aria-label="Sunlight and Earth contact calendar"></canvas>
           </div>
         </div>
       </section>

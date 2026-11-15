@@ -74,29 +74,38 @@ jobs:
           az containerapp revision list --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" \
             --query "[].{name:name, active:properties.active, provisioningState:properties.provisioningState, healthState:properties.healthState}" -o table
 
-      # Re-set the registry credential on every deploy, not just at first create: Container Apps on
-      # Express/Consumption (Azure for Students) needs the ACR admin username/password wired in as a
-      # secret (see infra/modules/backend.bicep), and that secret can go stale (e.g. if the admin
-      # password was regenerated, or the app was recreated by a bicep re-run) without the image tag
-      # changing — `az containerapp update --image` alone then fails pulling with
-      # "Authentication failed ... Provide 'registryCredentials'". This makes the registry config
-      # self-healing on every run instead of depending on whatever was set at creation time.
-      - name: Refresh Container App registry credentials
+      # Diagnosed: ACR is fine (publicNetworkAccess enabled, admin enabled, image tag present, registry
+      # config on the app is correct) but `az containerapp registry set` triggers an immediate
+      # reconciliation that reliably fails with "Authentication failed ... Provide 'registryCredentials'"
+      # before the new/re-set credential has propagated to the Container Apps pull path — on Express/
+      # Consumption (Azure for Students) this propagation lag is consistently 30s+. `registry set`'s own
+      # reconciliation failure is not fatal (`|| true`); what matters is the credential being saved, which
+      # happens regardless of whether that immediate reconcile succeeds. Retry the real deploy step after
+      # giving it time, re-asserting the credential each attempt since it's idempotent.
+      - name: Deploy image to Container App (retry for credential-propagation lag)
         run: |
-          acr_password=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
-          az containerapp registry set \
-            --name "$CONTAINER_APP_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --server "$ACR_NAME.azurecr.io" \
-            --username "$ACR_NAME" \
-            --password "$acr_password"
-
-      - name: Deploy image to Container App
-        run: |
-          az containerapp update \
-            --name "$CONTAINER_APP_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --image "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}"
+          for attempt in 1 2 3 4 5; do
+            echo "Attempt $attempt/5: refreshing registry credential..."
+            acr_password=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+            az containerapp registry set \
+              --name "$CONTAINER_APP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --server "$ACR_NAME.azurecr.io" \
+              --username "$ACR_NAME" \
+              --password "$acr_password" || true
+            echo "Attempt $attempt/5: updating image..."
+            if az containerapp update \
+                 --name "$CONTAINER_APP_NAME" \
+                 --resource-group "$RESOURCE_GROUP" \
+                 --image "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}"; then
+              echo "Deploy succeeded on attempt $attempt."
+              exit 0
+            fi
+            echo "Attempt $attempt failed; waiting 30s for credential propagation..."
+            sleep 30
+          done
+          echo "::error::Container App update failed after 5 attempts."
+          exit 1
 
   frontend:
     runs-on: ubuntu-latest

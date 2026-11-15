@@ -87,6 +87,7 @@
 #navigator-port .rank-item {
   display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: #0d1725;
 }
+#navigator-port .rank-item { flex: none; text-align: left; }
 #navigator-port .rank-body { display: flex; flex-direction: column; min-width: 0; }
 #navigator-port .rank-metrics, #navigator-port .empty-hint, #navigator-port .muted-inline { color: var(--muted); font-size: 0.75rem; }
 #navigator-port .rank-adopt { margin-left: auto; color: var(--accent); font-weight: 700; font-size: 0.72rem; }

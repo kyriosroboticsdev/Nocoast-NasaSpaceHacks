@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NoCoast walkthrough</title>
+  <meta name="description" content="A short guided walkthrough of the NoCoast lunar south pole landing planner.">
+  <link rel="icon" href="/branding/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/presentation/style.css">
+</head>
+<body data-side="none">
+  <iframe id="app" title="NoCoast planner" src="./?present=1" tabindex="-1"></iframe>
+
+  <aside id="caption" aria-live="polite">
+    <p class="count" id="count"></p>
+    <h1 id="cap-title"></h1>
+    <div id="cap-body"></div>
+    <figure id="pmap" hidden>
+      <div class="pmap-wrap"><img id="pmap-img" alt="Shaded terrain map of the lunar south pole"><svg id="pmap-marks" viewBox="0 0 1000 1000" aria-hidden="true"></svg></div>
+      <figcaption id="pmap-note"></figcaption>
+    </figure>
+  </aside>
+
+  <div id="veil">
+    <div class="veil-inner">
+      <img src="/branding/nocoast-icon.png" alt="" width="60" height="52">
+      <h1 id="veil-title">NoCoast</h1>
+      <p id="veil-text"></p>
+    </div>
+  </div>
+
+  <p id="hint" role="status"></p>
+  <script type="module" src="/src/presentation/main.js"></script>
+</body>
+</html>

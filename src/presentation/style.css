@@ -1,0 +1,76 @@
+/* Walkthrough shell: the live planner runs in a frame, with a text column on one side. */
+:root {
+  --col: min(320px, 26vw);
+  --ease: cubic-bezier(.45, 0, .2, 1);
+  --move: 1.1s;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; background: #05080e; color: #edf2f8; }
+body { font: 15px/1.55 "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+#app {
+  position: fixed; top: 0; bottom: 0; left: 0; right: 0; width: 100%; height: 100%; border: 0; background: #000;
+  transition: left var(--move) var(--ease), width var(--move) var(--ease);
+}
+body[data-side="left"] #app { left: var(--col); width: calc(100% - var(--col)); }
+body[data-side="right"] #app { left: 0; width: calc(100% - var(--col)); }
+
+#caption {
+  position: fixed; top: 0; bottom: 0; width: var(--col); padding: 34px 28px 70px;
+  display: flex; flex-direction: column; justify-content: center; gap: 12px; overflow: hidden;
+  background: #0a1019; opacity: 0;
+  transition: opacity .5s var(--ease), transform var(--move) var(--ease);
+}
+body[data-side="left"] #caption { left: 0; border-right: 1px solid #ffffff1f; transform: none; }
+body[data-side="right"] #caption { right: 0; border-left: 1px solid #ffffff1f; transform: none; }
+body[data-side="none"] #caption { left: 0; transform: translateX(-100%); }
+/* Over the bare scene the text floats on the picture instead of taking a column. */
+body[data-side="float"] #caption {
+  left: 0; background: linear-gradient(90deg, #05080ee6 55%, #05080e00); transform: none; padding-right: 60px;
+}
+#caption.show { opacity: 1; }
+#caption .count { margin: 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #9db0c6; }
+#caption h1 { margin: 0; font-size: 27px; line-height: 1.15; letter-spacing: -.02em; text-wrap: balance; }
+#cap-body p { margin: 0 0 10px; color: #c9d5e3; }
+#cap-body b { color: #fff; white-space: nowrap; }
+#cap-body .key { display: grid; grid-template-columns: 14px 1fr; gap: 6px 10px; align-items: center; margin: 4px 0 0; padding: 0; list-style: none; color: #c9d5e3; font-size: 14px; }
+#cap-body .key i { display: block; width: 14px; height: 10px; border-radius: 2px; opacity: .45; transition: opacity .5s var(--ease), box-shadow .5s var(--ease); }
+#cap-body .key .on { opacity: 1; box-shadow: 0 0 0 2px #fff; }
+
+#pmap { margin: 6px 0 0; opacity: 0; transition: opacity .6s var(--ease); }
+#pmap.show { opacity: 1; }
+.pmap-wrap { position: relative; aspect-ratio: 1; border: 1px solid #ffffff2e; border-radius: 10px; overflow: hidden; background: #111; }
+.pmap-wrap img, .pmap-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#pmap-marks .hit { fill: #e6b84d; stroke: #1d1606; stroke-width: 4; transform-box: fill-box; transform-origin: center; animation: pop .5s var(--ease) both; }
+#pmap-marks .hit.best { fill: #ff6b4a; }
+#pmap-marks .here { fill: none; stroke: #fff; stroke-width: 6; }
+#pmap-marks text { font: 600 34px "Public Sans", system-ui, sans-serif; fill: #fff; paint-order: stroke; stroke: #000; stroke-width: 8px; }
+#pmap figcaption { margin-top: 8px; font-size: 13px; color: #9db0c6; }
+@keyframes pop { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+#veil {
+  position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px;
+  background: #05080e; transition: opacity 1.2s var(--ease); z-index: 5;
+}
+#veil.gone { opacity: 0; pointer-events: none; }
+.veil-inner { max-width: 560px; }
+#veil h1 { margin: 14px 0 10px; font-size: 44px; letter-spacing: -.03em; }
+#veil p { margin: 0; color: #c9d5e3; font-size: 17px; }
+
+#hint {
+  position: fixed; z-index: 6; left: 50%; bottom: 18px; translate: -50% 0; margin: 0; padding: 7px 14px;
+  border: 1px solid #ffffff36; border-radius: 999px; background: #0a1019e6; font-size: 13px; color: #dbe6f2;
+  opacity: 0; transition: opacity .4s var(--ease), left var(--move) var(--ease);
+}
+#hint.show { opacity: 1; }
+body[data-side="left"] #hint { left: calc(var(--col) / 2); }
+body[data-side="right"] #hint { left: calc(100% - var(--col) / 2); }
+#hint kbd { font: inherit; font-weight: 700; padding: 1px 7px; border: 1px solid #ffffff55; border-radius: 5px; margin-right: 6px; }
+
+@media (max-width: 760px) {
+  :root { --col: 100vw; }
+  body[data-side="left"] #app, body[data-side="right"] #app { left: 0; width: 100%; height: 58%; }
+  body[data-side="left"] #caption, body[data-side="right"] #caption { top: 58%; left: 0; right: 0; border: 0; border-top: 1px solid #ffffff1f; justify-content: flex-start; padding-top: 16px; overflow: auto; }
+  #pmap { display: none; }
+}

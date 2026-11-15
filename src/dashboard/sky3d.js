@@ -224,7 +224,7 @@ export function createSkyView(container) {
   const lineMats = [];
 
   const st = { siteKey: null, r: undefined, i: 0, mode: "lander", yaw: 0, pitch: 4, fov: 70, texts: {}, visible: true,
-    labels: new Map(), aimed: false };
+    labels: new Map(), aimed: false, lift: 0 };
 
   // ---------------------------------------------------------------- terrain
   function gridGeometry(grid, tileM, skipInside, round) {
@@ -378,7 +378,7 @@ export function createSkyView(container) {
   // ---------------------------------------------------------------- camera
   function applyLanderCamera() {
     const d = dirAzEl(st.yaw, st.pitch);
-    camera.position.set(0, EYE, 0); camera.fov = st.fov; camera.near = 0.5; camera.far = 30000;
+    camera.position.set(0, EYE + st.lift, 0); camera.fov = st.fov; camera.near = 0.5; camera.far = 30000;
     camera.lookAt(d.add(camera.position)); camera.updateProjectionMatrix();
   }
   let flight = null;
@@ -502,5 +502,13 @@ export function createSkyView(container) {
     setTexts(t) { st.texts = t; },
     get mode() { return st.mode; },
     resetView() { st.fov = 70; st.pitch = 4; moveCamera(st.mode); },
+    // Scripted lander camera for the presentation: heading, pitch, field of view, and height above eye level.
+    look({ yaw = st.yaw, pitch = st.pitch, fov = st.fov, lift = st.lift } = {}) {
+      if (st.mode !== "lander") moveCamera("lander", false);
+      flight = null; st.aimed = true;
+      Object.assign(st, { yaw, pitch, fov, lift });
+      applyLanderCamera();
+    },
+    get view() { return { yaw: st.yaw, pitch: st.pitch, fov: st.fov, lift: st.lift }; },
   };
 }

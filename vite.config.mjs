@@ -130,6 +130,8 @@ const api = {'/api': {target: process.env.SCIENCE_API ?? 'http://127.0.0.1:8765'
 
 export default defineConfig({
   server: {proxy: api},
+  // index.html is the planner; presentation.html is the guided walkthrough that drives it.
+  build: {rollupOptions: {input: ['index.html', 'presentation.html']}},
   preview: {proxy: api},
   plugins: [{
     name: 'polar-elevation-windows',

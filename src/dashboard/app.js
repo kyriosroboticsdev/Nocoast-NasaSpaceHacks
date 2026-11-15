@@ -1053,6 +1053,18 @@ function onNavigatorScenario(s) {
   r._t.forEach((ms, i) => { const d = Math.abs(ms - t); if (d < bestD) { bestD = d; best = i; } });
   if (best !== state.tIdx) { state.tIdx = best; renderNow(); }
 }
+// presentation.html drives this page in a frame; it gets a small handle on the scene and the clock.
+if (new URLSearchParams(location.search).has("present")) {
+  window.nocoastDemo = {
+    get result() { return state.results.get(state.focus) ?? null; },
+    get loading() { return state.loading; },
+    get index() { return state.tIdx; },
+    setTime(i) { const r = state.results.get(state.focus); if (r) { state.tIdx = Math.max(0, Math.min(r._t.length - 1, Math.round(i))); renderNow(); } },
+    look(view) { if (sky3d) sky3d.look(view); },
+    get view() { return sky3d ? sky3d.view : null; },
+    mapPoint: (lat, lon) => state.mapMeta ? latLonToMap(lat, lon) : null,
+  };
+}
 (async function init() {
   bootLandingNavigator();
   subscribeLandingScenario(onNavigatorScenario);

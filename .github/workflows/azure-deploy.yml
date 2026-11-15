@@ -12,6 +12,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  packages: write   # push the backend image to GHCR
 
 env:
   RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'lunarnav-dev-rg' }}
@@ -38,32 +39,21 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # The registry's real name has a uniqueString() suffix from the bicep deploy (not predictable
-      # ahead of time), so look it up by resource group instead of requiring a hand-set repo variable
-      # — the same pattern already used below for the Static Web App deploy token.
-      - name: Resolve Container Registry name
+      # The image goes to GitHub Container Registry as a PUBLIC package, not ACR: the Azure for Students
+      # Container Apps environment is "Express" mode, which rejected every private-registry pull we tried
+      # (managed identity, ACR admin creds, ACR scoped tokens). A public image needs no credentials, and
+      # this repo is public anyway, so the image exposes nothing new.
+      - name: Build + push backend image (GHCR)
         run: |
-          acr_name=$(az acr list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
-          if [ -z "$acr_name" ]; then
-            echo "::error::No Container Registry found in resource group $RESOURCE_GROUP — run azure-infra.yml first."
-            exit 1
-          fi
-          echo "ACR_NAME=$acr_name" >> "$GITHUB_ENV"
-
-      # Build on the runner and push: ACR Tasks (`az acr build`) is disabled on Azure for Students
-      # subscriptions (TasksOperationsNotAllowed).
-      - name: Build + push backend image
-        run: |
-          az acr login --name "$ACR_NAME"
-          docker build -t "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}" -t "$ACR_NAME.azurecr.io/lunar-navigator-api:latest" .
-          docker push --all-tags "$ACR_NAME.azurecr.io/lunar-navigator-api"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/lunar-navigator-api"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}"             -t "$image:${{ github.sha }}" -t "$image:latest" .
+          docker push --all-tags "$image"
 
       - name: Deploy image to Container App
         run: |
-          az containerapp update \
-            --name "$CONTAINER_APP_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --image "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}"
+          az containerapp update             --name "$CONTAINER_APP_NAME"             --resource-group "$RESOURCE_GROUP"             --image "$IMAGE:${{ github.sha }}"
 
   frontend:
     runs-on: ubuntu-latest
@@ -96,6 +86,12 @@ jobs:
           node-version: "22"
 
       - run: npm ci
+
+      # Point the built site at the Container App directly (Static Web Apps can't link an Express-mode
+      # Container App as its /api backend; Azure returns 500 on the link).
+      - name: Resolve backend URL
+        run: echo "VITE_API_ORIGIN=https://$(az containerapp show -n "$CONTAINER_APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)" >> "$GITHUB_ENV"
+
       - run: npm run build
 
       - name: Deploy to Azure Static Web Apps

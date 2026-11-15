@@ -71,8 +71,6 @@ module backend 'modules/backend.bicep' = {
   params: {
     location: location
     namePrefix: nameBase
-    registryLoginServer: registry.outputs.loginServer
-    registryName: registry.outputs.name
     storageAccountName: storage.outputs.name
     logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString

@@ -319,6 +319,7 @@ def solar_input(site: dict, start: datetime, end: datetime, profile: dict | None
                            "sunModel": "center-binary-v1", "horizonArtifactId": hz_id,
                            "horizonObserverHeightAboveGroundM": 2,
                            "terrainQuality": profile.get("terrainQuality"),
+                           "validation": profile.get("validation", {"status": "pending"}),
                            "timing": "600 s base samples; 60 s samples in every bracket where Sun visibility changes"},
         },
         "samples": samples,
@@ -341,6 +342,8 @@ def objective_score(sun_pct: float, comm_pct: float, both_pct: float, weights: d
     """0–100 score from sunlight, effective Earth contact, and the overlap of the two."""
     w = weights or OBJECTIVE_WEIGHTS
     denom = w["sun"] + w["comm"] + w["both"]
+    if denom <= 0:
+        raise WindowError("at least one objective weight must be positive")
     return (w["sun"] * sun_pct + w["comm"] * comm_pct + w["both"] * both_pct) / denom
 
 
@@ -419,7 +422,8 @@ def optimize(sites: list[dict], first_day: datetime, sweep_days: int, mission_s:
         except WindowError as ex:
             ranked.append({**_site_id(site), "error": str(ex)})
             continue
-        best_day = next((d for d in sweep["days"] if not d.get("missing") and d["dateUtc"] == sweep["bestDateUtc"]), None)
+        best_day = next((d for d in sweep["days"] if not d.get("missing")
+                         and d["dateUtc"] == sweep["bestDateUtc"]), None)
         ranked.append({
             **_site_id(site), "rankable": sweep["rankable"],
             "bestDateUtc": sweep["bestDateUtc"], "objectiveScore": sweep["bestScore"],

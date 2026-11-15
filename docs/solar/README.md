@@ -1,5 +1,10 @@
 # Solar and mission integration (P0–P2)
 
+Live integration: the dashboard, Navigator and landing-delay comparisons consume
+Person 2 solar-input artifacts and refined communication windows. They share the
+same unchanged P0/P1 kernels. Missing inputs stay unknown, and terrain validation
+is required for mission grading. See [integration notes](../SOLAR_FOLLOWUP.md).
+
 The Person 3 implementation now includes P0 solar power, P1 constant-load battery
 simulation and mission requirements, and P2 finite panel/site optimization and
 landing-delay worst cases. The standalone P0 kernel remains in

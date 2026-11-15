@@ -14,10 +14,12 @@ the Azure Blob cache (backend/azure_cache.py), so container cold starts don't re
 from __future__ import annotations
 
 import io
+import os
 import threading
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+from uuid import uuid4
 
 import numpy as np
 
@@ -44,9 +46,10 @@ class Busy(RuntimeError):
     pass
 
 
-def validate(column: int, row: int, stride: int) -> None:
-    extent = (SIZE - 1) * stride + 1
-    if stride not in STRIDES or column < 0 or row < 0 or column + extent > MOSAIC_PX or row + extent > MOSAIC_PX:
+def validate(column: int, row: int, stride: int, size: int = SIZE) -> None:
+    extent = (size - 1) * stride + 1
+    if (size not in (129, 257) or stride not in STRIDES or column < 0 or row < 0
+            or column + extent > MOSAIC_PX or row + extent > MOSAIC_PX):
         raise InvalidWindow("Invalid terrain window")
 
 
@@ -92,12 +95,16 @@ class _HttpRangeFile(io.RawIOBase):
         return n
 
 
-@lru_cache(maxsize=1)
-def _page():
+@lru_cache(maxsize=3)
+def _page(source: str = "auto"):
     """(first IFD page, file handle, url-or-None). Validated like the dev server's openMosaic()."""
     import tifffile
 
-    if LOCAL_MOSAIC.exists():
+    if source == "local" and not LOCAL_MOSAIC.exists():
+        raise OSError("Local LOLA mosaic is not available; choose NASA streaming.")
+    if (source == "stream" or not LOCAL_MOSAIC.exists()) and os.environ.get("POLAR_LOCAL_ONLY") == "1":
+        raise OSError("NASA streaming is disabled on this server.")
+    if source != "stream" and LOCAL_MOSAIC.exists():
         fh, url = open(LOCAL_MOSAIC, "rb"), None
     else:
         fh, url = io.BufferedReader(_HttpRangeFile(MOSAIC_URL), 1 << 16), MOSAIC_URL
@@ -110,12 +117,12 @@ def _page():
     return page, fh, url
 
 
-def _read(column: int, row: int, stride: int) -> bytes:
+def _read(column: int, row: int, stride: int, size: int = SIZE, source: str = "auto") -> bytes:
     with _open_lock:
-        page, fh, url = _page()
+        page, fh, url = _page(source)
     th, tw = page.tilelength, page.tilewidth
     tiles_across = -(-MOSAIC_PX // tw)
-    extent = (SIZE - 1) * stride + 1
+    extent = (size - 1) * stride + 1
     out = np.empty((extent, extent), dtype=np.float32)
     tiles = [(ty, tx) for ty in range(row // th, (row + extent - 1) // th + 1)
              for tx in range(column // tw, (column + extent - 1) // tw + 1)]
@@ -142,12 +149,14 @@ def _read(column: int, row: int, stride: int) -> bytes:
     return np.ascontiguousarray(out[::stride, ::stride], dtype="<f4").tobytes()
 
 
-def window_bytes(column: int, row: int, stride: int) -> tuple[bytes, str]:
-    """Returns (257*257*4 bytes, source tag). Raises InvalidWindow / Busy."""
-    validate(column, row, stride)
-    name = f"{column}-{row}-{stride}.bin"
+def window_bytes(column: int, row: int, stride: int, size: int = SIZE, source: str = "auto") -> tuple[bytes, str]:
+    """Returns (size*size*4 bytes, source tag). Raises InvalidWindow / Busy."""
+    validate(column, row, stride, size)
+    if source not in ("auto", "local", "stream"):
+        raise InvalidWindow("Invalid terrain source")
+    name = f"{column}-{row}-{stride}.bin" if size == SIZE else f"{column}-{row}-{stride}-{size}.bin"
     path = WINDOW_CACHE / name
-    expected = SIZE * SIZE * 4
+    expected = size * size * 4
     if path.exists() and path.stat().st_size == expected:
         return path.read_bytes(), "local-cache"
     if azure_cache.download_if_cached(f"polar-windows/{name}", path) and path.stat().st_size == expected:
@@ -155,12 +164,17 @@ def window_bytes(column: int, row: int, stride: int) -> tuple[bytes, str]:
     if not _slots.acquire(blocking=False):
         raise Busy("Terrain reader busy")
     try:
-        data = _read(column, row, stride)
+        data = _read(column, row, stride, size, source)
     finally:
         _slots.release()
+    if len(data) != expected:
+        raise OSError("Terrain window size mismatch")
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".part")
-    tmp.write_bytes(data)
-    tmp.replace(path)
+    tmp = path.with_name(f".{path.name}.{uuid4().hex}.part")
+    try:
+        tmp.write_bytes(data)
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
     azure_cache.upload(f"polar-windows/{name}", path)
-    return data, "remote"
+    return data, "local" if source != "stream" and LOCAL_MOSAIC.exists() else "remote"

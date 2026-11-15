@@ -22,12 +22,12 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; }
+html, body { min-height: 100%; margin: 0; }
 body {
   background: var(--bg); color: var(--text);
   font: 14px/1.45 "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-variant-numeric: tabular-nums;
-  display: grid; grid-template-rows: 52px 1fr; overflow: hidden;
+  display: grid; grid-template-rows: 52px auto; overflow: auto;
 }
 ::selection { background: var(--nasa-blue); color: #fff; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -68,7 +68,7 @@ h2 { margin: 0; }
 .switch input:focus-visible + .track { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* ---------- layout */
-.app { display: grid; grid-template-columns: minmax(280px, 21%) 1fr; min-height: 0; }
+.app { display: grid; grid-template-columns: minmax(280px, 21%) 1fr; min-height: 0; height: calc(100dvh - 52px); }
 .side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 0 18px 18px; display: flex; flex-direction: column; }
 .pane-tabs { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 -18px; padding: 12px 18px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .pane-tabs button { height: 34px; border-radius: var(--r); border: 1px solid var(--line-2); background: none; color: var(--muted); font-weight: 600; font-size: 13px; transition: background .15s, color .15s, border-color .15s; }
@@ -267,7 +267,7 @@ table.days { border-collapse: separate; border-spacing: 3px; }
   .bar { flex-wrap: wrap; gap: 8px 16px; padding: 8px 16px; }
   .modes { height: 40px; order: 3; width: 100%; }
   .modes button { flex: 1; }
-  .app { display: flex; flex-direction: column; }
+  .app { display: flex; flex-direction: column; height: auto; }
   .work { order: 1; }
   .scene { min-height: 52vh; flex: none; }
   .scene-now { max-width: calc(100% - 28px); top: 56px; }
@@ -322,3 +322,6 @@ table.days { border-collapse: separate; border-spacing: 3px; }
 .l-foot { color: var(--faint); font-size: 12px; }
 body.landing-open { overflow: hidden; }
 body.pre-enter .app, body.pre-enter .bar { opacity: 0; }
+
+.v-preliminary { background: var(--caution); color: #1d1606; }
+.d-preliminary { background: var(--caution); color: #1d1606; }

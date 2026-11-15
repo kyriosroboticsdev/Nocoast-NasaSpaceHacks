@@ -8,7 +8,7 @@ const C = {
   blue: "#0b3d91", go: "#2fa36b", caution: "#f2b33d", nogo: "#fc3d21", unknown: "#5b6478",
   sun: "#f2c94c", earth: "#4f8fe8", ok: "#2fa36b", bad: "#fc3d21", none: "#26324a", gap: "#5b6478",
 };
-const VC = { go: C.go, caution: C.caution, nogo: C.nogo, unknown: C.unknown };
+const VC = { go: C.go, caution: C.caution, nogo: C.nogo, unknown: C.unknown, preliminary: C.caution };
 const font = (w, px) => `${w} ${px}px 'Public Sans', system-ui, -apple-system, Segoe UI, sans-serif`;
 
 function roundRect(ctx, x, y, w, h, r) {

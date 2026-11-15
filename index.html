@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/src/dashboard/style.css">
+  <link rel="stylesheet" href="/src/dashboard/navigator-port.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -33,7 +34,6 @@
     <button role="tab" data-mode="days" aria-selected="false">Find a landing day</button>
   </nav>
   <div id="status" class="status" role="status" aria-live="polite"></div>
-  <a class="navlink" href="/navigator.html" title="The team's earlier Lunar Landing Site Navigator">Navigator</a>
   <label class="switch" title="Show technical terms, angles, sources and extra settings">
     <input type="checkbox" id="advanced"><span class="track" aria-hidden="true"></span>Advanced
   </label>
@@ -82,7 +82,50 @@
   <main class="work">
     <div class="scene" id="scene">
       <div id="sky3d" class="sky3d"></div>
-      <iframe id="terrain-frame" class="terrain-frame" title="3D polar terrain explorer" loading="lazy"></iframe>
+      <div id="terrain-host" class="terrain-host">
+        <section id="viewport" aria-label="Interactive 3D lunar terrain">
+          <div class="badge" id="mode-label">POLAR LOLA · GLOBAL LDEM · LOD</div>
+          <div class="fps" id="fps"></div>
+          <div class="hint" id="hint">Click to fly · Drag to orbit · Middle-drag to pan · Scroll or pinch to zoom</div>
+        </section>
+        <div class="terrain-tools">
+          <label for="layer">Terrain layer</label>
+          <select id="layer">
+            <option value="relief" selected>Lunar surface</option>
+            <option value="elevation">Elevation</option>
+            <option value="mesh">Mesh wireframe</option>
+          </select>
+          <div class="buttons">
+            <button id="focus" type="button">Zoom to site</button>
+            <button id="reset" type="button">Full polar cap</button>
+            <button id="globe" type="button">Whole Moon</button>
+          </div>
+          <label for="terrain-source">Detailed terrain source</label>
+          <select id="terrain-source">
+            <option value="local" selected>Local LOLA file</option>
+            <option value="stream">Stream from NASA</option>
+          </select>
+          <p class="resolution-control"><label class="check"><input type="checkbox" id="lock-resolution"> Lock to 5 m</label></p>
+          <label class="check"><input type="checkbox" id="toggle-catalog-markers" checked> Catalog markers</label>
+          <label class="check"><input type="checkbox" id="toggle-search-markers" checked> Search markers</label>
+          <label class="check"><input type="checkbox" id="toggle-illumination-overlay"> Sunlight overlay</label>
+          <p id="illumination-status" hidden></p>
+          <div class="pick-row">
+            <button type="button" id="pick-map-a">Pick on map</button>
+            <button type="button" id="cancel-pick" hidden>Cancel pick</button>
+          </div>
+          <div id="legend" hidden><div class="ramp"></div><div class="range"><span>−8,000 m</span><span>7,000 m</span></div></div>
+          <p id="terrain-status" role="status"></p>
+          <dl id="details"></dl>
+          <div class="custom-coords" id="custom-a" hidden>
+            <label for="lat-a">Lat °</label>
+            <input id="lat-a" type="number" step="0.0001" value="-89.5">
+            <label for="lon-a">Lon ° E</label>
+            <input id="lon-a" type="number" step="0.0001" value="0">
+            <button type="button" id="apply-custom-a">Apply</button>
+          </div>
+        </div>
+      </div>
       <div class="scene-now" id="scene-now"></div>
       <div class="scene-tools">
         <div class="seg" id="view-seg" role="group" aria-label="Scene view">
@@ -119,6 +162,257 @@
       <div id="results" class="results"></div>
     </section>
   </main>
+</div>
+
+<div id="navigator-port">
+  <p id="navigator-status" role="status"></p>
+
+  <section class="metrics slope-integrated" aria-label="Terrain slope screening">
+    <details id="terrain-slope-details">
+      <summary>Terrain slopes and area comparison</summary>
+      <p class="control-hint">Compare the known area below a shared slope limit around Site A and Site B. Steepness is one screening factor; landing safety remains unverified.</p>
+      <label for="slope-slot">Show slope map for</label>
+      <select id="slope-slot" aria-label="Show slope map for"></select>
+      <section id="slope-view" class="slope-view" aria-label="Terrain slope screen"></section>
+    </details>
+  </section>
+
+  <section class="cluster decision-cluster" aria-label="Find and decide" data-tour="decision">
+    <div class="decision-panel" id="decision-panel">
+      <div class="decision-header">
+        <h2>Find · compare · decide</h2>
+        <p class="decision-lead">Not happy with your verdict? Let the tool hunt for something better: search the region for the best spot, rank every known site, or shift the launch date. Click <strong>Adopt</strong> or <strong>Apply</strong> on any result to make it your scenario.</p>
+        <p class="decision-lead expert-only">Prefer a high <strong>Sun + Earth together</strong> share, and grade the window on served electrical load, shortages, outages, and Earth contact against your requirements. Unknown hours are coverage gaps, not outages.</p>
+      </div>
+      <div class="decision-actions">
+        <button type="button" id="find-best-location">Find best location</button>
+        <button type="button" id="rank-sites">Rank known sites</button>
+        <button type="button" id="suggest-dates">Suggest better dates</button>
+        <button type="button" id="jump-best-window">Jump to best stretch</button>
+      </div>
+      <div class="search-controls" id="search-controls">
+        <label for="search-region">Search region</label>
+        <select id="search-region">
+          <option value="cap" selected>South pole cap (87°S–90°S)</option>
+          <option value="around">Around Site A (radius)</option>
+        </select>
+        <label for="search-radius">Radius km (around Site A)</label>
+        <input id="search-radius" type="number" min="10" max="400" step="10" value="80">
+        <label for="search-topn">Top N results</label>
+        <input id="search-topn" type="number" min="3" max="25" step="1" value="8">
+      </div>
+      <p class="neighborhood-note expert-only" id="neighborhood-note">
+        <strong>Find best location</strong> ranks a coarse ~10 km grid inside the polar cap using
+        <strong>LOLA 320 m overview</strong> horizons (2° bins) + analytic ephemeris for the current mission window.
+        It is <em>not</em> a meter-perfect global optimum — CR1/SR1 still use 5 m near-field LOLA for study-grade grades.
+        Search hits appear as amber ◆ markers; Adopt makes one the coral ■ chosen site.
+      </p>
+      <div class="decision-columns decision-columns-3">
+        <div class="decision-col">
+          <h3>Regional search <span id="search-status" class="muted-inline"></span></h3>
+          <div id="search-list" class="rank-list" role="list"></div>
+        </div>
+        <div class="decision-col">
+          <h3>Catalog ranking <span id="rank-status" class="muted-inline"></span></h3>
+          <div id="rank-list" class="rank-list" role="list"></div>
+        </div>
+        <div class="decision-col">
+          <h3>Date / launch-slip helper <span id="date-status" class="muted-inline"></span></h3>
+          <div class="slip-quick" id="slip-quick">
+            <button type="button" data-slip="-14">−14 d</button>
+            <button type="button" data-slip="-7">−7 d</button>
+            <button type="button" data-slip="7">+7 d</button>
+            <button type="button" data-slip="14">+14 d</button>
+          </div>
+          <div id="date-list" class="rank-list" role="list"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cluster pathfind-cluster" aria-label="Relay satellite path">
+    <div class="decision-panel" id="pathfind-panel">
+      <div class="decision-header">
+        <h2>Relay path · Earth ↔ Moon</h2>
+        <p class="decision-lead">Best route for a relay satellite between Earth and the Moon at your mission start time — trading off sunlit time (no battery reliance), Earth-comm time, obstacle avoidance, and distance. First-pass model: a straight-line corridor with lateral detours, not a propagated trajectory.</p>
+      </div>
+      <div class="decision-actions">
+        <button type="button" id="compute-pathfind">Compute relay path</button>
+      </div>
+      <p class="muted-inline" id="pathfind-status"></p>
+      <div id="pathfind-results" hidden>
+        <div class="pathfind-summary" id="pathfind-summary"></div>
+        <div class="pathfind-strip" id="pathfind-strip" role="img" aria-label="Relay path waypoints, colored by sunlight and Earth-comm status"></div>
+        <div class="pathfind-strip-legend">
+          <span class="pf-both">■ Sun + Earth</span>
+          <span class="pf-sun">■ Sun only</span>
+          <span class="pf-earth">■ Earth only</span>
+          <span class="pf-none">■ Neither</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cluster assess-cluster" aria-label="Power and communications assessment">
+    <div class="metrics" id="metrics-a" data-tour="viability">
+      <h2 id="metrics-a-title">Site A</h2>
+      <div class="verdict-dual">
+        <div>
+          <p class="verdict-label has-metric-help" id="verdict-help-a">Mission window grade</p>
+          <div class="viability" id="viability-a">—</div>
+        </div>
+        <div>
+          <p class="verdict-label has-metric-help" id="instant-help-a">At slider time</p>
+          <div class="instant-chip" id="instant-a">—</div>
+        </div>
+      </div>
+      <p class="plain-summary" id="plain-summary-a"></p>
+      <div class="simple-cards" id="simple-cards-a"></div>
+      <p id="slope-area-a" class="slope-slot-area" hidden></p>
+      <p class="verdict-caption" id="verdict-caption-a">The grade scores your <strong>whole mission window</strong>; the chip shows the single moment the time slider points at.</p>
+      <p class="nogo-prompt" id="nogo-prompt-a" hidden></p>
+      <div class="metric-grid expert-only" id="metric-grid-a"></div>
+      <p class="metric-primer expert-only" id="metric-primer-a"></p>
+      <p class="horizon-flag" id="horizon-flag-a"></p>
+    </div>
+    <div class="metrics" id="metrics-b">
+      <h2 id="metrics-b-title">Site B</h2>
+      <div class="verdict-dual">
+        <div>
+          <p class="verdict-label has-metric-help" id="verdict-help-b">Mission window grade</p>
+          <div class="viability" id="viability-b">—</div>
+        </div>
+        <div>
+          <p class="verdict-label has-metric-help" id="instant-help-b">At slider time</p>
+          <div class="instant-chip" id="instant-b">—</div>
+        </div>
+      </div>
+      <p class="plain-summary" id="plain-summary-b"></p>
+      <div class="simple-cards" id="simple-cards-b"></div>
+      <p id="slope-area-b" class="slope-slot-area" hidden></p>
+      <p class="verdict-caption expert-only" id="verdict-caption-b">Same shared UTC window as Site A.</p>
+      <div class="metric-grid expert-only" id="metric-grid-b"></div>
+      <p class="metric-primer expert-only" id="metric-primer-b"></p>
+      <p class="horizon-flag" id="horizon-flag-b"></p>
+    </div>
+    <aside class="controls assess-controls">
+      <h3>Assessment settings</h3>
+      <div class="slot-block" id="site-b-block">
+        <label for="site-b">Site B (compare)</label>
+        <select id="site-b"></select>
+        <label class="check"><input type="checkbox" id="compare-toggle" checked> Side-by-side compare</label>
+        <div class="custom-coords" id="custom-b" hidden>
+          <label for="lat-b">Lat °</label>
+          <input id="lat-b" type="number" step="0.0001" value="-89.6">
+          <label for="lon-b">Lon ° E</label>
+          <input id="lon-b" type="number" step="0.0001" value="200">
+          <button type="button" id="apply-custom-b">Apply custom B</button>
+        </div>
+      </div>
+      <div class="landing-owned" hidden>
+        <label class="check" id="tech-details-label"><input type="checkbox" id="tech-details"> Expert view</label>
+        <label for="min-earth-el" id="help-min-earth-el">Min Earth elevation °</label>
+        <input id="min-earth-el" type="number" min="0" max="30" step="0.5" value="5">
+        <label for="panel-area" id="help-panel-area">Panel area m²</label>
+        <input id="panel-area" type="number" min="0.1" max="50" step="0.1" value="2">
+        <label for="panel-eff" id="help-panel-eff">Panel efficiency</label>
+        <input id="panel-eff" type="number" min="0.05" max="0.45" step="0.01" value="0.28">
+        <label for="panel-tilt" id="help-panel-tilt">Tilt from horizontal °</label>
+        <input id="panel-tilt" type="number" min="0" max="180" step="any" value="0">
+        <label for="panel-azimuth" id="help-panel-azimuth">Panel facing °</label>
+        <input id="panel-azimuth" type="number" min="0" max="359.999999" step="any" value="0">
+        <label for="battery-floor" id="help-battery-floor">Equipment power demand W</label>
+        <input id="battery-floor" type="number" min="0" max="1000000" step="any" value="40">
+        <input id="battery-capacity" data-battery="capacityWh" type="number" value="2000">
+        <input id="battery-initial" data-battery="initialSocFraction" type="number" value="0.8">
+        <input id="battery-reserve" data-battery="reserveSocFraction" type="number" value="0.1">
+        <input id="battery-charge-eff" data-battery="chargeEfficiency" type="number" value="0.95">
+        <input id="battery-discharge-eff" data-battery="dischargeEfficiency" type="number" value="0.95">
+        <input id="battery-max-charge" data-battery="maxChargeW" type="number" value="500">
+        <input id="battery-max-discharge" data-battery="maxDischargeW" type="number" value="500">
+        <input id="required-power" data-requirement="minPowerAvailabilityFraction" type="number" value="1">
+        <input id="required-comms" data-requirement="minCommsAvailabilityFraction" type="number" value="0.5">
+        <input id="max-comms-gap" data-requirement="maxCommsBlackoutHours" type="number" value="24">
+        <button id="reset-mission-settings" type="button">Reset battery + requirements</button>
+      </div>
+      <details class="thresholds" open>
+        <summary>Fixed antenna pointing</summary>
+        <label for="antenna-boresight-az">Antenna boresight az °</label>
+        <input id="antenna-boresight-az" type="number" min="0" max="360" step="1" placeholder="off">
+        <label for="antenna-boresight-el">Antenna boresight el °</label>
+        <input id="antenna-boresight-el" type="number" min="-90" max="90" step="1" placeholder="off">
+        <label for="antenna-beamwidth">Antenna beamwidth °</label>
+        <input id="antenna-beamwidth" type="number" min="1" max="180" step="1" value="20">
+        <p id="antenna-link-quality" hidden></p>
+      </details>
+      <p id="mission-config-error" role="alert" class="mission-error"></p>
+    </aside>
+  </section>
+
+  <section id="mission-planning" class="cluster mission-planning" aria-label="Panel optimization and landing delays">
+    <aside class="controls mission-plan-controls">
+      <h2>Test mission resilience</h2>
+      <p>Compare the two fixed study sites with the same panel area, efficiency, battery, consumption and requirements.</p>
+      <label for="orientation-step">Orientation grid step</label>
+      <select id="orientation-step"><option value="90">90° quick check</option><option value="45">45°</option><option value="30" selected>30°</option><option value="15">15°</option><option value="5">5° fine</option></select>
+      <label for="max-delay-hours">Maximum landing delay h</label>
+      <input id="max-delay-hours" type="number" min="0" max="336" step="any" value="48">
+      <label for="delay-step-hours">Delay step h</label>
+      <input id="delay-step-hours" type="number" min="0.000001" max="336" step="any" value="12">
+      <label class="check"><input type="checkbox" id="robust-optimization"> Optimize across all tested delays</label>
+      <div class="mission-actions">
+        <button id="optimize-mission" type="button">Optimize panels + sites</button>
+        <button id="test-delays" type="button">Test landing delays</button>
+        <button id="cancel-mission-job" type="button" disabled>Cancel analysis</button>
+      </div>
+      <p id="mission-job-status" role="status">Choose a tested grid and run an analysis. Nothing is applied automatically.</p>
+    </aside>
+    <div class="metrics mission-results">
+      <h2>Orientation + site comparison</h2>
+      <div id="optimization-results"><p>Run optimization to compare fixed orientations at CR1 and SR1.</p></div>
+      <h2>Landing-delay outcomes</h2>
+      <div id="delay-results"><p>Test the current hardware at each actual landing time, including zero delay.</p></div>
+    </div>
+  </section>
+
+  <section class="cluster time-sky-cluster" aria-label="Mission time and skyline">
+    <aside class="controls time-controls" hidden>
+      <label for="start-utc">Landing / stay start (UTC)</label>
+      <input id="start-utc" type="datetime-local">
+      <label for="duration">Stay at landing site (Earth hours)</label>
+      <input id="duration" type="number" min="6" max="1440" step="6" value="168">
+      <div id="season-presets">
+        <button type="button" data-season="jan15">Mid-Jan 2027</button>
+        <button type="button" data-season="jan1">Early Jan 2027</button>
+        <button type="button" data-season="jan29">Late Jan 2027</button>
+        <button type="button" data-season="lunar-day">~1 lunar day (708 h)</button>
+      </div>
+      <label for="scrub">Time slider (UTC)</label>
+      <input id="scrub" type="range" min="0" max="168" step="0.1" value="0">
+      <div class="play-row">
+        <button type="button" id="play-scrub" aria-pressed="false">Play</button>
+        <button type="button" id="pause-scrub" hidden>Pause</button>
+        <select id="play-speed"><option value="1" selected>1×</option></select>
+      </div>
+    </aside>
+    <div class="viz-stack">
+      <p class="scrub-readout" id="scrub-label">—</p>
+      <p class="best-window-label" id="best-window-label">—</p>
+      <div class="viz-block">
+        <h3>360° skyline · Site A — the mountains a lander would see</h3>
+        <canvas id="skyline" width="800" height="140" aria-label="Horizon skyline with Sun and Earth"></canvas>
+      </div>
+      <div class="viz-block">
+        <h3>Mission calendar · when you have sun, Earth, or both</h3>
+        <canvas id="timeline" width="800" height="190" role="img" aria-label="Sunlight and Earth contact calendar"></canvas>
+      </div>
+      <div class="share-row">
+        <button type="button" id="export-json">Export time series JSON</button>
+        <button type="button" id="copy-link" hidden>Copy shareable link</button>
+        <span id="share-status" role="status"></span>
+      </div>
+    </div>
+  </section>
 </div>
 
 <div id="tooltip" role="tooltip"></div>

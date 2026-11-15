@@ -1,4 +1,3 @@
-import './style.css';
 import './ui/slopes.css';
 import { wireSlopeIntegration } from './ui/slopeIntegration';
 import { startTerrain, type TerrainApi, type TerrainMarkerSpec } from './main';
@@ -32,6 +31,8 @@ import {
   type PathfindResult,
 } from './science/backend';
 import { assessMission, type MissionAssessment } from './assess/windows';
+import type { MissionSettings } from './power/mission';
+import { assessBackendMission } from './science/assessment';
 import {
   DATE_SLIP_OFFSETS_DAYS,
   authorityBadge,
@@ -79,7 +80,35 @@ import {
 } from './ui/metricHelp';
 
 const base = import.meta.env.BASE_URL;
-const el = <E extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as E;
+let embeddedRoots: ParentNode[] | null = null;
+const dummyNodes = new Map<string, HTMLElement>();
+function dummyFor(id: string): HTMLElement {
+  const existing = dummyNodes.get(id);
+  if (existing) return existing;
+  const selects = new Set(['site', 'site-b', 'play-speed', 'orientation-step', 'slope-slot', 'search-region', 'layer', 'terrain-source']);
+  const checks = new Set(['compare-toggle', 'tech-details', 'lock-resolution', 'toggle-catalog-markers', 'toggle-search-markers', 'toggle-illumination-overlay', 'robust-optimization']);
+  const buttons = new Set(['mode-planner', 'mode-learn', 'replay-tour', 'full-tour', 'focus', 'reset', 'globe', 'play-scrub', 'pause-scrub', 'pick-map-a', 'cancel-pick', 'copy-link', 'export-json', 'apply-custom-a', 'apply-custom-b']);
+  const node = document.createElement(selects.has(id) ? 'select' : checks.has(id) ? 'input' : buttons.has(id) ? 'button' : id === 'timeline' || id === 'skyline' ? 'canvas' : 'div');
+  if (checks.has(id)) (node as HTMLInputElement).type = 'checkbox';
+  dummyNodes.set(id, node);
+  return node;
+}
+const el = <E extends HTMLElement = HTMLElement>(id: string) => {
+  if (embeddedRoots) {
+    if (id === 'status') {
+      for (const root of embeddedRoots) {
+        const status = root.querySelector<E>('#navigator-status');
+        if (status) return status;
+      }
+    }
+    for (const root of embeddedRoots) {
+      const node = root.querySelector<E>(`#${CSS.escape(id)}`);
+      if (node) return node;
+    }
+    return dummyFor(id) as E;
+  }
+  return document.getElementById(id) as E;
+};
 
 let terrain: TerrainApi | undefined;
 let assessA: MissionAssessment | undefined;
@@ -326,7 +355,7 @@ async function computeSlot(state: ScenarioState, slot: 'A' | 'B', override?: {
     const backendHorizon = backend ? backendHorizonProfile(backend, sc.siteId) : null;
     if (backend && backendHorizon) {
       if (slot === 'A' && !override) lastPrimaryHorizon = backendHorizon;
-      return assessMission({
+      return assessBackendMission(backend, {
         siteId: sc.siteId,
         siteLabel: coords.label,
         horizonModel: backendHorizon.model,
@@ -336,6 +365,7 @@ async function computeSlot(state: ScenarioState, slot: 'A' | 'B', override?: {
         durationHours: state.durationHours,
         scrubUtc: override?.startUtc ?? state.scrubUtc,
         thresholds: state.thresholds,
+        missionSettings: state.missionSettings,
       });
     }
   }
@@ -381,6 +411,7 @@ function nearestSample(a: MissionAssessment, scrubIso: string) {
 }
 
 function scheduleUrlSync() {
+  if (embeddedRoots) return;
   window.clearTimeout(urlSyncTimer);
   urlSyncTimer = window.setTimeout(() => syncUrl(), 150);
 }
@@ -497,6 +528,7 @@ function paintAssessment(state: ScenarioState, opts: { syncUrlNow?: boolean } = 
     state.compareEnabled ? assessB : null,
     highlight,
   );
+  if (embeddedRoots) return;
   if (opts.syncUrlNow) syncUrl();
   else scheduleUrlSync();
 }
@@ -1452,6 +1484,31 @@ function wireUi() {
   renderSearchList([]);
 }
 
+function attachTerrain(view: TerrainApi) {
+  view.onMarkerClick(marker => {
+    if (marker.category === 'chosen') return;
+    lastFocusKey = '';
+    if (marker.category === 'catalog') {
+      const siteId = marker.id.replace(/^catalog-/, '');
+      setPrimarySite(siteId);
+      el('status').textContent = `Adopted catalog ${marker.label ?? siteId} as Site A.`;
+      return;
+    }
+    if (marker.category === 'search') {
+      const hit = lastSearchHits.find(h => h.siteId === marker.id);
+      if (hit) adoptSearchHit(hit);
+      else setCustomCoords('A', marker.latitudeDeg, marker.longitudeEastDeg);
+      return;
+    }
+    if (marker.category === 'compare') {
+      // Focus Site B without changing Site A.
+      terrain?.focusLatLon(marker.latitudeDeg, marker.longitudeEastDeg);
+    }
+  });
+  lastFocusKey = '';
+  syncTerrainToScenario(getScenario(), { fly: true });
+}
+
 async function boot() {
   applyUrlParams(location.search);
   wireUi();
@@ -1467,28 +1524,7 @@ async function boot() {
 
   try {
     terrain = await startTerrain();
-    terrain.onMarkerClick(marker => {
-      if (marker.category === 'chosen') return;
-      lastFocusKey = '';
-      if (marker.category === 'catalog') {
-        const siteId = marker.id.replace(/^catalog-/, '');
-        setPrimarySite(siteId);
-        el('status').textContent = `Adopted catalog ${marker.label ?? siteId} as Site A.`;
-        return;
-      }
-      if (marker.category === 'search') {
-        const hit = lastSearchHits.find(h => h.siteId === marker.id);
-        if (hit) adoptSearchHit(hit);
-        else setCustomCoords('A', marker.latitudeDeg, marker.longitudeEastDeg);
-        return;
-      }
-      if (marker.category === 'compare') {
-        // Focus Site B without changing Site A.
-        terrain?.focusLatLon(marker.latitudeDeg, marker.longitudeEastDeg);
-      }
-    });
-    lastFocusKey = '';
-    syncTerrainToScenario(getScenario(), { fly: true });
+    attachTerrain(terrain);
   } catch (error) {
     el('status').textContent = 'Could not open the polar terrain viewer.';
     console.error(error);
@@ -1497,4 +1533,106 @@ async function boot() {
   window.setTimeout(() => tour.start(false), 700);
 }
 
-void boot();
+export type LandingScenarioInput = {
+  siteId: string;
+  latitudeDeg: number;
+  longitudeEastDeg: number;
+  custom: boolean;
+  startUtc: string;
+  durationHours: number;
+  scrubUtc: string;
+  minEarthElevationDeg: number;
+  panelAreaM2: number;
+  panelEfficiency: number;
+  panelTiltDeg: number;
+  panelAzimuthDeg: number;
+  loadW: number;
+  missionSettings: MissionSettings;
+  showTechnicalDetails: boolean;
+};
+
+let syncingFromLanding = false;
+export function isLandingSync() { return syncingFromLanding; }
+
+export function bootLandingNavigator() {
+  embeddedRoots = [document.getElementById('terrain-host'), document.getElementById('navigator-port')].filter(Boolean) as ParentNode[];
+  wireUi();
+  const syncSlopes = wireSlopeIntegration();
+  syncSlopes(getScenario());
+  subscribeScenario(syncSlopes);
+  syncControlsFromState(getScenario());
+  subscribeScenario(syncControlsFromState);
+}
+
+let terrainStarting: Promise<void> | null = null;
+export function ensureLandingTerrain() {
+  if (terrain) return Promise.resolve();
+  terrainStarting ??= (async () => {
+    const host = document.getElementById('terrain-host');
+    terrain = await startTerrain(host ?? document);
+    attachTerrain(terrain);
+  })().catch(error => {
+    terrainStarting = null;
+    el('status').textContent = 'Could not open the polar terrain viewer.';
+    console.error(error);
+    throw error;
+  });
+  return terrainStarting;
+}
+
+export function setLandingSun(azimuthDeg: number | null, elevationDeg?: number) {
+  terrain?.setSunDirection(azimuthDeg, elevationDeg ?? 0);
+}
+
+export function applyLandingScenario(input: LandingScenarioInput) {
+  const cur = getScenario();
+  const primary = input.custom
+    ? { id: 'A' as const, siteId: 'custom', customLatDeg: input.latitudeDeg, customLonEastDeg: input.longitudeEastDeg }
+    : { id: 'A' as const, siteId: input.siteId };
+  const sameSite = cur.primary.siteId === primary.siteId
+    && cur.primary.customLatDeg === primary.customLatDeg
+    && cur.primary.customLonEastDeg === primary.customLonEastDeg;
+  const sameWindow = cur.startUtc === input.startUtc && Math.abs(cur.durationHours - input.durationHours) < 1e-3;
+  const sameScrub = cur.scrubUtc === input.scrubUtc;
+  const th = cur.thresholds;
+  const sameTh = th.minEarthElevationDeg === input.minEarthElevationDeg
+    && th.panelAreaM2 === input.panelAreaM2
+    && th.panelEfficiency === input.panelEfficiency
+    && th.panelTiltDeg === input.panelTiltDeg
+    && Math.abs(th.panelAzimuthDeg - input.panelAzimuthDeg) < 0.05
+    && th.batteryFloorW === input.loadW;
+  const sameMission = JSON.stringify(cur.missionSettings) === JSON.stringify(input.missionSettings);
+  const sameTech = cur.showTechnicalDetails === input.showTechnicalDetails;
+  if (sameSite && sameWindow && sameScrub && sameTh && sameMission && sameTech) return;
+  syncingFromLanding = true;
+  try {
+    if (sameSite && sameWindow && sameTh && sameMission && sameTech) {
+      setScrubUtc(input.scrubUtc);
+      return;
+    }
+    setScenario({
+      primary,
+      startUtc: input.startUtc,
+      durationHours: input.durationHours,
+      scrubUtc: sameWindow ? input.scrubUtc : input.startUtc,
+      thresholds: {
+        minEarthElevationDeg: input.minEarthElevationDeg,
+        panelAreaM2: input.panelAreaM2,
+        panelEfficiency: input.panelEfficiency,
+        panelTiltDeg: input.panelTiltDeg,
+        panelAzimuthDeg: input.panelAzimuthDeg,
+        batteryFloorW: input.loadW,
+      },
+      missionSettings: input.missionSettings,
+      showTechnicalDetails: input.showTechnicalDetails,
+    });
+  } finally {
+    syncingFromLanding = false;
+  }
+}
+
+export function subscribeLandingScenario(listener: (state: ReturnType<typeof getScenario>) => void) {
+  return subscribeScenario(listener);
+}
+
+if (document.getElementById('mode-planner')) void boot();

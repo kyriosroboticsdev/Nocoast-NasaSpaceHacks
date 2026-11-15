@@ -1,7 +1,7 @@
 import { horizonElevationAt, type HorizonProfile } from '../horizon/types';
 import type { EphemerisProvider } from '../ephemeris/horizons';
 import type { ScenarioThresholds, ViabilityGrade } from '../scenario/types';
-import { simulateMission, DEFAULT_MISSION_SETTINGS, type MissionSettings, type MissionResult } from '../power/mission';
+import { simulateMission, DEFAULT_MISSION_SETTINGS, type MissionSettings, type MissionResult, type StateSegment } from '../power/mission';
 import { communicationTimeline } from './visibility';
 import { adaptSolarSample, buildSolarInput, panelFromThresholds, STEP_SECONDS } from '../power/adapter';
 import { calculatePower, simulate, type PowerResult, type PowerSample, type SolarInput } from '../power/model.mjs';
@@ -48,6 +48,7 @@ export type MissionAssessment = {
   solar: PowerResult | null;
   powerWarning: string;
   mission: MissionResult | null;
+  communication: StateSegment[];
   viability: ViabilityGrade;
   viabilityReason: string;
   hoursToSunset: number | null;
@@ -209,7 +210,7 @@ export function assessInstant(
   const sunClear = sunHorizon == null || !sun ? null : sun.elevationDeg - sunHorizon;
   const earthClear = earthHorizon == null || !earth ? null : earth.elevationDeg - earthHorizon;
   const sunlit = sunClear == null ? null : sunClear > 0;
-  const earthLos = earthClear == null ? null : earthClear >= thresholds.minEarthElevationDeg;
+  const earthLos = earthClear == null ? null : earth!.elevationDeg > Math.max(earthHorizon!, thresholds.minEarthElevationDeg);
   // Earth coverage does not determine available solar power.
   const solar = calculatePower(adaptSolarSample(utc, sunlit, provider, horizon), panelFromThresholds(thresholds));
   return {
@@ -307,6 +308,7 @@ export function assessMission(options: {
     solar,
     powerWarning,
     mission,
+    communication: communicationTimeline(samples),
     viability,
     viabilityReason,
     hoursToSunset: hoursUntilFalse(samples, options.scrubUtc, s => s.sunlit),

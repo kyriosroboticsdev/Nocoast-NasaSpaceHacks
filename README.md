@@ -48,7 +48,25 @@ a live-computed backend, or a clearly-flagged simplified fallback — never sile
 
 ## Try it in under 2 minutes
 
-Requires Node.js 22.12+.
+The latest combined dashboard opens at `/`; the detailed planner is at
+`/navigator.html` and the terrain explorer is at `/terrain.html`.
+Power and battery simulation cover equipment operating during a stay at CR1 or
+SR1. Terrain validation is pending, so those mission estimates are preliminary.
+Other catalog sites have visibility results but no qualified solar power model.
+
+For the full app on Windows, use Python 3.12 and Node.js 22.12+, then run:
+
+```powershell
+.\run.ps1
+```
+
+This starts the science API and the website together. Open the URL printed by
+Vite. To verify a checkout, install `requirements-dev.txt`, run `npm test`,
+`npm run build`, `python -m ruff check .` and `python -m pytest -q` in that order.
+The build must precede the API page tests. See [integration notes](docs/SOLAR_FOLLOWUP.md).
+
+For frontend development only, requires Node.js 22.12+ (the dashboard also needs
+the science API running):
 
 ```bash
 npm ci

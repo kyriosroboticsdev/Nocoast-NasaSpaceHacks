@@ -49,6 +49,9 @@ function powerClause(a: MissionAssessment, th: ScenarioThresholds): string | nul
 }
 
 function verdictClause(a: MissionAssessment): string {
+  if (a.viability === 'UNKNOWN') return a.mission?.summary.complete
+    ? 'These are preliminary estimates. Terrain validation is still pending, so a mission grade is unavailable.'
+    : 'There is not enough data to judge this stay.';
   if (a.viability === 'GO') return 'Overall, this looks like a good time to land: power and Earth contact both look promising.';
   if (a.viability === 'RISKY') {
     return 'Overall, this could work, but it comes with risks. Extra battery capacity or a relay satellite may help.';

@@ -77,7 +77,8 @@ def fetch_site(site):
         cache.write_text(json.dumps(payload), encoding='utf-8')
     return dict(schemaVersion='1.1', body='sun', siteId=site['siteId'],
                 frameId=DEFAULTS['frameId'], observerHeightAboveGroundM=2,
-                observer=dict(latitudeDeg=site['latitudeDeg'], longitudeEastDeg=site['longitudeEastDeg'], altitudeKm=altitude),
+                observer=dict(latitudeDeg=site['latitudeDeg'], longitudeEastDeg=site['longitudeEastDeg'],
+                              altitudeKm=altitude),
                 stepHours=1 / 6, source='jpl_horizons', origin='jpl_horizons', request=params,
                 samples=parse_samples(payload['result']), generatedAtUtc=iso(datetime.now(timezone.utc)),
                 notes=['NASA JPL Horizons quantities 4 (az/el) and 20 (observer range in AU).',

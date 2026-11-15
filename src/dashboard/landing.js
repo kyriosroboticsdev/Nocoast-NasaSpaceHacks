@@ -4,7 +4,7 @@
 
 const FEATURES = [
   ["earth", "Real NASA data", "LOLA terrain · JPL Sun &amp; Earth"],
-  ["check", "GO / NO-GO in seconds", "Power, sunlight &amp; Earth contact"],
+  ["check", "Power and contact estimates", "Power, sunlight &amp; Earth contact"],
   ["relay", "Relay-aware comms", "See where a satellite keeps you online"],
 ];
 
@@ -96,7 +96,7 @@ export function showLanding({ onEnter, onTour } = {}) {
       <div class="l-brand"><span class="l-mark" aria-hidden="true"></span>NoCoast</div>
       <h1 class="l-title">Will your Moon landing<br><span>survive the dark?</span></h1>
       <p class="l-sub">At the lunar south pole the Sun just skims the horizon and Earth keeps dropping out of
-        sight. Pick a site and a date — get a straight <b>GO / NO&#8209;GO</b> on power, sunlight and staying in touch.</p>
+        sight. Pick a site and a date — estimate power, sunlight and staying in touch. Results remain <b>preliminary</b> until terrain validation is supplied.</p>
       <div class="l-cta">
         <button class="l-enter" id="l-enter">Check a landing site ${svg("down")}</button>
         <button class="l-tour" id="l-tour">Take the 30&#8209;second tour</button>

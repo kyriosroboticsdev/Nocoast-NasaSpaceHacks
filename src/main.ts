@@ -7,14 +7,6 @@ import { apiUrl } from './apiBase';
 const radius = 1737400;
 const capRadius = 2 * radius * Math.tan(T.MathUtils.degToRad(1.5));
 const base = import.meta.env.BASE_URL;
-const element = <E extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as E;
-const status = element('status');
-const layer = element<HTMLSelectElement>('layer');
-const terrainSource = document.getElementById('terrain-source') as HTMLSelectElement | null;
-const lockResolution = document.getElementById('lock-resolution') as HTMLInputElement | null;
-const fpsReadout = document.getElementById('fps');
-const focus = element<HTMLButtonElement>('focus');
-const reset = element<HTMLButtonElement>('reset');
 const size = 257;
 const moonCenter = new T.Vector3(0,-radius,0);
 
@@ -154,7 +146,15 @@ async function fetchAsset(path: string) {
   return response;
 }
 
-export async function startTerrain(): Promise<TerrainApi> {
+export async function startTerrain(root: ParentNode = document): Promise<TerrainApi> {
+  const element = <E extends HTMLElement = HTMLElement>(id: string) => root.querySelector<E>(`#${id}`) as E;
+  const status = (root.querySelector<HTMLElement>('#terrain-status') ?? element('status'));
+  const layer = element<HTMLSelectElement>('layer');
+  const terrainSource = root.querySelector<HTMLSelectElement>('#terrain-source');
+  const lockResolution = root.querySelector<HTMLInputElement>('#lock-resolution');
+  const fpsReadout = root.querySelector('#fps');
+  const focus = element<HTMLButtonElement>('focus');
+  const reset = element<HTMLButtonElement>('reset');
   const renderer = new T.WebGLRenderer({antialias:true, logarithmicDepthBuffer:true});
   const viewport = element('viewport');
   viewport.append(renderer.domElement);

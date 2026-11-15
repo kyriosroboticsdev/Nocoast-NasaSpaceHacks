@@ -1,5 +1,10 @@
 # Person 3 mission simulation, version 0.2
 
+Live backend integration uses the visibility owner's refined contact windows.
+The bundled fallback retains its sampled approximation. The dashboard can enable
+relay contact explicitly; the Navigator uses direct Earth contact. See
+[integration notes](../SOLAR_FOLLOWUP.md).
+
 The P0 direct-beam kernel and solar-input 0.1 contract remain unchanged.
 `src/power/mission.ts` adds constant-load battery dispatch and an explicit
 communication policy. `planning.ts` adds finite orientation/site search and

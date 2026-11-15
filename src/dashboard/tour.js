@@ -6,7 +6,7 @@
 const STEPS = [
   {
     title: "Will a Moon landing work here?",
-    body: "NoCoast checks a south-pole landing site for one thing that decides missions: can the lander keep its power and stay in touch with Earth for the whole stay? You get a plain <b>GO / CAUTION / NO-GO</b> verdict, backed by real NASA terrain and Sun/Earth positions.",
+    body: "NoCoast checks a south-pole landing site for one thing that decides missions: can the lander keep its power and stay in touch with Earth for the whole stay? You get power and contact estimates backed by NASA terrain and Sun/Earth positions. Mission grades require terrain validation; until then the estimates are <b>preliminary</b>.",
     icon: "check",
   },
   {
@@ -16,7 +16,7 @@ const STEPS = [
   },
   {
     title: "2 · Will it have power?",
-    body: "The drawer below gives the verdict and why. A real battery simulation charges from the panel in sunlight and drains in the dark — if it would hit its reserve before sunrise, that's a <b>NO-GO</b>. You also see the longest stretch with <b>no contact with Earth</b>.",
+    body: "The drawer below gives the verdict and why. A real battery simulation charges from the panel in sunlight and drains in the dark — reaching reserve can mean equipment loses power. A mission grade also requires validated terrain. You also see the longest stretch with <b>no contact with Earth</b>.",
     icon: "warn",
   },
   {

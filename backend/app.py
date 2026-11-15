@@ -1,6 +1,8 @@
 """FastAPI server: Person 2 JSON API + verification dashboard.  Run:  python -m uvicorn backend.app:app"""
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -17,6 +19,7 @@ app = FastAPI(title="Lunar Navigator: Sun, Earth & Communication")
 # App as /api). Read-only public GET API with no cookies, so any origin may read it.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
 DIST = ROOT / "dist"
+SOLAR_SITE_IDS = {"connecting-ridge-cr1", "shackleton-rim-sr1"}
 
 
 def _times(start_utc: str, end_utc: str):
@@ -26,7 +29,8 @@ def _times(start_utc: str, end_utc: str):
         raise HTTPException(400, f"bad UTC timestamp (expected {TIME['serialization']})") from e
 
 
-def _relay_cfg(relay: bool, altitude_km: float, num_sats: int, inclination_deg: float, min_el_deg: float) -> RelayConfig | None:
+def _relay_cfg(relay: bool, altitude_km: float, num_sats: int, inclination_deg: float,
+               min_el_deg: float) -> RelayConfig | None:
     if not relay:
         return None
     return RelayConfig(altitude_km=altitude_km, num_sats=num_sats,
@@ -62,17 +66,22 @@ def analyze(latitudeDeg: float = Query(..., ge=-90, le=90),
             antennaBoresightAzimuthDeg: float | None = Query(None, ge=0, le=360),
             antennaBoresightElevationDeg: float | None = Query(None, ge=-90, le=90),
             antennaBeamwidthDeg: float = Query(analysis.DEFAULT_BEAMWIDTH_DEG, gt=0, le=180),
-            relay: bool = Query(True), relayAltitudeKm: float = Query(DEFAULT_RELAY.altitude_km, ge=100, le=70000),
+            relay: bool = Query(False), relayAltitudeKm: float = Query(DEFAULT_RELAY.altitude_km, ge=100, le=70000),
             relaySats: int = Query(DEFAULT_RELAY.num_sats, ge=1, le=8),
             relayInclinationDeg: float = Query(DEFAULT_RELAY.inclination_deg, ge=0, le=180),
             relayMinElevationDeg: float = Query(DEFAULT_RELAY.min_elevation_deg, ge=0, le=45)):
     start, end = _times(startUtc, endUtc)
     cfg = _relay_cfg(relay, relayAltitudeKm, relaySats, relayInclinationDeg, relayMinElevationDeg)
     try:
-        return analysis.analyze(latitudeDeg, longitudeEastDeg, start, end, antennaMinElevationDeg,
+        result = analysis.analyze(latitudeDeg, longitudeEastDeg, start, end, antennaMinElevationDeg,
                                 antenna_boresight_az=antennaBoresightAzimuthDeg,
                                 antenna_boresight_el=antennaBoresightElevationDeg,
                                 antenna_beamwidth_deg=antennaBeamwidthDeg, relay_cfg=cfg)
+        site = next((s for s in SITES if s["siteId"] in SOLAR_SITE_IDS
+                     and abs(s["latitudeDeg"] - latitudeDeg) < 1e-9
+                     and abs(s["longitudeEastDeg"] % 360 - longitudeEastDeg % 360) < 1e-9), None)
+        result["solarInput"] = analysis.solar_input(site, start, end) if site else None
+        return result
     except analysis.WindowError as e:
         raise HTTPException(400, str(e)) from e
 
@@ -102,6 +111,8 @@ def export(site_id: str, startUtc: str = TIME["defaultStartUtc"], endUtc: str = 
 def solar_input(site_id: str, startUtc: str = TIME["defaultStartUtc"], endUtc: str = TIME["defaultEndUtc"]):
     """Person 3 power-model input (`solar-input` 0.1.0) for a contract site, built from this backend's Sun data."""
     s = _site(site_id)
+    if site_id not in SOLAR_SITE_IDS:
+        raise HTTPException(400, "Solar power currently supports CR1 and SR1 only.")
     start, end = _times(startUtc, endUtc)
     try:
         return analysis.solar_input(s, start, end)
@@ -128,16 +139,18 @@ def sweep(latitudeDeg: float = Query(..., ge=-90, le=90), longitudeEastDeg: floa
 
 @app.get("/api/optimize")
 def optimize(firstDayUtc: str = TIME["supportedStartUtc"], sweepDays: int = Query(30, ge=1, le=120),
-             missionSeconds: float = Query(1209600, gt=0), antennaMinElevationDeg: float | None = Query(None, ge=-5, le=60),
+             missionSeconds: float = Query(1209600, gt=0),
+             antennaMinElevationDeg: float | None = Query(None, ge=-5, le=60),
              relay: bool = Query(True), relaySats: int = Query(DEFAULT_RELAY.num_sats, ge=1, le=8),
              relayAltitudeKm: float = Query(DEFAULT_RELAY.altitude_km, ge=100, le=70000),
              wSun: float = Query(1.0, ge=0), wComm: float = Query(1.3, ge=0), wBoth: float = Query(0.8, ge=0),
-             extraSites: list[str] = Query(default=[])):
+             extraSites: Annotated[list[str] | None, Query()] = None):
     """Find the site and landing day that maximise sunlight plus effective Earth contact."""
     first = parse_utc(firstDayUtc).replace(hour=0, minute=0, second=0)
-    candidates = [{"id": s["siteId"], "name": s.get("displayName"), "lat": s["latitudeDeg"], "lon": s["longitudeEastDeg"]}
+    candidates = [{"id": s["siteId"], "name": s.get("displayName"),
+                   "lat": s["latitudeDeg"], "lon": s["longitudeEastDeg"]}
                   for s in SITES]
-    for i, pair in enumerate(extraSites):
+    for i, pair in enumerate(extraSites or []):
         try:
             la, lo = (float(x) for x in pair.split(","))
         except ValueError as e:
@@ -234,11 +247,12 @@ def pathfind(epochUtc: str = TIME["defaultStartUtc"], layers: int = Query(24, ge
 
 
 @app.get("/api/terrain/window")
-def terrain_window_route(column: int = Query(..., ge=0), row: int = Query(..., ge=0), stride: int = Query(...)):
-    """257x257 float32 LE heights from the NASA 5 m polar mosaic; production twin of the Vite dev
+def terrain_window_route(column: int = Query(..., ge=0), row: int = Query(..., ge=0), stride: int = Query(...),
+                         size: int = Query(257), source: str = Query("auto")):
+    """129x129 or 257x257 float32 LE heights from the NASA 5 m polar mosaic; production twin of the Vite dev
     middleware in vite.config.mjs (see backend/terrain_window.py)."""
     try:
-        data, source = terrain_window.window_bytes(column, row, stride)
+        data, source = terrain_window.window_bytes(column, row, stride, size, source)
     except terrain_window.InvalidWindow as e:
         raise HTTPException(400, str(e)) from e
     except terrain_window.Busy as e:

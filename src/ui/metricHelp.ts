@@ -125,7 +125,7 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
   minEarthEl: {
     title: 'Min Earth elevation',
     body:
-      'Margin above the terrain horizon required before counting Earth LOS (degrees). Higher values demand clearer DTE geometry and usually lower Earth availability %.',
+      'Minimum absolute Earth elevation above local horizontal (degrees). Earth must be strictly above both this threshold and the terrain horizon. Higher values usually reduce direct contact availability.',
   },
   panelArea: {
     title: "Active panel area",

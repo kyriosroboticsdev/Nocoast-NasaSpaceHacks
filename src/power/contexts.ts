@@ -3,8 +3,9 @@ import { findSite } from '../scenario/catalog';
 import { loadHorizonProfile } from '../horizon/load';
 import { createEphemerisProvider } from '../ephemeris/horizons';
 import { assessMission } from '../assess/windows';
-import { communicationTimeline } from '../assess/visibility';
 import type { MissionContext } from './planning';
+import { fetchBackendAnalysis, backendHorizonProfile, backendEphemerisProvider } from '../science/backend';
+import { assessBackendMission } from '../science/assessment';
 import { canonicalUtc } from './adapter';
 import { validateMissionSettings } from './mission';
 
@@ -34,10 +35,19 @@ export async function studyContexts(state: ScenarioState, offsets: number[], bas
     for (const delayHours of offsets) {
       if (signal?.aborted) throw new DOMException('Analysis cancelled.', 'AbortError');
       const startUtc = new Date(Date.parse(state.startUtc) + Math.round(delayHours * 3600) * 1000).toISOString();
-      const assessment = assessMission({ siteId, siteLabel: site.name, horizonModel: horizon.model, provider, horizon,
+      const backend = await fetchBackendAnalysis(site.latitudeDeg, site.longitudeEastDeg, startUtc,
+        new Date(Date.parse(startUtc) + state.durationHours * 3600000).toISOString(), state.thresholds.minEarthElevationDeg, baseUrl);
+      if (signal?.aborted) throw new DOMException('Analysis cancelled.', 'AbortError');
+      const backendHorizon = backend && backendHorizonProfile(backend, siteId);
+      const assessment = backend && backendHorizon ? assessBackendMission(backend, {
+        siteId, siteLabel: site.name, horizonModel: backendHorizon.model,
+        provider: backendEphemerisProvider(siteId, backend), horizon: backendHorizon,
+        startUtc, durationHours: state.durationHours, scrubUtc: startUtc,
+        thresholds: state.thresholds, missionSettings: state.missionSettings,
+      }) : assessMission({ siteId, siteLabel: site.name, horizonModel: horizon.model, provider, horizon,
         startUtc, durationHours: state.durationHours, scrubUtc: startUtc, thresholds: state.thresholds, missionSettings: state.missionSettings });
       contexts.push({ id: `${siteId}:delay-${delayHours}`, siteId, delayHours, input: assessment.solarInput,
-        communication: communicationTimeline(assessment.samples), terrainValidated: horizon.validation?.status === 'validated',
+        communication: assessment.communication, terrainValidated: assessment.mission?.viability.qualifiedForMissionDecision ?? false,
         unavailableReason: assessment.powerWarning });
       await new Promise(resolve => setTimeout(resolve, 0));
     }

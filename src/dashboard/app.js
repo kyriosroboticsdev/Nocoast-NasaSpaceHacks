@@ -11,6 +11,7 @@ import { timelineFromWindows } from "../science/assessment.ts";
 import { downloadCard } from "./card.js";
 import { gameScore, scoreGrade, scoreTip } from "./game.js";
 import { applyUrlParams, getScenario } from "../scenario/state.ts";
+import { initBestSite } from "./bestsite.js";
 import { findSite, SITE_CATALOG } from "../scenario/catalog.ts";
 import {
   applyLandingScenario, bootLandingNavigator, ensureLandingTerrain, isLandingSync, setLandingSun, subscribeLandingAssessment, subscribeLandingScenario,
@@ -199,6 +200,38 @@ function recomputeAll() {
   recomputeDays(); renderAll();
 }
 
+// "Find the best site" tool: set the mission window to the chosen [start, end], run the normal analysis
+// over every built-in site, then rank them by the app's overall viability score (gameScore). Reuses the
+// whole existing pipeline, so the main view also updates to the chosen window. Returns a ranked array.
+async function rankSitesForWindow(start, end) {
+  state.start = start;
+  state.end = end;
+  state.tIdx = 0;
+  state.days.clear();
+  state.dayRun++;
+  syncInputs();
+  await refresh();   // analyzes + scores every site in state.sites over [start, end]
+  const capacityWh = state.needs.capacityWh;
+  const ranked = state.sites.map((s) => {
+    const m = state.mission.get(s.id);
+    const verdict = verdictFor(s.id);
+    const g = gameScore({ mission: m && !m.error ? m : null, verdict, capacityWh });
+    const r = state.results.get(s.id);
+    const sunPct = r?.sun?.summary?.percentOfMission != null ? Math.round(r.sun.summary.percentOfMission) : null;
+    const commR = state.relay.on && r?.commsEffective ? r.commsEffective : r?.communication;
+    const commPct = commR?.summary?.percentOfMission != null ? Math.round(commR.summary.percentOfMission) : null;
+    const viability = m && !m.error ? (m.viability?.score ?? null) : null;
+    return { id: s.id, name: s.name, total: g.total, verdict, viability, sunPct, commPct };
+  });
+  // Best first: by game score, then overall viability, then a decisive verdict. Unscorable sites sink.
+  const rank = { go: 3, caution: 2, preliminary: 1, nogo: 1, unknown: 0 };
+  ranked.sort((a, b) =>
+    (b.total ?? -1) - (a.total ?? -1) ||
+    (b.viability ?? -1) - (a.viability ?? -1) ||
+    (rank[b.verdict] ?? 0) - (rank[a.verdict] ?? 0));
+  return ranked;
+}
+
 // ============================================================ landing-day grid
 function gridStart() {
   const d = new Date(state.start); d.setUTCHours(0, 0, 0, 0); d.setUTCDate(1);
@@ -342,6 +375,8 @@ function drawScene(r) {
 $("find-earth").addEventListener("click", () => { if (sky3d) { setView("site"); sky3d.aim("earth"); } });
 $("find-sun").addEventListener("click", () => { if (sky3d) { setView("site"); sky3d.aim("sun"); } });
 $("reset-view").addEventListener("click", () => sky3d?.resetView());
+let bestSite = null;   // created once the contract loads (needs the supported date range)
+$("best-site")?.addEventListener("click", () => bestSite?.open());
 
 // Both viewpoints use the same scene and the same site/time data.
 function setView(v) {
@@ -1131,6 +1166,12 @@ if (PRESENT) {
   advanced = qs.has("advanced") ? qs.get("advanced") === "1" : !!load("advancedMode", false);
   $("advanced").checked = advanced; document.body.classList.toggle("advanced", advanced);
   state.sites = c.sites.map((s) => ({ id: s.siteId, name: s.displayName, lat: s.latitudeDeg, lon: s.longitudeEastDeg }));
+  bestSite = initBestSite({
+    supported: { start: c.time.supportedStartUtc, end: c.time.supportedEndUtc, maxSeconds: c.time.maxMissionDurationSeconds },
+    getCurrent: () => (state.start && state.end ? { start: utc(state.start), end: utc(state.end) } : null),
+    onFind: rankSitesForWindow,
+    onUse: (id) => { selectSite(id); setMode("check"); setPane("results"); },
+  });
   state.focus = siteById(qs.get("site")) ? qs.get("site") : state.sites[0].id;
   state.start = new Date(c.time.defaultStartUtc); state.end = new Date(state.start.getTime() + 14 * DAY * 1000);
   state.antenna = c.visibility.antennaMinElevationDeg;

@@ -23,6 +23,7 @@
   <symbol id="i-cross" viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
   <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 4.5v4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="8" cy="12" r="1.1" fill="currentColor"/></symbol>
   <symbol id="i-pin" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 14.5s4.5-4.2 4.5-7.8a4.5 4.5 0 0 0-9 0c0 3.6 4.5 7.8 4.5 7.8z"/><circle cx="8" cy="6.7" r="1.6"/></g></symbol>
+  <symbol id="i-best" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/><path d="M8 .8V3M8 13v2.2M.8 8H3M13 8h2.2" stroke-linecap="round"/></g></symbol>
   <symbol id="i-map" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M1.5 3.5 5.5 2l5 1.5 4-1.5v10.5l-4 1.5-5-1.5-4 1.5z"/><path d="M5.5 2v10.5M10.5 3.5V14"/></g></symbol>
   <symbol id="i-q" viewBox="0 0 16 16"><path d="M6 6.2a2 2 0 1 1 2.8 1.9c-.5.2-.8.6-.8 1.1V10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="12.6" r="1" fill="currentColor"/></symbol>
 </svg>
@@ -38,6 +39,7 @@
           <button data-view="terrain" aria-pressed="false">Above the site</button>
           <button data-view="globe" aria-pressed="false">Whole Moon</button>
         </div>
+        <button class="tool" id="best-site" title="Find the best landing site for a date range"><svg><use href="#i-best"/></svg>Best site</button>
         <button class="tool" id="map-toggle" aria-expanded="false" aria-controls="map-panel"><svg><use href="#i-map"/></svg>South pole map</button>
         <button class="tool site-only" id="find-sun" title="Turn to face the Sun"><svg><use href="#i-sun"/></svg>Sun</button>
         <button class="tool site-only" id="find-earth" title="Turn to face Earth"><svg><use href="#i-earth"/></svg>Earth</button>

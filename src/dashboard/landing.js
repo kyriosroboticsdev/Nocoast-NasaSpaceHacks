@@ -1,6 +1,6 @@
-// Landing / hero screen. The first thing you see: a cinematic lunar south-pole horizon with the Sun
-// grazing along it (the whole premise in one picture), a headline, and one clear way in. Shown on every
-// load; "Enter" fades it out into the app. Self-contained — builds its own DOM + canvas animation.
+// The welcome screen is the app's first impression. Keep the interaction and its
+// controls self-contained; the dashboard remains mounted underneath it.
+import "./landing.css";
 
 const FEATURES = [
   ["earth", "Real NASA data", "LOLA terrain · JPL Sun &amp; Earth"],
@@ -27,12 +27,10 @@ function starfield(canvas) {
   function frame(now) {
     const t = (now - t0) / 1000;
     ctx.clearRect(0, 0, W, H);
-    // Sky: deep radial glow from the horizon up.
     const sky = ctx.createLinearGradient(0, 0, 0, H);
     sky.addColorStop(0, "#05070f"); sky.addColorStop(0.62, "#070d1e"); sky.addColorStop(1, "#0c1836");
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
 
-    // Stars with a slow twinkle.
     for (const st of stars) {
       const a = reduce ? 0.7 : 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(t * st.s + st.p));
       ctx.globalAlpha = a; ctx.fillStyle = "#cdd8f0";
@@ -40,28 +38,23 @@ function starfield(canvas) {
     }
     ctx.globalAlpha = 1;
 
-    // Horizon line (a gentle arc) + terrain fill below it.
     const hy = H * 0.74, dip = H * 0.05;
     const horizon = (x) => hy + dip * Math.sin((x / W) * Math.PI * 1.1 - 0.2) * -1 + dip * 0.4;
-    // The Sun grazes left->right just above the horizon, looping. This is the "day at the pole".
     const period = reduce ? 1e9 : 26;
     const u = reduce ? 0.32 : (t % period) / period;
     const sx = u * (W + 240) - 120;
     const sy = horizon(sx) - H * 0.055 - Math.sin(u * Math.PI) * H * 0.02;
 
-    // Warm wash on the terrain near the Sun.
     const wash = ctx.createRadialGradient(sx, hy, 0, sx, hy, W * 0.5);
     wash.addColorStop(0, "rgba(242,179,61,0.16)"); wash.addColorStop(1, "rgba(242,179,61,0)");
     ctx.fillStyle = wash; ctx.fillRect(0, hy - 10, W, H - hy + 10);
 
-    // Sun glow + core.
     const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 150);
     glow.addColorStop(0, "rgba(255,240,200,0.95)"); glow.addColorStop(0.25, "rgba(242,201,76,0.55)");
     glow.addColorStop(1, "rgba(242,201,76,0)");
     ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(sx, sy, 150, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#fff6df"; ctx.beginPath(); ctx.arc(sx, sy, 15, 0, Math.PI * 2); ctx.fill();
 
-    // Terrain: filled silhouette with a bright rim on the horizon edge.
     ctx.beginPath(); ctx.moveTo(0, H);
     for (let x = 0; x <= W; x += 8) ctx.lineTo(x, horizon(x));
     ctx.lineTo(W, H); ctx.closePath();
@@ -89,7 +82,8 @@ export function showLanding({ onEnter, onTour } = {}) {
   const root = document.createElement("div");
   root.className = "landing";
   root.setAttribute("role", "dialog");
-  root.setAttribute("aria-label", "Welcome to NoCoast");
+  root.setAttribute("aria-modal", "true");
+  root.setAttribute("aria-label", "Welcome to NoCoast lunar mission planner");
   root.innerHTML = `
     <canvas class="l-canvas" aria-hidden="true"></canvas>
     <div class="l-content">
@@ -98,13 +92,14 @@ export function showLanding({ onEnter, onTour } = {}) {
       <p class="l-sub">At the lunar south pole the Sun just skims the horizon and Earth keeps dropping out of
         sight. Pick a site and a date — estimate power, sunlight and staying in touch. Results remain <b>preliminary</b> until terrain validation is supplied.</p>
       <div class="l-cta">
-        <button class="l-enter" id="l-enter">Check a landing site ${svg("down")}</button>
-        <button class="l-tour" id="l-tour">Take the 30&#8209;second tour</button>
+        <button class="l-enter" id="l-enter">Explore landing sites ${svg("down")}</button>
+        <button class="l-tour" id="l-tour">Take a quick tour</button>
       </div>
-      <div class="l-features">
+      <p class="l-prompt">Start with a site and date. Compare the sunlight, power, and Earth contact your mission needs.</p>
+      <div class="l-features" aria-label="What you can explore">
         ${FEATURES.map(([ic, h, s]) => `<div class="l-feat">${svg(ic)}<div><b>${h}</b><span>${s}</span></div></div>`).join("")}
       </div>
-      <p class="l-foot">Built on NASA LOLA terrain and JPL DE421 ephemerides · a mission-planning sandbox</p>
+      <p class="l-foot">A planning sandbox built with NASA LOLA terrain and JPL data. Results are estimates, not a landing-site recommendation.</p>
     </div>`;
   document.body.append(root);
   document.body.classList.add("landing-open");
@@ -116,7 +111,7 @@ export function showLanding({ onEnter, onTour } = {}) {
   }
   root.querySelector("#l-enter").addEventListener("click", () => leave(onEnter));
   root.querySelector("#l-tour").addEventListener("click", () => leave(onTour));
-  root.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === "Escape") leave(onEnter); });
+  root.addEventListener("keydown", (e) => { if (e.key === "Escape") leave(onEnter); });
   requestAnimationFrame(() => root.querySelector("#l-enter").focus());
   return { leave };
 }

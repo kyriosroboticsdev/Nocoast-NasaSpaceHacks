@@ -192,7 +192,7 @@ canvas:not(#skyline):not(#timeline) {
   border-radius: 10px;
   background: #0b1420;
 }
-#timeline { height: 120px; }
+#timeline { height: 190px; cursor: crosshair; }
 
 .decision-cluster { grid-template-columns: 1fr; }
 .decision-panel {

@@ -1201,6 +1201,29 @@ function wireUi() {
     URL.revokeObjectURL(a.href);
     el('share-status').textContent = 'Exported time-series JSON.';
   };
+  // Calendar timeline: click (or drag-hover) to jump the time slider.
+  const timelineCanvas = el<HTMLCanvasElement>('timeline');
+  const timelineTimeAt = (ev: MouseEvent): string | null => {
+    const d = timelineCanvas.dataset;
+    const t0 = Number(d.t0);
+    const t1 = Number(d.t1);
+    const trackX = Number(d.trackX);
+    const trackW = Number(d.trackW);
+    if (!Number.isFinite(t0) || !Number.isFinite(trackW) || trackW <= 0) return null;
+    const rect = timelineCanvas.getBoundingClientRect();
+    const f = (ev.clientX - rect.left - trackX) / trackW;
+    if (f < 0 || f > 1) return null;
+    return new Date(t0 + f * (t1 - t0)).toISOString();
+  };
+  timelineCanvas.addEventListener('click', ev => {
+    const t = timelineTimeAt(ev);
+    if (t) setScrubUtc(t);
+  });
+  timelineCanvas.addEventListener('mousemove', ev => {
+    const t = timelineTimeAt(ev);
+    timelineCanvas.title = t ? `Click to jump the time slider to ${t.slice(0, 16)}Z` : '';
+  });
+
   window.addEventListener('resize', () => {
     if (assessA) paintAssessment(getScenario());
   });

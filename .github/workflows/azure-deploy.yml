@@ -70,9 +70,16 @@ jobs:
             --name "$STATIC_WEB_APP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
             --backend-resource-id "$container_app_id" \
-            --backend-region westus2
-          echo "--- linked backends after link ---"
-          az staticwebapp backends show --name "$STATIC_WEB_APP_NAME" --resource-group "$RESOURCE_GROUP" -o json
+            --backend-region westus2 || echo "link call returned non-zero (may already be linked, or a transient API error — verifying below)"
+          echo "--- linked backends after link (retrying: this endpoint 500s immediately after a link/update) ---"
+          for attempt in 1 2 3 4 5; do
+            if az staticwebapp backends show --name "$STATIC_WEB_APP_NAME" --resource-group "$RESOURCE_GROUP" -o json; then
+              exit 0
+            fi
+            echo "Verification attempt $attempt failed; waiting 20s..."
+            sleep 20
+          done
+          echo "::warning::Could not verify the linked backend after 5 attempts, but the link call itself may still have succeeded."
 
       # Diagnosed: ACR is fine (publicNetworkAccess enabled, admin enabled, image tag present, registry
       # config on the app is correct) but `az containerapp registry set` triggers an immediate

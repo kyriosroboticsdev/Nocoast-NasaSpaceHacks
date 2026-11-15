@@ -58,16 +58,21 @@ jobs:
           docker build -t "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}" -t "$ACR_NAME.azurecr.io/lunar-navigator-api:latest" .
           docker push --all-tags "$ACR_NAME.azurecr.io/lunar-navigator-api"
 
-      # TEMPORARY: diagnosing the /api/* 404 on the public Static Web App URL. Remove once resolved.
-      - name: DIAGNOSE Static Web App linked-backend state
+      # azure-infra.yml (which would apply infra/modules/frontend.bicep's `linkedBackends` sub-resource)
+      # has never actually been run — this environment was hand-provisioned via `az` CLI during the
+      # Azure-for-Students workarounds. Confirmed via diagnostics: SWA sku is correctly Standard, but
+      # `az staticwebapp backends show` returns `[]` — no backend was ever linked, hence /api/* 404s on
+      # the public URL even though the Container App itself is healthy. Link it directly, idempotently.
+      - name: Ensure Static Web App linked backend exists
         run: |
-          echo "--- SWA sku ---"
-          az staticwebapp show --name "$STATIC_WEB_APP_NAME" --resource-group "$RESOURCE_GROUP" --query "sku" -o json
-          echo "--- SWA linked backends (az staticwebapp backends) ---"
-          az staticwebapp backends show --name "$STATIC_WEB_APP_NAME" --resource-group "$RESOURCE_GROUP" -o json || echo "NO LINKED BACKEND (or command unsupported at this az version)"
-          echo "--- container app FQDN + region (must match the linked backend's region) ---"
-          az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" \
-            --query "{fqdn:properties.configuration.ingress.fqdn, location:location, id:id}" -o json
+          container_app_id=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" --query id -o tsv)
+          az staticwebapp backends link \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --backend-resource-id "$container_app_id" \
+            --backend-region westus2
+          echo "--- linked backends after link ---"
+          az staticwebapp backends show --name "$STATIC_WEB_APP_NAME" --resource-group "$RESOURCE_GROUP" -o json
 
       # Diagnosed: ACR is fine (publicNetworkAccess enabled, admin enabled, image tag present, registry
       # config on the app is correct) but `az containerapp registry set` triggers an immediate

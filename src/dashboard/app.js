@@ -5,6 +5,10 @@ import { createSkyView } from "./sky3d.js";
 import { apiUrl } from "../apiBase.ts";
 import { simulate, resultCsv, MODEL_ID } from "../power/model.mjs";
 import { simulateMission, DEFAULT_MISSION_SETTINGS } from "../power/mission.ts";
+import { initTour } from "./tour.js";
+import { showLanding } from "./landing.js";
+import { downloadCard } from "./card.js";
+import { gameScore, scoreGrade, scoreTip } from "./game.js";
 
 const DAY = 86400;
 const GRID_DAYS = 35;
@@ -26,6 +30,7 @@ const state = {
   days: new Map(), dayRun: 0,
   needs: { ...NEEDS_DEFAULT, ...load("needsV2", {}) },
   panel: { ...PANEL_DEFAULT, ...load("panelV2", {}) },
+  relay: { on: true, sats: 3, ...load("relayV1", {}) },
 };
 let advanced = false;
 
@@ -76,8 +81,9 @@ function cached(key, fn) {
 }
 const allSites = () => [...state.sites, ...state.custom];
 const siteById = (id) => allSites().find((s) => s.id === id);
-const analyze = (s, start, end) => cached(`a|${s.id}|${utc(start)}|${utc(end)}|${state.antenna}`, () =>
-  api("analyze", { latitudeDeg: s.lat, longitudeEastDeg: s.lon, startUtc: utc(start), endUtc: utc(end), antennaMinElevationDeg: state.antenna })
+const analyze = (s, start, end) => cached(`a|${s.id}|${utc(start)}|${utc(end)}|${state.antenna}|${state.relay.on}|${state.relay.sats}`, () =>
+  api("analyze", { latitudeDeg: s.lat, longitudeEastDeg: s.lon, startUtc: utc(start), endUtc: utc(end),
+    antennaMinElevationDeg: state.antenna, relay: state.relay.on, relaySats: state.relay.sats })
     .then((r) => ({ ...r, _t: r.series.timesUtc.map(Date.parse) })));
 const NO_POWER = "The power model covers CR1 and SR1 only so far, so power can't be judged here.";
 const solarInput = (s, start, end) => s.custom ? Promise.resolve({ error: NO_POWER }) : cached(`s|${s.id}|${utc(start)}|${utc(end)}`, () =>
@@ -108,8 +114,9 @@ function missionSettings() {
 // Earth line-of-sight timeline from the backend's exact windows (unknown stays unknown, never assumed).
 function commsTimeline(r, start, end) {
   const t0 = start.getTime(), dur = (end - start) / 1000;
-  const spans = [...r.communication.windows.map((w) => [w, true]), ...r.communication.blackouts.map((w) => [w, false]),
-    ...r.communication.unknown.map((w) => [w, null])]
+  const comm = state.relay.on && r.commsEffective ? r.commsEffective : r.communication;
+  const spans = [...comm.windows.map((w) => [w, true]), ...comm.blackouts.map((w) => [w, false]),
+    ...comm.unknown.map((w) => [w, null])]
     .map(([w, v]) => [(Date.parse(w.startUtc) - t0) / 1000, (Date.parse(w.endUtc) - t0) / 1000, v])
     .sort((a, b) => a[0] - b[0]);
   const out = []; let at = 0;
@@ -603,9 +610,22 @@ function renderCompare() {
     ${cards}`;
 }
 const pending = (id) => state.loading && !state.fresh?.has(id);
+function gameBlock() {
+  const mission = state.mission.get(state.focus);
+  const verdict = verdictFor(state.focus);
+  const scored = gameScore({ mission, verdict, capacityWh: state.needs.capacityWh });
+  const grade = scoreGrade(scored.total);
+  if (scored.total == null) return "";
+  return `<section class="game"><div class="game-head"><div><p class="game-kicker">Mission designer</p><h3 class="game-title">${esc(grade.label)}</h3></div>
+    <div class="game-score t-${grade.tier}"><b>${scored.total}</b><small>/ 100</small><span class="game-grade">${grade.grade}</span></div></div>
+    <p class="game-tip">${esc(scoreTip(scored, { capacityWh: state.needs.capacityWh }))}</p></section>`;
+}
 function renderSummary() {        // drawer, check mode: the site in view's verdict + one-line reason
   const v = verdictFor(state.focus);
-  return `<div class="summary">${pending(state.focus) ? "" : vbadge(v)}<p class="why">${esc(reason(state.focus, v))}</p>
+  const relayNote = state.relay.on && state.results.get(state.focus)?.relay
+    ? `<p class="why">Earth contact includes a ${state.relay.sats}-satellite polar relay when the direct link is blocked.</p>` : "";
+  return `<div class="summary">${pending(state.focus) ? "" : vbadge(v)}<p class="why">${esc(reason(state.focus, v))}</p>${relayNote}
+    ${gameBlock()}
     ${state.pane !== "compare" ? `<button class="link" id="open-compare">Compare all ${allSites().length} sites</button>` : ""}</div>`;
 }
 function reason(id, v) {
@@ -645,7 +665,9 @@ function renderDays() {
   const monthRow = `<tr><th></th>${head.map((d, k) => { const mk = months.find(([j]) => j === k); return `<td class="mon">${mk ? mk[1] : ""}</td>`; }).join("")}</tr>`;
   const done = [...state.days.values()].reduce((a, r) => a + [...(r.cells?.values() ?? [])].filter((c) => c.verdict !== "pending").length, 0);
   const total = [...state.days.values()].reduce((a, r) => a + r.dates.length, 0);
-  return `<p class="why">Each square is a landing on that day (00:00 UTC) for a ${Math.round((state.end - state.start) / 1000 / DAY)}-day stay. Click one to load it.
+  return `<div class="opt-bar"><button class="btn primary" id="optimize-btn" type="button">Best site and day for sun + contact</button>
+    <span class="hint">Searches the catalog for sunlight and Earth contact${state.relay.on ? " with the relay on" : ""}.</span></div>
+    <p class="why">Each square is a landing on that day (00:00 UTC) for a ${Math.round((state.end - state.start) / 1000 / DAY)}-day stay. Click one to load it.
     ${done < total ? `<span class="prog">Checked ${done} of ${total}…</span>` : ""}</p>
     <div class="tbl-wrap"><table class="days">${monthRow}${rows}</table></div>
     <div class="legend">${["go", "caution", "nogo", "unknown"].map((v) => `<span><i class="d-${v}"></i>${VERDICT[v]}</span>`).join("")}<span><i class="planned-key"></i>Current landing day</span></div>`;
@@ -661,6 +683,8 @@ $("results").addEventListener("click", (e) => {
     state.start = new Date(b.dataset.day + "T00:00:00Z"); state.end = new Date(state.start.getTime() + len);
     state.focus = b.dataset.site; state.tIdx = 0; syncInputs(); setMode("check"); refresh();
   } else if (b.id === "open-compare") setPane("compare");
+  else if (b.id === "optimize-btn") void runOptimize();
+  else if (b.id === "share-card") shareCard();
 });
 function selectSite(id) { if (id && id !== state.focus) { state.focus = id; syncInputs(); renderAll(); } }
 $("pane-compare").addEventListener("click", (e) => {
@@ -680,6 +704,75 @@ function setPane(p) {
 document.querySelectorAll(".pane-tabs button").forEach((b) => b.addEventListener("click", () => setPane(b.dataset.pane)));
 
 // ============================================================ render + modes
+function renderRelayBox() {
+  let box = $("relay-box");
+  if (!box) {
+    box = document.createElement("section");
+    box.className = "group";
+    box.id = "relay-box";
+    $("needs-box")?.after(box);
+  }
+  const on = state.relay.on;
+  box.innerHTML = `<h2>Comms relay <span class="tag">${on ? "on" : "off"}</span></h2>
+    <label class="relay-row"><input type="checkbox" id="relay-on" ${on ? "checked" : ""}>Use a polar relay satellite</label>
+    <p class="hint">When Earth drops behind the terrain, an orbiting relay carries the signal.</p>
+    ${on ? `<div class="pair">${numberField("relay-sats", "Relay satellites", state.relay.sats, { min: 1, max: 8, step: 1 })}</div>` : ""}`;
+  $("relay-on").addEventListener("change", () => {
+    state.relay = { ...state.relay, on: $("relay-on").checked };
+    save("relayV1", state.relay);
+    state.results.clear(); state.days.clear(); state.dayRun++;
+    renderRelayBox(); refresh();
+  });
+  $("relay-sats")?.addEventListener("change", () => {
+    const v = parseInt($("relay-sats").value, 10);
+    if (v >= 1 && v <= 8) {
+      state.relay = { ...state.relay, sats: v };
+      save("relayV1", state.relay);
+      state.results.clear(); state.days.clear(); state.dayRun++;
+      refresh();
+    }
+  });
+}
+async function runOptimize() {
+  const btn = $("optimize-btn");
+  if (btn) btn.disabled = true;
+  setStatus("Searching sites and landing days…", "busy");
+  try {
+    const out = await api("optimize", {
+      firstDayUtc: utc(state.start), sweepDays: 14, missionSeconds: (state.end - state.start) / 1000,
+      antennaMinElevationDeg: state.antenna, relay: state.relay.on, relaySats: state.relay.sats,
+    });
+    const best = out.best;
+    if (!best?.bestDateUtc) { setStatus("No ranked landing day in this window.", "err"); return; }
+    const len = state.end - state.start;
+    if (siteById(best.id)) state.focus = best.id;
+    state.start = new Date(best.bestDateUtc);
+    state.end = new Date(state.start.getTime() + len);
+    state.tIdx = 0;
+    syncInputs();
+    setMode("check");
+    setStatus(`Best pick: ${best.name || best.id} on ${best.bestDateUtc.slice(0, 10)}.`);
+    refresh();
+  } catch (e) {
+    setStatus(`Couldn't optimize: ${e.message}`, "err");
+  } finally { if ($("optimize-btn")) $("optimize-btn").disabled = false; }
+}
+function shareCard() {
+  const site = siteById(state.focus);
+  const v = verdictFor(state.focus);
+  const mission = state.mission.get(state.focus);
+  downloadCard({
+    verdict: v, verdictLabel: VERDICT[v] || "CAN'T TELL",
+    site: site?.name || "Site", where: site ? where(site) : "",
+    dateLabel: state.start ? toDate(state.start) : "",
+    stayLabel: state.start && state.end ? `${Math.round((state.end - state.start) / DAY / 1000)}-day stay` : "",
+    reason: reason(state.focus, v),
+    metrics: mission ? [
+      { label: "Power", value: pct(mission.summary.powerAvailabilityFraction), status: v === "go" ? "pass" : "fail" },
+      { label: "Earth", value: pct(mission.summary.commsAvailabilityFraction), status: "pass" },
+    ] : [],
+  }, `nocoast-${site?.id || "site"}.png`);
+}
 function renderAll() {
   if (!state.contract) return;
   renderResults(); renderNow(); renderPanelBox(); renderMap();
@@ -756,7 +849,20 @@ document.addEventListener("mouseout", (e) => { if (e.target.closest?.("[data-tip
 window.addEventListener("resize", () => drawStrip());
 
 (async function init() {
-  renderSources(); renderNeedsBox();
+  const tour = initTour();
+  document.body.classList.add("pre-enter");
+  showLanding({
+    onEnter() { document.body.classList.remove("pre-enter"); },
+    onTour() { document.body.classList.remove("pre-enter"); tour.open(); },
+  });
+  const share = document.createElement("button");
+  share.className = "btn ghost share-btn";
+  share.id = "share-card";
+  share.type = "button";
+  share.textContent = "Share card";
+  $("export")?.after(share);
+  share.addEventListener("click", shareCard);
+  renderSources(); renderNeedsBox(); renderRelayBox();
   // Built here, not in the HTML: the map comes from the API, whose origin is only known at runtime.
   const mapImg = Object.assign(document.createElement("img"), {
     id: "map-img", src: apiUrl("api/polar_map.png"),

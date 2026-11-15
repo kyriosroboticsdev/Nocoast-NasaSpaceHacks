@@ -278,3 +278,47 @@ table.days { border-collapse: separate; border-spacing: 3px; }
   .results { padding: 4px 16px 16px; }
   .side { order: 2; border-right: 0; border-top: 1px solid var(--line); overflow: visible; padding: 4px 16px 24px; }
 }
+
+.relay-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 2px 0 6px; cursor: pointer; }
+.relay-row input { width: 16px; height: 16px; accent-color: var(--accent); }
+.opt-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.opt-bar .hint { margin: 0; }
+.tour { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; }
+.tour[hidden] { display: none; }
+.tour-scrim { position: absolute; inset: 0; background: rgba(3, 7, 18, .72); }
+.tour-card { position: relative; width: min(520px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 28px 28px 22px; }
+.tour-x { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border: 0; background: none; color: var(--faint); }
+.tour-badge { width: 46px; height: 46px; border-radius: 10px; background: var(--panel-2); display: grid; place-items: center; margin-bottom: 14px; }
+.tour-ic, .l-ic { width: 22px; height: 22px; }
+.tour-card h2 { font-size: 22px; margin: 0 0 10px; }
+.tour-card p { font-size: 15px; line-height: 1.55; color: var(--muted); }
+.tour-foot, .tour-nav, .tour-dots { display: flex; align-items: center; gap: 8px; }
+.tour-foot { justify-content: space-between; }
+.tour-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); }
+.tour-dot.on { background: var(--accent); }
+.game { padding: 8px 0 12px; }
+.game-head { display: flex; justify-content: space-between; gap: 16px; }
+.game-kicker { margin: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.game-title { margin: 0; font-size: 20px; }
+.game-score { text-align: right; }
+.game-score b { font-size: 40px; line-height: 1; }
+.game-grade { display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 4px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; }
+.game-tip { font-size: 14px; }
+.landing { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: #05070f; }
+.landing.leaving { animation: land-out .6s ease forwards; }
+@keyframes land-out { to { opacity: 0; } }
+.l-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.l-content { position: relative; z-index: 1; width: min(760px, calc(100vw - 48px)); text-align: center; }
+.l-brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; margin-bottom: 22px; }
+.l-mark { width: 14px; height: 14px; border-radius: 4px; background: var(--nasa-red); }
+.l-title { margin: 0 0 16px; font-size: clamp(32px, 6vw, 56px); line-height: 1.05; }
+.l-sub { margin: 0 auto 24px; max-width: 580px; color: var(--muted); }
+.l-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 28px; }
+.l-enter, .l-tour { height: 48px; padding: 0 22px; border-radius: 10px; font-weight: 700; cursor: pointer; }
+.l-enter { border: 0; background: var(--sun); color: #06142e; }
+.l-tour { border: 1px solid var(--line-2); background: transparent; color: var(--text); }
+.l-features { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.l-feat { display: flex; gap: 8px; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.l-foot { color: var(--faint); font-size: 12px; }
+body.landing-open { overflow: hidden; }
+body.pre-enter .app, body.pre-enter .bar { opacity: 0; }

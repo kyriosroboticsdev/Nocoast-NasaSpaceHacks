@@ -1,9 +1,10 @@
 import type { EphemerisProvider } from '../ephemeris/horizons';
 import type { HorizonProfile } from '../horizon/types';
 import type { ScenarioThresholds } from '../scenario/types';
-import { FRAME_ID, SITES, SOLAR_REFERENCE_W_M2, type Panel, type SolarInput, type SolarSample } from './model.mjs';
+import { FRAME_ID, validateSite, SOLAR_REFERENCE_W_M2, type Panel, type SolarInput, type SolarSample } from './model.mjs';
 
 export const STEP_SECONDS = 600;
+/** Historical bundle elevations, retained for consumers of the original reference fixtures. */
 export const SURFACE_ELEVATIONS: Record<string, number> = {
   'connecting-ridge-cr1': 1949.6080773175818,
   'shackleton-rim-sr1': 1735.2179263340893,
@@ -49,14 +50,12 @@ export function adaptSolarSample(utc: string, sunlit: boolean | null, provider: 
   const missing = (reason: string): SolarSample => ({ timeUtc,
     sun: { azimuthDeg: null, elevationDeg: null, rangeAu: null }, solarVisibleFraction: null,
     quality: { status: 'missing', reason } });
-  const site = SITES[horizon.siteId];
-  if (!site) return missing('unsupported_site');
-  if (horizon.frameId !== FRAME_ID || horizon.observer.heightAboveGroundM !== 2
-    || !Number.isFinite(horizon.observer.latitudeDeg) || !Number.isFinite(horizon.observer.longitudeEastDeg)
-    || Math.abs(horizon.observer.latitudeDeg - site.latitudeDeg) > 1e-9
-    || Math.abs(horizon.observer.longitudeEastDeg - site.longitudeEastDeg) > 1e-9
-    || !Number.isFinite(horizon.observer.surfaceElevationM)
-    || Math.abs(horizon.observer.surfaceElevationM - SURFACE_ELEVATIONS[horizon.siteId]) > 0.01) {
+  const observer = horizon.observer;
+  try {
+    validateSite(horizon.siteId, { latitudeDeg: observer.latitudeDeg, longitudeEastDeg: observer.longitudeEastDeg,
+      surfaceElevationM: observer.surfaceElevationM, referenceRadiusM: 1737400 });
+  } catch { return missing('horizon_observer_or_frame_mismatch'); }
+  if (horizon.frameId !== FRAME_ID || observer.heightAboveGroundM !== 2) {
     return missing('horizon_observer_or_frame_mismatch');
   }
   const series = provider.series.sun;
@@ -66,10 +65,10 @@ export function adaptSolarSample(utc: string, sunlit: boolean | null, provider: 
   if (series.siteId !== horizon.siteId || series.frameId !== FRAME_ID
     || !Number.isFinite(series.observer.latitudeDeg) || !Number.isFinite(series.observer.longitudeEastDeg)
     || series.observerHeightAboveGroundM !== 2
-    || Math.abs(series.observer.latitudeDeg - site.latitudeDeg) > 1e-9
-    || Math.abs(series.observer.longitudeEastDeg - site.longitudeEastDeg) > 1e-9
+    || Math.abs(series.observer.latitudeDeg - observer.latitudeDeg) > 1e-9
+    || Math.abs(series.observer.longitudeEastDeg - observer.longitudeEastDeg) > 1e-9
     || !Number.isFinite(series.observer.altitudeKm)
-    || Math.abs(series.observer.altitudeKm - (SURFACE_ELEVATIONS[horizon.siteId] + 2) / 1000) > 1e-6) {
+    || Math.abs(series.observer.altitudeKm - (observer.surfaceElevationM + observer.heightAboveGroundM) / 1000) > 1e-6) {
     return missing('sun_observer_or_frame_mismatch');
   }
   const t = Date.parse(timeUtc);
@@ -109,24 +108,27 @@ export function buildSolarInput(options: {
   samples: Array<{ utc: string; sunlit: boolean | null }>;
 }): SolarInput | null {
   const { siteId, provider, horizon } = options;
-  const site = SITES[siteId];
-  if (!site || horizon.siteId !== siteId) return null;
+  if (horizon.siteId !== siteId) return null;
+  const site = { latitudeDeg: horizon.observer.latitudeDeg, longitudeEastDeg: horizon.observer.longitudeEastDeg,
+    surfaceElevationM: horizon.observer.surfaceElevationM, referenceRadiusM: 1737400 };
+  try { validateSite(siteId, site); } catch { return null; }
+  if (horizon.frameId !== FRAME_ID || horizon.observer.heightAboveGroundM !== 2) return null;
   const startUtc = canonicalUtc(options.startUtc), endUtc = canonicalUtc(options.endUtc);
   if (Date.parse(startUtc) < Date.parse('2027-01-01T00:00:00Z')
     || Date.parse(endUtc) > Date.parse('2028-01-01T00:00:00Z')) return null;
-  const id = `planner:${siteId}:${startUtc}:${endUtc}:${horizon.generatedAtUtc}:${provider.series.sun?.generatedAtUtc ?? 'missing'}`;
+  const id = `planner:${siteId}:${site.latitudeDeg},${site.longitudeEastDeg},${site.surfaceElevationM}:${startUtc}:${endUtc}:${horizon.generatedAtUtc}:${provider.series.sun?.generatedAtUtc ?? 'missing'}`;
   return {
     schemaVersion: '0.1.0', artifactType: 'solar-input', artifactId: id, scenarioId: id,
     generatedAtUtc: canonicalUtc(new Date(Math.floor(Date.now() / 1000) * 1000).toISOString()),
     label: `${siteId} planner solar input`, frameId: FRAME_ID, siteId,
-    site: { ...site, surfaceElevationM: SURFACE_ELEVATIONS[siteId], referenceRadiusM: 1737400 },
+    site,
     observerHeightAboveGroundM: 2,
     time: { startUtc, endUtc, baseStepSeconds: STEP_SECONDS, visibilityInterpolation: 'previous-sample-hold' },
     provenance: {
       ephemeris: { provider: provider.series.sun?.origin ?? provider.series.sun?.source ?? 'unavailable',
         generatedAtUtc: provider.series.sun?.generatedAtUtc, request: provider.series.sun?.request,
         notes: provider.series.sun?.notes },
-      visibility: { provider: 'assess/windows.assessInstant', mode: horizon.model === 'lola_terrain' ? 'terrain' : 'local-plane-demo',
+      visibility: { provider: 'assess/windows.assessInstant', mode: horizon.model === 'sphere_optimistic' ? 'local-plane-demo' : 'terrain',
         sunModel: 'center-binary-v1', horizonArtifactId: `${siteId}:${horizon.generatedAtUtc}`,
         horizonObserverHeightAboveGroundM: horizon.observer.heightAboveGroundM,
         validation: horizon.validation ?? { status: 'pending' }, sources: horizon.sources, notes: horizon.notes,

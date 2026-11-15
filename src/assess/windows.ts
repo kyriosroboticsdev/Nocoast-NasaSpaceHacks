@@ -1,7 +1,7 @@
 import { horizonElevationAt, type HorizonProfile } from '../horizon/types';
 import type { EphemerisProvider } from '../ephemeris/horizons';
 import type { ScenarioThresholds, ViabilityGrade } from '../scenario/types';
-import { simulateMission, DEFAULT_MISSION_SETTINGS, type MissionSettings, type MissionResult } from '../power/mission';
+import { simulateMission, DEFAULT_MISSION_SETTINGS, type MissionSettings, type MissionResult, type StateSegment } from '../power/mission';
 import { communicationTimeline } from './visibility';
 import { adaptSolarSample, buildSolarInput, panelFromThresholds, STEP_SECONDS } from '../power/adapter';
 import { calculatePower, simulate, type PowerResult, type PowerSample, type SolarInput } from '../power/model.mjs';
@@ -48,6 +48,7 @@ export type MissionAssessment = {
   solar: PowerResult | null;
   powerWarning: string;
   mission: MissionResult | null;
+  communication: StateSegment[];
   viability: ViabilityGrade;
   viabilityReason: string;
   hoursToSunset: number | null;
@@ -209,7 +210,7 @@ export function assessInstant(
   const sunClear = sunHorizon == null || !sun ? null : sun.elevationDeg - sunHorizon;
   const earthClear = earthHorizon == null || !earth ? null : earth.elevationDeg - earthHorizon;
   const sunlit = sunClear == null ? null : sunClear > 0;
-  const earthLos = earthClear == null ? null : earthClear >= thresholds.minEarthElevationDeg;
+  const earthLos = earthClear == null ? null : earth!.elevationDeg > Math.max(earthHorizon!, thresholds.minEarthElevationDeg);
   // Earth coverage does not determine available solar power.
   const solar = calculatePower(adaptSolarSample(utc, sunlit, provider, horizon), panelFromThresholds(thresholds));
   return {
@@ -243,14 +244,10 @@ export function assessMission(options: {
   const samples = times.map(utc => assessInstant(utc, options.provider, options.horizon, options.thresholds));
   const solarInput = buildSolarInput({ ...options, endUtc: new Date(end).toISOString(), samples });
   const solar = solarInput ? simulate(solarInput, panelFromThresholds(options.thresholds)) : null;
-  if (solar) solar.summary.eligibleForTerrainComparison = solar.summary.eligibleForTerrainComparison
-    && options.horizon.validation?.status === 'validated';
-  const powerWarning = !solar ? 'Solar unavailable: use CR1/SR1 with a mission inside 2027.'
+  const powerWarning = !solar ? 'Solar unavailable: matching Sun and terrain inputs are required inside 2027.'
     : !solar.summary.complete ? 'Incomplete solar data: total energy and mean power are unknown. See sample quality reasons.'
     : options.horizon.model !== 'lola_terrain' ? 'Illustrative horizon power; study terrain is unavailable.'
-    : options.horizon.validation?.status !== 'validated'
-      ? 'Preliminary power: upstream terrain validation has not been supplied.'
-      : 'Direct-beam estimate; 10-minute sampled visibility. Battery/load effects are reported in the separate mission layer; thermal losses and eclipses are excluded.';
+    : 'Direct-beam estimate; 10-minute sampled visibility. Battery/load effects are reported in the separate mission layer; thermal losses and eclipses are excluded.';
 
   const mission = solar ? simulateMission(solar, options.thresholds.batteryFloorW, options.missionSettings ?? DEFAULT_MISSION_SETTINGS, communicationTimeline(samples)) : null;
 
@@ -280,7 +277,7 @@ export function assessMission(options: {
       ? 'Electrical power and communication requirements are met in this model.'
       : 'Electrical power or communication requirements are not met; inspect outages and unserved energy.';
   } else if (mission?.viability.score != null) {
-    viabilityReason = 'Conditional mission estimate; upstream terrain validation has not been supplied.';
+    viabilityReason = 'Illustrative mission estimate; measured terrain inputs are unavailable.';
   } else viabilityReason = 'Mission result unknown because solar or communication coverage is incomplete.';
 
   return {
@@ -307,6 +304,7 @@ export function assessMission(options: {
     solar,
     powerWarning,
     mission,
+    communication: communicationTimeline(samples),
     viability,
     viabilityReason,
     hoursToSunset: hoursUntilFalse(samples, options.scrubUtc, s => s.sunlit),

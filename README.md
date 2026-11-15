@@ -48,6 +48,13 @@ a live-computed backend, or a clearly-flagged simplified fallback — never sile
 
 ## Try it in under 2 minutes
 
+Solar power is calculated on demand for every catalog site, saved custom spot,
+and unsaved map selection with usable terrain and Sun inputs. Panel area,
+efficiency and orientation changes recalculate watts and energy; battery and
+equipment changes rerun the stay simulation. There is no stored-wattage lookup.
+Missing source data stays unknown. Terrain estimates are preliminary until
+upstream validation is supplied.
+
 Requires Node.js 22.12+ and Python. On Windows, run:
 
 ```powershell

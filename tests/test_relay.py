@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import pytest
-
 from backend import analysis
 from backend.relay import RelayConfig
 
@@ -27,7 +25,8 @@ def test_relay_adds_comms_where_direct_to_earth_fails():
 def test_relay_never_reduces_direct_to_earth():
     # At a good comms site DTE is already high; effective must be >= DTE, never worse.
     r = analysis.analyze(-89.45, 222.6, START, END)
-    assert r["commsEffective"]["summary"]["percentOfMission"] + 1e-9 >= r["communication"]["summary"]["percentOfMission"]
+    assert (r["commsEffective"]["summary"]["percentOfMission"] + 1e-9
+            >= r["communication"]["summary"]["percentOfMission"])
 
 
 def test_single_relay_has_real_gaps_not_always_on():

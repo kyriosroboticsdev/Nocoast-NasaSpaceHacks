@@ -32,6 +32,7 @@ import {
   type PathfindResult,
 } from './science/backend';
 import { assessMission, type MissionAssessment } from './assess/windows';
+import { assessBackendMission } from './science/assessment';
 import {
   DATE_SLIP_OFFSETS_DAYS,
   authorityBadge,
@@ -326,7 +327,7 @@ async function computeSlot(state: ScenarioState, slot: 'A' | 'B', override?: {
     const backendHorizon = backend ? backendHorizonProfile(backend, sc.siteId) : null;
     if (backend && backendHorizon) {
       if (slot === 'A' && !override) lastPrimaryHorizon = backendHorizon;
-      return assessMission({
+      return assessBackendMission(backend, {
         siteId: sc.siteId,
         siteLabel: coords.label,
         horizonModel: backendHorizon.model,
@@ -336,6 +337,7 @@ async function computeSlot(state: ScenarioState, slot: 'A' | 'B', override?: {
         durationHours: state.durationHours,
         scrubUtc: override?.startUtc ?? state.scrubUtc,
         thresholds: state.thresholds,
+        missionSettings: state.missionSettings,
       });
     }
   }
@@ -960,7 +962,7 @@ function renderSearchList(rows: SearchHit[]) {
   const list = el('search-list');
   list.replaceChildren();
   if (!rows.length) {
-    list.innerHTML = '<p class="empty-hint">Solar ranking requires matching ephemeris and validated terrain. The current analytic search grid cannot support power rankings.</p>';
+    list.innerHTML = '<p class="empty-hint">Solar ranking requires matching ephemeris and measured terrain. The current analytic search grid cannot support power rankings.</p>';
     return;
   }
   rows.forEach((row, i) => {
@@ -1034,7 +1036,7 @@ function renderDateList(rows: DateSuggestion[]) {
   const list = el('date-list');
   list.replaceChildren();
   if (!rows.length) {
-    list.innerHTML = '<p class="empty-hint">Suggest dates to compare validated terrain cases. Incomplete or preliminary solar cases are excluded.</p>';
+    list.innerHTML = '<p class="empty-hint">Suggest dates to compare complete measured-terrain cases. Incomplete or preliminary solar cases are excluded.</p>';
     return;
   }
   rows.slice(0, 6).forEach((row, i) => {

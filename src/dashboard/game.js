@@ -17,7 +17,7 @@ const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
  * Returns the parts too, so the UI can show an honest breakdown rather than a mystery number.
  */
 export function gameScore({ mission, verdict, capacityWh }) {
-  if (!mission || mission.error || verdict === "unknown") {
+  if (!mission || mission.error || verdict === "unknown" || verdict === "preliminary") {
     return { total: null, reliability: null, efficiency: null, verdict, note: "Not enough data to score — pick a site and date the model can judge." };
   }
   const base = mission.viability?.score;

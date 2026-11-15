@@ -425,3 +425,5 @@ body[data-panel="dates"] :is(.equipment-only,#needs-box,#panel-box,#relay-box,.m
   .mission-workspace .map-panel { top: 100px; }
   .mission-workspace .scene-now { top: 104px; }
 }
+
+.v-preliminary, .d-preliminary { background: var(--caution); color: #1d1606; }

@@ -4,9 +4,15 @@ Research date: November 14, 2026. Status: recommended implementation contract fo
 
 Published facts are cited. Site selection, numerical sampling settings, date limits, observer height, and module assignments below are project decisions. They are not NASA requirements or statements of mission approval.
 
-## 1. Fixed sites and stable IDs
+Implementation extension (2026-11-15): CR1/SR1 remain the original reference
+sites. Power scenarios now also accept other catalog IDs and custom coordinates
+when actual observer-specific Sun range/direction and terrain visibility are
+available. The frame, 2 m observer, time, units and missing-data requirements below
+continue to apply. The input contract documents the coordinate extension.
 
-Use two published illumination-study points, retaining their coordinates without snapping to a DEM pixel or moving to a nearby maximum:
+## 1. Original reference sites and stable IDs
+
+The initial two published illumination-study points retain their coordinates without snapping to a DEM pixel or moving to a nearby maximum:
 
 | Project ID | Display name | Published label | Latitude, degrees north | Longitude, degrees east | PGDA tile |
 | --- | --- | --- | ---: | ---: | --- |

@@ -165,16 +165,16 @@ test('azimuth wrapping and range interpolation agree between provider and adapte
   assert.deepEqual(f.provider.get('sun', utc), { utc, ...s.sun });
 });
 
-test('preliminary horizons display power but cannot enter mission rankings', () => {
+test('measured horizons can enter mission rankings without a validation declaration', () => {
   const f = fixture(); const a = assessMission(f);
-  assert.ok(a.meanPowerW > 0); assert.equal(a.viability, 'UNKNOWN');
-  assert.equal(a.solar.summary.eligibleForTerrainComparison, false);
-  assert.equal(rankAssessments([{ siteId: SITE, label: 'CR1', publishedLabel: 'CR1', assessment: a }]).length, 0);
-  assert.deepEqual(buildDateSuggestions(a, [{ offsetDays: 1, startUtc: START, assessment: a }]), []);
+  assert.ok(a.meanPowerW > 0);
+  assert.equal(a.solar.summary.eligibleForTerrainComparison, true);
+  assert.equal(rankAssessments([{ siteId: SITE, label: 'CR1', publishedLabel: 'CR1', assessment: a }]).length, 1);
   f.horizon.validation = { status: 'validated', algorithmVersion: 'unit-test-only' };
   const validated = assessMission(f);
-  assert.equal(validated.solar.summary.eligibleForTerrainComparison, true);
-  assert.equal(rankAssessments([{ siteId: SITE, label: 'CR1', publishedLabel: 'CR1', assessment: validated }]).length, 1);
+  assert.equal(validated.viability, a.viability);
+  assert.equal(validated.mission.viability.requirementsMet, a.mission.viability.requirementsMet);
+  assert.equal(validated.meanPowerW, a.meanPowerW);
 });
 
 test('unsupported sites/dates retain unknown solar and invalid duration is rejected', () => {

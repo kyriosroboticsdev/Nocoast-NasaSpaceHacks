@@ -19,13 +19,28 @@ Use the complete, importable [contract-example.json](contract-example.json). Req
 | `artifactId`, `scenarioId`, `label` | Nonempty identities/name; IDs represent immutable inputs |
 | `generatedAtUtc` | Real generation timestamp, `YYYY-MM-DDTHH:mm:ssZ` |
 | `frameId` | `MOON_ME_DE421` |
-| `siteId` | `connecting-ridge-cr1` or `shackleton-rim-sr1` |
-| `site` | Exact shared `latitudeDeg`, `longitudeEastDeg`, interpolated `surfaceElevationM`, `referenceRadiusM:1737400` |
+| `siteId` | Stable catalog ID or coordinate-based ID; no two-site whitelist. Legacy CR1/SR1 IDs retain their original coordinates. |
+| `site` | Actual observer `latitudeDeg` in [-90,90], canonical `longitudeEastDeg` in [0,360), terrain-derived `surfaceElevationM`, `referenceRadiusM:1737400` |
 | `observerHeightAboveGroundM` | `2`; ephemeris and horizon must use this same observer |
 | `time` | `startUtc`, `endUtc`, `baseStepSeconds:600`, `visibilityInterpolation:"previous-sample-hold"` |
 | `provenance.ephemeris` | `provider` plus source request/version metadata |
 | `provenance.visibility` | `provider`, `mode`, `sunModel`, and terrain horizon identity when applicable |
 | `samples` | Strictly increasing samples including exact mission start **and** end boundary |
+
+Coordinate extension (schema remains `0.1.0`): the power equations are unchanged.
+The original two IDs are retained for replay compatibility, not used as a list of
+supported positions. Named catalog sites and custom map points can supply their
+own matching observer coordinates, surface elevation, Sun geometry and terrain
+visibility. A custom ID must not be assigned a different point's input. IDs are
+nonempty strings; the backend uses canonical coordinate IDs for custom points.
+
+Inputs must still agree in frame, coordinates, surface elevation, observer height
+and time. Unknown terrain elevation prevents construction of a complete scenario;
+missing Sun range or visibility remains unknown, never a zero-power claim or a
+substitute 1 AU. Numerical coverage does not declare terrain validation. The live
+backend calculates geometry for each requested mission window, caches reusable
+terrain/geometry, and the browser recalculates watts and battery dispatch whenever
+panel or equipment settings change. No fixed-site power lookup is required.
 
 Each sample:
 

@@ -8,6 +8,7 @@
  * running (a static deploy, or the offline demo path), callers fall back to the existing bundled/sphere
  * pipeline exactly as before.
  */
+import type { SolarInput } from '../power/model.mjs';
 import type { HorizonBin, HorizonProfile } from '../horizon/types';
 import type { BodyId, EphemerisSeries } from '../ephemeris/types';
 import type { EphemerisProvider } from '../ephemeris/horizons';
@@ -23,7 +24,11 @@ export type BackendSummary = {
   unknownSeconds: number;
 };
 
+type BackendWindow = { startUtc: string; endUtc: string; durationSeconds: number };
+type BackendBlock = { windows: BackendWindow[]; blackouts: BackendWindow[]; unknown: BackendWindow[]; summary: BackendSummary };
 export type BackendAnalysis = {
+  solarInput?: SolarInput | null;
+  solarInputUnavailableReason?: string | null;
   site: {
     latitudeDeg: number;
     longitudeEastDeg: number;
@@ -45,9 +50,9 @@ export type BackendAnalysis = {
     earthAzimuthDeg: (number | null)[];
     earthElevationDeg: (number | null)[];
   };
-  communication: { summary: BackendSummary };
-  sun: { summary: BackendSummary };
-  sunAndCommunication: { summary: BackendSummary };
+  communication: BackendBlock;
+  sun: { sunlitWindows: BackendWindow[]; darkPeriods: BackendWindow[]; unknown: BackendWindow[]; summary: BackendSummary };
+  sunAndCommunication: { windows: BackendWindow[]; unknown: BackendWindow[]; summary: BackendSummary };
   /** Simplified fixed-mount directional antenna (extension, not in contract v0.1) — present only
    * when the caller passes `antennaPointing`; otherwise `{modeled: false}`. See backend/analysis.py
    * `antenna_link_quality()`: no gain pattern, multipath, or DSN scheduling, angles only. */
@@ -68,7 +73,7 @@ export type AntennaPointing = {
   beamwidthDeg?: number;
 };
 
-const TIMEOUT_MS = 2500;
+const TIMEOUT_MS = 30000;
 const cache = new Map<string, Promise<BackendAnalysis | null>>();
 
 /** GET /api/analyze for an arbitrary (lat, lon, window) — cached per exact query within this session.
@@ -85,7 +90,7 @@ export function fetchBackendAnalysis(
   const pointingKey = antennaPointing
     ? `${antennaPointing.boresightAzimuthDeg}:${antennaPointing.boresightElevationDeg}:${antennaPointing.beamwidthDeg ?? ''}`
     : '';
-  const key = `${latDeg}:${lonEastDeg}:${startUtc}:${endUtc}:${antennaMinElevationDeg ?? ''}:${pointingKey}`;
+  const key = `${baseUrl}:${latDeg}:${lonEastDeg}:${startUtc}:${endUtc}:${antennaMinElevationDeg ?? ''}:${pointingKey}`;
   const hit = cache.get(key);
   if (hit) return hit;
 
@@ -103,17 +108,17 @@ export function fetchBackendAnalysis(
   }
 
   const promise = (async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
       const res = await fetch(apiUrl(`api/analyze?${params}`, baseUrl), { signal: controller.signal });
-      clearTimeout(timer);
       if (!res.ok) return null;
       return (await res.json()) as BackendAnalysis;
     } catch {
       return null; // backend not running — caller falls back to the bundled/sphere pipeline
-    }
+    } finally { clearTimeout(timer); }
   })();
+  void promise.then(result => { if (!result) cache.delete(key); });
   cache.set(key, promise);
   return promise;
 }
@@ -167,6 +172,7 @@ export function backendHorizonProfile(a: BackendAnalysis, siteId: string): Horiz
     distanceM: null,
     status: v == null ? 'gap' : 'ok',
   }));
+  if (a.site.surfaceElevationM == null) return null;
   const fiveMeter = a.site.terrainQuality === 'contract';
   return {
     schemaVersion: '1.0',
@@ -175,7 +181,7 @@ export function backendHorizonProfile(a: BackendAnalysis, siteId: string): Horiz
     observer: {
       latitudeDeg: a.site.latitudeDeg,
       longitudeEastDeg: a.site.longitudeEastDeg,
-      surfaceElevationM: a.site.surfaceElevationM ?? 0,
+      surfaceElevationM: a.site.surfaceElevationM,
       heightAboveGroundM: 2,
     },
     spacingDeg: azimuthStepDeg,

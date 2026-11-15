@@ -124,7 +124,7 @@ function renderOptimization(report: OptimizationReport) {
   const host = el('optimization-results'); host.replaceChildren();
   note(host, `Best tested fixed orientations on a ${report.grid.stepDeg}° grid, including the current orientation. ${report.scenarioEvaluations} scenario evaluations. ` +
     'Order: least worst-case unserved Wh, shortest worst outage, highest minimum score, final battery Wh, then harvested Wh.');
-  if (report.ranked.some(r => !r.qualifiedForMissionDecision)) note(host, 'Preliminary engineering comparison: upstream terrain validation is pending. This is not a certified landing recommendation.');
+  if (report.ranked.some(r => !r.qualifiedForMissionDecision)) note(host, 'Illustrative engineering comparison: measured terrain inputs are unavailable. This is not a certified landing recommendation.');
   if (!report.comparisonComplete) note(host, 'Comparison incomplete: only sites with all requested scenarios known are ranked.');
   if (report.ranked.length) {
     const body = table(host, ['Site', 'Tilt / facing', 'Worst unserved', 'Worst outage', 'Min score', '']);

@@ -209,6 +209,7 @@ def analyze(lat: float, lon: float, start: datetime, end: datetime, antenna_min:
             "relayVisible": vis(base["relay_vis"]) if relay_cfg is not None else None,
             "earthOrRelayVisible": vis(base["comm_vis"]) if relay_cfg is not None else None,
             "sunAngularRadiusDeg": r(base["sun_r"]), "earthAngularRadiusDeg": r(base["earth_r"]),
+            "sunDistanceKm": r(base["sun_dist_km"], 3), "earthDistanceKm": r(base["earth_dist_km"], 3),
             "sunEnu": [r(v, 6) for v in base["sun_enu"]], "earthEnu": [r(v, 6) for v in base["earth_enu"]],
             # extension (not in contract v0.1): Earth's north pole and prime meridian as ENU unit vectors
             "earthNorthPoleEnu": [r(v, 4) for v in base["earth_pole_enu"]],

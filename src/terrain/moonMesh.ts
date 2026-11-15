@@ -149,7 +149,7 @@ function buildIndexVariant(mask: number): IndexVariant {
 type Patch = {
   key: number;
   level: number;
-  fill: T.Mesh<T.BufferGeometry, T.MeshBasicMaterial>;
+  fill: T.Mesh<T.BufferGeometry, T.MeshBasicMaterial | T.MeshStandardMaterial>;
   wire: T.LineSegments<T.BufferGeometry, T.LineBasicMaterial>;
   /** Stitch mask the index buffers are currently set to (−1 = none yet). */
   mask: number;
@@ -181,12 +181,15 @@ export type MoonMesh = {
   /** Nominal cell edge of a level in metres. */
   cellMeters: (level: number) => number;
   stats: () => MoonMeshStats;
+  invalidateHeights: (intersects: (center: T.Vector3, radius: number) => boolean) => void;
+  dispose: () => void;
 };
 
 export function createMoonMesh(options: {
   radius: number;
   center: T.Vector3;
   field: HeightField;
+  shadedMaterial?: T.MeshStandardMaterial;
 }): MoonMesh {
   const { radius, field } = options;
   const cx = options.center.x;
@@ -213,6 +216,7 @@ export function createMoonMesh(options: {
     `);
   };
   const wireMaterial = new T.LineBasicMaterial({ color: WIRE_COLOR });
+  const shaded = options.shadedMaterial;
 
   const variants: (IndexVariant | undefined)[] = [];
   const variant = (mask: number) => (variants[mask] ??= buildIndexVariant(mask));
@@ -256,6 +260,15 @@ export function createMoonMesh(options: {
 
     const positions = new Float32Array(VERTS * VERTS * 3);
     const colors = new Float32Array(VERTS * VERTS * 3);
+    const directions = shaded ? new Float32Array(positions.length) : undefined;
+    const normals = shaded ? new Float32Array(positions.length) : undefined;
+    const radial = new T.Vector3(), east = new T.Vector3(), north = new T.Vector3();
+    const normal = new T.Vector3(), sample = new T.Vector3();
+    const sampleStep = 15;
+    function heightAlong(tangent: T.Vector3, distance: number) {
+      sample.copy(radial).addScaledVector(tangent, distance / radius).normalize();
+      return field.height(sample.x, sample.y, sample.z);
+    }
     for (let i = 0; i < VERTS; i++) warpedU[i] = warp(u0 + i * step);
     let maxSq = 0;
     let o = 0;
@@ -270,7 +283,21 @@ export function createMoonMesh(options: {
         const dx = px * inv;
         const dy = py * inv;
         const dz = pz * inv;
+        if (directions) directions.set([dx,dy,dz],o);
         const h = field.height(dx, dy, dz);
+        if (normals) {
+          // Sample a common surface at shared vertices, independent of patch LOD.
+          radial.set(dx, dy, dz);
+          normal.copy(radial);
+          if (dy > 0.998) {
+            east.set(dy, -dx, 0).normalize();
+            north.crossVectors(radial, east);
+            const slopeEast = (heightAlong(east, sampleStep) - heightAlong(east, -sampleStep)) / (2 * sampleStep);
+            const slopeNorth = (heightAlong(north, sampleStep) - heightAlong(north, -sampleStep)) / (2 * sampleStep);
+            normal.addScaledVector(east, -slopeEast).addScaledVector(north, -slopeNorth).normalize();
+          }
+          normal.toArray(normals, o);
+        }
         const r = radius + h;
         const x = cx + dx * r - ox;
         const y = cy + dy * r - oy;
@@ -293,12 +320,14 @@ export function createMoonMesh(options: {
     const fillGeometry = new T.BufferGeometry();
     fillGeometry.setAttribute('position', position);
     fillGeometry.setAttribute('color', new T.BufferAttribute(colors, 3));
+    if (directions) fillGeometry.setAttribute('moonDirection', new T.BufferAttribute(directions, 3));
+    if (normals) fillGeometry.setAttribute('normal', new T.BufferAttribute(normals, 3));
     fillGeometry.boundingSphere = bounds;
     const wireGeometry = new T.BufferGeometry();
     wireGeometry.setAttribute('position', position);
     wireGeometry.boundingSphere = bounds.clone();
 
-    const fill = new T.Mesh(fillGeometry, fillMaterial);
+    const fill = new T.Mesh(fillGeometry, shaded ?? fillMaterial);
     const wire = new T.LineSegments(wireGeometry, wireMaterial);
     for (const object of [fill, wire]) {
       object.position.set(ox, oy, oz);
@@ -410,7 +439,6 @@ export function createMoonMesh(options: {
       return Math.max(1, Math.hypot(qx - px * inv * r, qy - py * inv * r, qz - pz * inv * r));
     }
 
-    const mergePx = splitPx * MERGE_RATIO;
     const nextByDistance = new Set<number>();
     /** Every node that is split this frame, by distance or to keep the tree balanced. */
     const split = new Set<number>();
@@ -423,9 +451,12 @@ export function createMoonMesh(options: {
       const key = nodeKey(face, level, ix, iy);
       if (level < MOON_MESH_MAX_LEVEL) {
         const size = 2 / 2 ** level;
-        const distance = nearestDistance(face, -1 + ix * size, -1 + iy * size, size);
+        const u = -1 + ix * size, v = -1 + iy * size;
+        const distance = nearestDistance(face, u, v, size);
         const cellPx = cellMeters(level) / (distance * pixelAngle);
-        if (cellPx > (splitByDistance.has(key) ? mergePx : splitPx)) {
+        const polar = shaded && face === 1 && u < 0.075 && u + size > -0.075 && v < 0.075 && v + size > -0.075;
+        const threshold = polar ? Math.min(splitPx, 7) : splitPx;
+        if (cellPx > threshold * (splitByDistance.has(key) ? MERGE_RATIO : 1)) {
           nextByDistance.add(key);
           split.add(key);
           for (let c = 0; c < 4; c++) visit(face, level + 1, ix * 2 + (c & 1), iy * 2 + (c >> 1));
@@ -536,15 +567,17 @@ export function createMoonMesh(options: {
         patch.mask = leaf.mask;
         changed = true;
       }
-      if (!shown.has(leaf.key)) {
-        group.add(patch.fill, patch.wire);
+      if (shown.get(leaf.key) !== patch) {
+        group.add(patch.fill);
+        if (!shaded) group.add(patch.wire);
         changed = true;
       }
       next.set(leaf.key, patch);
     }
     for (const [key, patch] of shown) {
-      if (next.has(key)) continue;
+      if (next.get(key) === patch) continue;
       group.remove(patch.fill, patch.wire);
+      if (cache.get(key) !== patch) disposePatch(patch);
       changed = true;
     }
     shown = next;
@@ -594,5 +627,23 @@ export function createMoonMesh(options: {
     return { patches: shown.size, triangles, lineSegments, perLevel, finestLevel, cached: cache.size, pending };
   }
 
-  return { group, update, intersect, levelAt, cellMeters, stats };
+  function dispose() {
+    group.clear();
+    for (const patch of new Set([...cache.values(), ...shown.values()])) disposePatch(patch);
+    cache.clear();
+    shown.clear();
+    fillMaterial.dispose();
+    wireMaterial.dispose();
+  }
+
+  function invalidateHeights(intersects: (center: T.Vector3, radius: number) => boolean) {
+    for (const [key, patch] of cache) {
+      if (!intersects(patch.fill.position, patch.fill.geometry.boundingSphere!.radius)) continue;
+      cache.delete(key);
+      if (shown.get(key) !== patch) disposePatch(patch);
+      lastView = '';
+    }
+  }
+
+  return { group, update, intersect, levelAt, cellMeters, stats, invalidateHeights, dispose };
 }

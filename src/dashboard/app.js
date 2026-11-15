@@ -322,7 +322,7 @@ function renderSources() {
 let sky3d = null;
 function drawScene(r) {
   if (!sky3d) {
-    try { sky3d = createSkyView($("sky3d")); }
+    try { sky3d = createSkyView($("sky3d")); setView(state.view); }
     catch { $("sky3d").innerHTML = `<p class="scene-empty">This browser can't show 3D (WebGL is off). The results below still work.</p>`; sky3d = false; }
   }
   if (!sky3d) return;
@@ -340,12 +340,12 @@ $("reset-view").addEventListener("click", () => sky3d?.resetView());
 
 // Both viewpoints use the same scene and the same site/time data.
 function setView(v) {
-  state.view = v === "terrain" ? "terrain" : "site";
+  state.view = v === "globe" || v === "terrain" ? v : "site";
   document.querySelectorAll("#view-seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === state.view)));
-  document.querySelector(".scene-hint").textContent = state.view === "terrain"
+  document.querySelector(".scene-hint").textContent = state.view !== "site"
     ? "Drag to orbit · Middle-drag to pan · Scroll to zoom"
     : "Drag to look around · Scroll to zoom";
-  if (sky3d) sky3d.setMode(state.view === "terrain" ? "bird" : "lander");
+  if (sky3d) sky3d.setMode(state.view === "globe" ? "globe" : state.view === "terrain" ? "bird" : "lander");
 }
 document.querySelectorAll("#view-seg button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
 function paintLandingSun(r) {

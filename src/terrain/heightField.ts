@@ -68,8 +68,11 @@ export function parseGlobalLdem(buffer: ArrayBuffer): GlobalLdem {
   return { width, height, ppd, lonWestDeg, latNorthDeg, metersPerUnit, values };
 }
 
-export function createHeightField(radius: number, polar: PolarGrid, ldem: GlobalLdem): HeightField {
-  const { width: W, height: H, ppd, lonWestDeg, latNorthDeg, metersPerUnit, values } = ldem;
+export function createHeightField(radius: number, polar: PolarGrid, ldem?: GlobalLdem): HeightField {
+  const { width: W, height: H, ppd, lonWestDeg, latNorthDeg, metersPerUnit, values } = ldem ?? {
+    width: 1, height: 1, ppd: 1/360, lonWestDeg: -180, latNorthDeg: 90,
+    metersPerUnit: 1, values: new Int16Array(1),
+  };
   const DEG = 180 / Math.PI;
 
   // The cylindrical grid has no sample at the poles; use each end row's mean
@@ -158,6 +161,7 @@ export function createHeightField(radius: number, polar: PolarGrid, ldem: Global
       }
     }
     if (weight >= 1) return lola;
+    if (!ldem) return lola * weight;
     const latDeg = Math.asin(Math.min(1, Math.max(-1, -dy))) * DEG;
     const lonDeg = Math.atan2(dx, -dz) * DEG;
     const global = ldemHeight(latDeg, lonDeg);

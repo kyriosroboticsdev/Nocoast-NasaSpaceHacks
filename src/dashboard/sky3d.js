@@ -7,6 +7,9 @@
 // but each is placed so its angle above the horizon is exactly what the science API computed.
 import * as THREE from "three";
 import { apiUrl } from "../apiBase.ts";
+import { createHeightField } from "../terrain/heightField";
+import { createMoonMesh } from "../terrain/moonMesh";
+import { createPolarDetail } from "../terrain/polarDetail";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
@@ -15,13 +18,102 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 const EYE = 2;              // contract observer height (m)
 const RING_R = 9000;        // horizon wall distance (m)
 const PATH_R = 11800;       // Sun/Earth path radius (m), beyond the wall so the hills hide it
-const SKY_R = 12000;        // Sun/Earth distance (m)
+const SKY_R = 12000;        // Radius of the local compass guide (m)
+const MOON_RADIUS = 1737400;
+const SUN_RADIUS = 695700000;
+const EARTH_RADIUS = 6371000;
+const CAMERA_FAR = 180000000000;
 const NEAR = { half: 620, n: 249 };    // 5 m detail around the lander
 const FAR = { half: 8400, n: 241 };    // 70 m out to the horizon wall
-const BIRD_SCALE = 5;       // Sun/Earth enlargement in bird's-eye view
 const SUN_C = 0xffc83d, EARTH_C = 0x4fb8ff;
 
 const w = (v) => new THREE.Vector3(v[0], v[2], -v[1]);
+const distanceMeters = (km, radius, angularRadius) =>
+  km == null ? radius / Math.sin(THREE.MathUtils.degToRad(angularRadius)) : km * 1000;
+
+// Convert the global Moon frame (+Y south pole, +X 90°E) to local E/U/S.
+function siteRotation(latitude, longitude) {
+  const lat = THREE.MathUtils.degToRad(latitude), lon = THREE.MathUtils.degToRad(longitude);
+  const sl = Math.sin(lat), cl = Math.cos(lat), so = Math.sin(lon), co = Math.cos(lon);
+  return new THREE.Matrix4().makeBasis(
+    new THREE.Vector3(co,0,so),
+    new THREE.Vector3(cl*so,-sl,-cl*co),
+    new THREE.Vector3(sl*so,cl,-sl*co),
+  ).transpose();
+}
+
+async function loadPolarField() {
+  const response = await fetch(import.meta.env.BASE_URL+"terrain/polar-overview.bin");
+  if (!response.ok) throw new Error("Could not load the LOLA overview");
+  const polar = await response.arrayBuffer();
+  const header = new DataView(polar);
+  return createHeightField(MOON_RADIUS, {
+    x:header.getInt32(0,true), y:header.getInt32(4,true), width:header.getUint32(8,true),
+    spacing:320, values:new Float32Array(polar,12),
+  });
+}
+
+function globeMaterial(polarDetail) {
+  const imagery = new THREE.TextureLoader().load(import.meta.env.BASE_URL+"terrain/lroc-color-2k.jpg");
+  imagery.colorSpace = THREE.SRGBColorSpace;
+  imagery.wrapS = THREE.RepeatWrapping;
+  imagery.anisotropy = 8;
+  const material = new THREE.MeshStandardMaterial({ roughness: 1 });
+  material.onBeforeCompile = shader => {
+    shader.uniforms.lunarImagery = { value: imagery };
+    shader.uniforms.polarDetail = polarDetail;
+    shader.vertexShader = `attribute vec3 moonDirection;
+      varying vec3 vMoonDirection;
+      ${shader.vertexShader}`.replace("#include <begin_vertex>",
+      "#include <begin_vertex>\nvMoonDirection = moonDirection;");
+    shader.fragmentShader = `uniform sampler2D lunarImagery;
+      uniform float polarDetail;
+      varying vec3 vMoonDirection;
+      ${shader.fragmentShader}`.replace("#include <map_fragment>", `
+      vec3 d = normalize(vMoonDirection);
+      float longitude = dot(d.xz, d.xz) > 1e-12 ? atan(d.x, -d.z) : 0.0;
+      vec2 uv = vec2(0.5 + longitude / 6.2831853, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / 3.1415927);
+      vec2 dx = dFdx(uv), dy = dFdy(uv);
+      dx.x -= round(dx.x);
+      dy.x -= round(dy.x);
+      vec3 photo = textureGrad(lunarImagery, uv, dx, dy).rgb;
+      // Use neutral regolith where the polar DEM supplies the surface detail.
+      float relief = polarDetail * smoothstep(0.9983, 0.99875, d.y);
+      diffuseColor.rgb *= mix(photo, vec3(0.21), relief);
+    `);
+  };
+  return material;
+}
+
+function withSiteDetail(field, rotation, near) {
+  const basis = rotation.elements;
+  const referenceRadius = MOON_RADIUS + (near.siteElevationM ?? 0);
+  const grids = [near].map(({ n, halfExtentM, heightsM }) => ({
+    n, halfExtentM, heightsM, step: 2 * halfExtentM / (n - 1),
+  }));
+  return {
+    ...field,
+    height(dx, dy, dz) {
+      let height = field.height(dx, dy, dz);
+      if (dy < 0.998) return height;
+      const east = referenceRadius * (basis[0]*dx + basis[4]*dy + basis[8]*dz);
+      const north = -referenceRadius * (basis[2]*dx + basis[6]*dy + basis[10]*dz);
+      for (const { n, halfExtentM, heightsM, step } of grids) {
+        const edge = halfExtentM - Math.max(Math.abs(east), Math.abs(north));
+        if (edge <= 0) continue;
+        const u = (east + halfExtentM)/step, v = (north + halfExtentM)/step;
+        const i = Math.min(n-2, Math.floor(u)), j = Math.min(n-2, Math.floor(v));
+        const k = j*n+i;
+        const a = heightsM[k], b = heightsM[k+1], c = heightsM[k+n], d = heightsM[k+n+1];
+        if (a == null || b == null || c == null || d == null) continue;
+        const up = THREE.MathUtils.lerp(THREE.MathUtils.lerp(a,b,u-i), THREE.MathUtils.lerp(c,d,u-i), v-j);
+        const sample = Math.hypot(east,north,referenceRadius+up) - MOON_RADIUS;
+        height = THREE.MathUtils.lerp(height, sample, THREE.MathUtils.smoothstep(edge,0,8*step));
+      }
+      return height;
+    },
+  };
+}
 const dirAzEl = (azDeg, elDeg) => {
   const a = THREE.MathUtils.degToRad(azDeg), e = THREE.MathUtils.degToRad(elDeg);
   return new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));
@@ -155,9 +247,9 @@ export function createSkyView(container) {
   const overlay = document.createElement("div"); overlay.className = "sky3d-labels"; container.appendChild(overlay);
 
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x000000);
-  const camera = new THREE.PerspectiveCamera(70, 1, 0.5, 30000);
+  const camera = new THREE.PerspectiveCamera(70, 1, 0.5, CAMERA_FAR);
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true; controls.minDistance = 300; controls.maxDistance = 70000; controls.enabled = false;
+  controls.enableDamping = true; controls.minDistance = 300; controls.maxDistance = 14000000; controls.enabled = false;
   controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
 
   // stars (decorative), always centred on the camera so they sit behind everything
@@ -174,6 +266,38 @@ export function createSkyView(container) {
     p.renderOrder = -10; p.frustumCulled = false; return p;
   })();
   scene.add(stars);
+  const globeLayer = new THREE.Group();
+  globeLayer.position.y = -MOON_RADIUS;
+  scene.add(globeLayer);
+  let moonMesh;
+  let polarField, siteDetail;
+  const polarTiles = createPolarDetail(MOON_RADIUS, bounds => {
+    moonMesh?.invalidateHeights((center, radius) => {
+      if (center.y + radius < MOON_RADIUS * 0.99) return false;
+      const scale = 2 * MOON_RADIUS / (center.length() + center.y);
+      const x = center.x * scale, y = -center.z * scale, reach = radius * 1.15;
+      return x + reach >= bounds.left && x - reach <= bounds.right
+        && y + reach >= bounds.bottom && y - reach <= bounds.top;
+    });
+  });
+  const polarDetail = { value: 0 };
+  const shadedMaterial = globeMaterial(polarDetail);
+  const meshCamera = new THREE.PerspectiveCamera();
+  function updateGlobeField() {
+    if (!polarField) return;
+    if (moonMesh) {
+      globeLayer.remove(moonMesh.group);
+      moonMesh.dispose();
+    }
+    const tiledField = polarTiles.enhance(polarField);
+    const field = siteDetail ? withSiteDetail(tiledField,...siteDetail) : tiledField;
+    moonMesh = createMoonMesh({ radius: MOON_RADIUS, center: new THREE.Vector3(), field, shadedMaterial });
+    globeLayer.add(moonMesh.group);
+  }
+  void loadPolarField().then(field => {
+    polarField = field;
+    updateGlobeField();
+  }).catch(error => console.error("LOLA globe unavailable",error));
 
   // light: the Sun (shadows from local hills and from the horizon wall), plus faint earthshine
   const sunDir = new THREE.Vector3(0, 1, 0);
@@ -293,6 +417,11 @@ export function createSkyView(container) {
       return;
     }
     if (key !== st.siteKey) return;
+    globeLayer.position.y = -MOON_RADIUS-(near.siteElevationM ?? 0);
+    const rotation = siteRotation(site.lat,site.lon);
+    globeLayer.quaternion.setFromRotationMatrix(rotation);
+    siteDetail = [rotation, near];
+    updateGlobeField();
     for (const m of [nearMesh, farMesh]) if (m) { scene.remove(m); m.geometry.dispose(); }
     nearMesh = new THREE.Mesh(gridGeometry(near, 40), nearMat);
     farMesh = new THREE.Mesh(gridGeometry(far, 700, NEAR.half - 20, true), farMat);
@@ -354,14 +483,13 @@ export function createSkyView(container) {
   function setTime(i) {
     st.i = i;
     const r = st.r; if (!r) return;
-    const s = r.series, scale = st.mode === "bird" ? BIRD_SCALE : 1;
+    const s = r.series;
     sunDir.copy(w(s.sunEnu[i])).normalize();
     const eDir = w(s.earthEnu[i]).normalize();
-    sun.position.copy(sunDir).multiplyScalar(SKY_R).add(new THREE.Vector3(0, EYE, 0));
-    const sunR = SKY_R * Math.tan(THREE.MathUtils.degToRad(s.sunAngularRadiusDeg[i])) * scale;
-    sunCore.scale.setScalar(sunR); sunGlow.scale.setScalar(sunR * 34);
-    earth.position.copy(eDir).multiplyScalar(SKY_R).add(new THREE.Vector3(0, EYE, 0));
-    earth.scale.setScalar(SKY_R * Math.tan(THREE.MathUtils.degToRad(s.earthAngularRadiusDeg[i])) * scale);
+    sun.position.copy(sunDir).multiplyScalar(distanceMeters(s.sunDistanceKm?.[i],SUN_RADIUS,s.sunAngularRadiusDeg[i])).y += EYE;
+    sunCore.scale.setScalar(SUN_RADIUS); sunGlow.scale.setScalar(SUN_RADIUS * 34);
+    earth.position.copy(eDir).multiplyScalar(distanceMeters(s.earthDistanceKm?.[i],EARTH_RADIUS,s.earthAngularRadiusDeg[i])).y += EYE;
+    earth.scale.setScalar(EARTH_RADIUS);
     if (s.earthNorthPoleEnu) {
       const P = w(s.earthPrimeMeridianEnu[i]).normalize(), N = w(s.earthNorthPoleEnu[i]).normalize();
       const Z = new THREE.Vector3().crossVectors(N, P).negate();          // sphere-local -Z = 90°E
@@ -378,7 +506,7 @@ export function createSkyView(container) {
   // ---------------------------------------------------------------- camera
   function applyLanderCamera() {
     const d = dirAzEl(st.yaw, st.pitch);
-    camera.position.set(0, EYE + st.lift, 0); camera.fov = st.fov; camera.near = 0.5; camera.far = 30000;
+    camera.position.set(0, EYE + st.lift, 0); camera.fov = st.fov; camera.near = 0.5;
     camera.lookAt(d.add(camera.position)); camera.updateProjectionMatrix();
   }
   let flight = null;
@@ -386,17 +514,24 @@ export function createSkyView(container) {
     const from = camera.position.clone(), fromQ = camera.quaternion.clone(), fromFov = camera.fov;
     st.mode = mode;
     controls.enabled = false;
+    controls.minDistance = mode === "globe" ? MOON_RADIUS+15000 : 300;
     landerModel.visible = mode === "bird";
+    guide.visible = pathGroup.visible = mode !== "globe";
     // The synthetic skyline is meaningful from the lander's eye height only.
-    if (wall) wall.visible = mode === "lander";
-    if (mode === "bird") {
-      camera.fov = 55; camera.near = .5; camera.far = 100000; camera.updateProjectionMatrix();
-      camera.position.set(2200, 3600, 4600); controls.target.set(0, 0, 0); camera.lookAt(controls.target);
+
+    if (mode === "globe") {
+      camera.fov = 45; camera.updateProjectionMatrix();
+      controls.target.copy(globeLayer.position);
+      camera.position.copy(controls.target).add(new THREE.Vector3(1800000,4700000,1400000));
+      camera.lookAt(controls.target);
+    } else if (mode === "bird") {
+      camera.fov = 55; camera.near = .5; camera.updateProjectionMatrix();
+      camera.position.set(1400, 5400, 1700); controls.target.set(0, 0, 0); camera.lookAt(controls.target);
     } else applyLanderCamera();
     setTime(st.i);
     if (!animate || matchMedia("(prefers-reduced-motion: reduce)").matches) {
       flight = null;
-      controls.enabled = mode === "bird";
+      controls.enabled = mode !== "lander";
       return;
     }
     flight = {start:performance.now(), from, fromQ, fromFov, to:camera.position.clone(), toQ:camera.quaternion.clone(), toFov:camera.fov};
@@ -461,13 +596,18 @@ export function createSkyView(container) {
   }
   function updateLabels() {
     const r = st.r, t = st.texts; if (!r) return;
-    const s = r.series, i = st.i, off = st.mode === "bird" ? BIRD_SCALE : 1;
+    const s = r.series, i = st.i;
     const lift = (p, rad) => p.clone().add(new THREE.Vector3(0, rad, 0));
-    place(label("sun", "sun"), lift(sun.position, sunCore.scale.x * 3 + 40 * off), s.sunVisible[i] ? t.sun : t.sunHidden);
-    place(label("earth", "earth"), lift(earth.position, earth.scale.x * 1.4 + 20 * off), s.earthVisible[i] ? t.earth : t.earthHidden);
-    label("sun", "sun").classList.toggle("hidden", !s.sunVisible[i]);
-    label("earth", "earth").classList.toggle("hidden", !s.earthVisible[i]);
-    for (const [name, az] of (t.compass || [])) place(label(`c${az}`, "compass"), dirAzEl(az, -0.6).multiplyScalar(SKY_R).setY(EYE - 40), name);
+    const local = st.mode === "lander";
+    place(label("sun", "sun"), lift(sun.position, SUN_RADIUS * 1.25), local && !s.sunVisible[i] ? t.sunHidden : t.sun);
+    place(label("earth", "earth"), lift(earth.position, EARTH_RADIUS * 1.25), local && !s.earthVisible[i] ? t.earthHidden : t.earth);
+    label("sun", "sun").classList.toggle("hidden", local && !s.sunVisible[i]);
+    label("earth", "earth").classList.toggle("hidden", local && !s.earthVisible[i]);
+    for (const [name, az] of (t.compass || [])) {
+      const direction = label(`c${az}`, "compass");
+      if (st.mode === "globe") direction.style.display = "none";
+      else place(direction, dirAzEl(az, -0.6).multiplyScalar(SKY_R).setY(EYE - 40), name);
+    }
     const lb = label("lander", "lander");
     if (st.mode === "bird") place(lb, new THREE.Vector3(0, 60, 0), t.lander); else lb.style.display = "none";
   }
@@ -489,8 +629,27 @@ export function createSkyView(container) {
       camera.quaternion.copy(flight.fromQ).slerp(flight.toQ,ease);
       camera.fov = THREE.MathUtils.lerp(flight.fromFov,flight.toFov,ease);
       camera.updateProjectionMatrix();
-      if (t === 1) { flight = null; controls.enabled = st.mode === "bird"; }
-    } else if (st.mode === "bird") controls.update();
+      if (t === 1) { flight = null; controls.enabled = st.mode !== "lander"; }
+    } else if (st.mode !== "lander") controls.update();
+    // Keep the original shaded terrain at eye level. At altitude use only
+    // the stitched LOLA surface, so a site patch cannot float over the globe.
+    const globeView = Boolean(moonMesh) && camera.position.length() > 900;
+    globeLayer.visible = globeView;
+    if (nearMesh) nearMesh.visible = !globeView;
+    if (farMesh) farMesh.visible = !globeView;
+    if (wall) wall.visible = !globeView;
+    if (globeView) {
+      meshCamera.position.copy(globeLayer.worldToLocal(camera.position.clone()));
+      polarDetail.value = 1 - THREE.MathUtils.smoothstep(meshCamera.position.length() - MOON_RADIUS,25000,160000);
+      meshCamera.fov = camera.fov;
+      meshCamera.zoom = camera.zoom;
+      meshCamera.aspect = camera.aspect;
+      meshCamera.quaternion.copy(globeLayer.quaternion).invert().multiply(camera.quaternion);
+      meshCamera.updateProjectionMatrix();
+      meshCamera.updateMatrixWorld();
+      if (polarField) polarTiles.update(meshCamera, -globeLayer.position.y, polarField.blendOuterM);
+      moonMesh.update(meshCamera,container.clientHeight);
+    }
     earthshine.intensity += (st.shine - earthshine.intensity) * 0.1;      // ease between day and night fill light
     stars.position.copy(camera.position); stars.scale.setScalar(camera.far * 0.8);
     renderer.render(scene, camera);

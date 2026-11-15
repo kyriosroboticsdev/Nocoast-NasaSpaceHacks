@@ -265,6 +265,37 @@ canvas:not(#skyline):not(#timeline) {
 .mk-compare { color: #b07dff; }
 .decision-col h3 { margin-bottom: 8px; }
 .muted-inline { color: var(--muted); font-weight: 500; font-size: 0.78rem; }
+
+.pathfind-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 16px;
+  margin: 10px 0 14px;
+}
+.pathfind-summary div { display: flex; flex-direction: column; gap: 2px; }
+.pathfind-summary span { font-size: 0.75rem; color: var(--muted); }
+.pathfind-summary strong { font-size: 1.05rem; }
+.pathfind-strip {
+  display: flex;
+  gap: 2px;
+  height: 28px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.pathfind-strip span {
+  flex: 1 1 0;
+  min-width: 2px;
+  height: 100%;
+}
+.pathfind-strip-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 8px;
+  font: 600 0.72rem/1 "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.02em;
+}
 .rank-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow: auto; }
 .rank-item {
   display: grid;

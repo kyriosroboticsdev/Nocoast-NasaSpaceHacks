@@ -22,7 +22,13 @@ import type { ScenarioState } from './scenario/types';
 import { loadHorizonProfile } from './horizon/load';
 import type { HorizonProfile } from './horizon/types';
 import { createEphemerisProvider } from './ephemeris/horizons';
-import { backendEphemerisProvider, backendHorizonProfile, fetchBackendAnalysis } from './science/backend';
+import {
+  backendEphemerisProvider,
+  backendHorizonProfile,
+  fetchBackendAnalysis,
+  fetchPathfind,
+  type PathfindResult,
+} from './science/backend';
 import { assessMission, type MissionAssessment } from './assess/windows';
 import {
   DATE_SLIP_OFFSETS_DAYS,
@@ -40,6 +46,7 @@ import {
 } from './assess/decision';
 import {
   candidateToHorizon,
+  computeIlluminationOverlay,
   loadSearchCatalog,
   rankSearchCandidates,
   type SearchCatalog,
@@ -96,6 +103,10 @@ let searchToken = 0;
 let dateToken = 0;
 let recomputeToken = 0;
 let lastDecisionKey = '';
+let illuminationToken = 0;
+let lastIlluminationKey = '';
+let antennaToken = 0;
+let pathfindToken = 0;
 
 function decisionKey(state: ScenarioState): string {
   // Site adopt must not wipe rank/search lists — only window/threshold changes invalidate scores.
@@ -580,6 +591,109 @@ function syncTerrainToScenario(state: ScenarioState, opts: { fly?: boolean } = {
   terrain.setMarkers(markers);
 }
 
+/** Dark (no sunlight) -> amber (--sun) -> warm white (full sunlight), for the illumination overlay's
+ * continuous color scale — three-stop lerp in RGB, pct in [0, 100]. */
+function sunlightColor(pct: number): number {
+  const t = Math.max(0, Math.min(100, pct)) / 100;
+  const stops: [number, number, number][] = [
+    [0x16, 0x23, 0x3a], // dark navy — no sunlight
+    [0xe6, 0xb8, 0x4d], // --sun amber — midpoint
+    [0xff, 0xf3, 0xc4], // warm white — full sunlight
+  ];
+  const seg = t < 0.5 ? 0 : 1;
+  const localT = t < 0.5 ? t / 0.5 : (t - 0.5) / 0.5;
+  const [r0, g0, b0] = stops[seg];
+  const [r1, g1, b1] = stops[seg + 1];
+  const r = Math.round(r0 + (r1 - r0) * localT);
+  const g = Math.round(g0 + (g1 - g0) * localT);
+  const b = Math.round(b0 + (b1 - b0) * localT);
+  return (r << 16) | (g << 8) | b;
+}
+
+/** 2D illumination overlay: sunlight-% coverage across the polar cap for the current mission window,
+ * as small flat dots independent of the catalog/search/chosen/compare markers (TerrainApi.setOverlayMarkers).
+ * Off by default (toggle-illumination-overlay); recomputed whenever the mission window changes while on. */
+async function refreshIlluminationOverlay(state: ScenarioState) {
+  if (!terrain) return;
+  const on = el<HTMLInputElement>('toggle-illumination-overlay').checked;
+  const status = el('illumination-status');
+  if (!on) {
+    terrain.setOverlayMarkers([]);
+    status.hidden = true;
+    return;
+  }
+  const key = JSON.stringify({ start: state.startUtc, hours: state.durationHours, th: state.thresholds });
+  if (key === lastIlluminationKey) return;
+  lastIlluminationKey = key;
+  const token = ++illuminationToken;
+  status.hidden = false;
+  status.textContent = 'Scoring sunlight coverage across the polar cap…';
+  try {
+    if (!searchCatalog) searchCatalog = await loadSearchCatalog(base);
+    if (token !== illuminationToken) return;
+    const points = await computeIlluminationOverlay({ catalog: searchCatalog, state, stepHours: 2 });
+    if (token !== illuminationToken) return;
+    terrain.setOverlayMarkers(
+      points.map((p, i) => ({
+        id: `illum-${i}`,
+        category: 'catalog' as const,
+        latitudeDeg: p.latitudeDeg,
+        longitudeEastDeg: p.longitudeEastDeg,
+        color: sunlightColor(p.sunlightPct),
+      })),
+    );
+    status.textContent =
+      `Sunlight coverage · ${points.length} points · LOLA 320 m overview + analytic ephemeris (coarse, badged). ` +
+      'Dark = no sunlight in this window, amber/white = increasing sunlight %.';
+  } catch (error) {
+    if (token !== illuminationToken) return;
+    console.error(error);
+    status.textContent = 'Illumination overlay failed — check console.';
+  }
+}
+
+/** Fixed-mount directional antenna link quality (backend/analysis.py antenna_link_quality, extension —
+ * not in contract v0.1). Opt-in: only queries the backend when both boresight angles are set. South-polar
+ * sites only (same backend DEM coverage gate as the main assessment). */
+async function refreshAntennaLinkQuality(state: ScenarioState) {
+  const out = el('antenna-link-quality');
+  const azRaw = el<HTMLInputElement>('antenna-boresight-az').value;
+  const elRaw = el<HTMLInputElement>('antenna-boresight-el').value;
+  if (azRaw === '' || elRaw === '') {
+    out.hidden = true;
+    return;
+  }
+  const boresightAzimuthDeg = Number(azRaw);
+  const boresightElevationDeg = Number(elRaw);
+  const beamwidthDeg = Number(el<HTMLInputElement>('antenna-beamwidth').value) || undefined;
+  const coords = resolveSiteCoords(state.primary.siteId, state.primary.customLatDeg, state.primary.customLonEastDeg);
+  out.hidden = false;
+  if (coords.latitudeDeg > -75) {
+    out.textContent = 'Antenna link quality needs a south-polar site (CR1/SR1, or custom ≤ 75°S) with the science backend running.';
+    return;
+  }
+  const token = ++antennaToken;
+  out.textContent = 'Computing antenna link quality…';
+  const endUtc = new Date(Date.parse(state.startUtc) + state.durationHours * 3600_000).toISOString();
+  const backend = await fetchBackendAnalysis(
+    coords.latitudeDeg, coords.longitudeEastDeg, state.startUtc, endUtc,
+    state.thresholds.minEarthElevationDeg, base,
+    { boresightAzimuthDeg, boresightElevationDeg, beamwidthDeg },
+  );
+  if (token !== antennaToken) return;
+  if (!backend?.antenna.modeled) {
+    out.textContent = 'Antenna link quality unavailable — science backend not reachable for this site/window.';
+    return;
+  }
+  const { onBoresightFractionOfCommWindow, meanLinkQualityWhileVisible } = backend.antenna;
+  out.textContent =
+    `Antenna link quality: on-boresight ${fmtPct((onBoresightFractionOfCommWindow ?? 0) * 100)} of the Earth-comm window` +
+    (meanLinkQualityWhileVisible != null
+      ? ` · mean quality while Earth visible ${fmtPct(meanLinkQualityWhileVisible * 100)}`
+      : '') +
+    '. Simplified fixed-mount pointing, no real RF link budget.';
+}
+
 function adoptSearchHit(hit: SearchHit) {
   const spacing = searchCatalog?.method.azimuthSpacingDeg || 2;
   const elevBins = hit.elevBins.length
@@ -600,6 +714,53 @@ function adoptSearchHit(hit: SearchHit) {
   lastFocusKey = '';
   setCustomCoords('A', hit.latitudeDeg, hit.longitudeEastDeg);
   el('search-status').textContent = `Adopted ${hit.publishedLabel} → Site A (overview LOLA horizon retained)`;
+}
+
+function renderPathfindResult(result: PathfindResult) {
+  el('pathfind-results').hidden = false;
+  el('pathfind-summary').innerHTML = `
+    <div><span>Total distance</span><strong>${Math.round(result.totalDistanceKm).toLocaleString()} km</strong></div>
+    <div><span>Sunlit</span><strong>${fmtPct(result.sunlitFraction * 100)}</strong></div>
+    <div><span>Earth comm</span><strong>${fmtPct(result.earthCommFraction * 100)}</strong></div>
+    <div><span>Obstacles touched</span><strong>${result.obstaclesTouched}</strong></div>`;
+  const strip = el('pathfind-strip');
+  strip.replaceChildren();
+  for (const wp of result.waypoints) {
+    const span = document.createElement('span');
+    const color = wp.sunlit && wp.earthVisible ? 'var(--both)'
+      : wp.sunlit ? 'var(--sun)'
+      : wp.earthVisible ? 'var(--earth)'
+      : 'var(--muted)';
+    span.style.background = wp.blocked ? 'var(--nogo)' : color;
+    span.title = `${wp.id} · ${wp.sunlit ? 'sunlit' : 'dark'} · ${wp.earthVisible ? 'Earth visible' : 'no Earth comm'}${wp.blocked ? ' · BLOCKED' : ''}`;
+    strip.append(span);
+  }
+}
+
+async function runPathfind() {
+  const state = getScenario();
+  const token = ++pathfindToken;
+  const button = el<HTMLButtonElement>('compute-pathfind');
+  const status = el('pathfind-status');
+  button.disabled = true;
+  status.textContent = 'Computing A* relay path over the Earth–Moon corridor…';
+  el('pathfind-results').hidden = true;
+  try {
+    const result = await fetchPathfind(state.startUtc, base);
+    if (token !== pathfindToken) return;
+    if (!result) {
+      status.textContent = 'Pathfinding backend unavailable — is the science backend running?';
+      return;
+    }
+    renderPathfindResult(result);
+    status.textContent = `Computed for mission start ${state.startUtc.slice(0, 16)}Z.`;
+  } catch (error) {
+    if (token !== pathfindToken) return;
+    console.error(error);
+    status.textContent = 'Pathfinding failed — check console.';
+  } finally {
+    if (token === pathfindToken) button.disabled = false;
+  }
 }
 
 async function recompute(state: ScenarioState) {
@@ -639,6 +800,8 @@ async function recompute(state: ScenarioState) {
     if (token !== recomputeToken) return;
     paintAssessment(state, { syncUrlNow: true });
     el('status').textContent = '';
+    void refreshIlluminationOverlay(state);
+    void refreshAntennaLinkQuality(state);
   } catch (error) {
     if (token !== recomputeToken) return;
     console.error(error);
@@ -1061,6 +1224,10 @@ function wireUi() {
   el<HTMLInputElement>('toggle-search-markers').onchange = e => {
     terrain?.setSearchMarkersVisible((e.target as HTMLInputElement).checked);
   };
+  el<HTMLInputElement>('toggle-illumination-overlay').onchange = () => {
+    lastIlluminationKey = ''; // force recompute even if the mission window key is unchanged
+    void refreshIlluminationOverlay(getScenario());
+  };
 
   el<HTMLInputElement>('start-utc').onchange = e => {
     setMissionWindow(dateInputToUtcIso((e.target as HTMLInputElement).value), getScenario().durationHours);
@@ -1079,6 +1246,10 @@ function wireUi() {
     batteryFloorW: Number(el<HTMLInputElement>('battery-floor').value),
   });
   for (const id of ['min-earth-el', 'panel-area', 'panel-eff', 'panel-tilt', 'battery-floor']) el(id).onchange = th;
+  for (const id of ['antenna-boresight-az', 'antenna-boresight-el', 'antenna-beamwidth']) {
+    el(id).onchange = () => void refreshAntennaLinkQuality(getScenario());
+  }
+  el('compute-pathfind').onclick = () => void runPathfind();
   el<HTMLInputElement>('tech-details').onchange = e => toggleTechnicalDetails((e.target as HTMLInputElement).checked);
   el('focus').onclick = () => {
     lastFocusKey = '';

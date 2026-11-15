@@ -191,4 +191,67 @@ export async function rankSearchCandidates(options: {
   };
 }
 
+export type IlluminationPoint = {
+  latitudeDeg: number;
+  longitudeEastDeg: number;
+  sunlightPct: number;
+};
+
+/**
+ * Sunlight-% coverage across the loaded regional catalog, for the 2D illumination overlay on the
+ * polar map. Same grid, horizon, and analytic-ephemeris pipeline as `rankSearchCandidates` — coarse
+ * LOLA 320 m overview horizons, not meter-perfect — but returns every point's raw `sunlightPct`
+ * instead of ranking a top-N, since the overlay's job is showing the *pattern* across the cap, not
+ * picking a winner.
+ */
+export async function computeIlluminationOverlay(options: {
+  catalog: SearchCatalog;
+  state: ScenarioState;
+  stepHours?: number;
+}): Promise<IlluminationPoint[]> {
+  const { catalog, state } = options;
+  const spacing = catalog.method.azimuthSpacingDeg || 2;
+  const out: IlluminationPoint[] = [];
+
+  // Score in chunks so the UI can stay responsive between awaits (mirrors rankSearchCandidates).
+  const chunk = 16;
+  for (let i = 0; i < catalog.candidates.length; i += chunk) {
+    const slice = catalog.candidates.slice(i, i + chunk);
+    const part = await Promise.all(
+      slice.map(async c => {
+        const horizon = candidateToHorizon(c, spacing);
+        const provider = createAnalyticProvider({
+          siteId: c.id,
+          latDeg: c.latitudeDeg,
+          lonEastDeg: c.longitudeEastDeg,
+          altitudeKm: (c.surfaceElevationM + 2) / 1000,
+          startUtc: state.startUtc,
+          durationHours: state.durationHours,
+        });
+        const assessment = assessMission({
+          siteId: c.id,
+          siteLabel: c.id,
+          horizonModel: 'lola_overview_coarse',
+          provider,
+          horizon,
+          startUtc: state.startUtc,
+          durationHours: state.durationHours,
+          scrubUtc: state.scrubUtc,
+          thresholds: state.thresholds,
+          stepHours: options.stepHours ?? 2,
+        });
+        return {
+          latitudeDeg: c.latitudeDeg,
+          longitudeEastDeg: c.longitudeEastDeg,
+          sunlightPct: assessment.sunlightPct,
+        };
+      }),
+    );
+    out.push(...part);
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  return out;
+}
+
 export { scoreAssessment };

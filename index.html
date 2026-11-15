@@ -39,6 +39,11 @@
           <button data-view="terrain" aria-pressed="false">Above the site</button>
           <button data-view="globe" aria-pressed="false">Whole Moon</button>
         </div>
+        <select class="tool" id="terrain-layer" aria-label="Terrain layer" hidden>
+          <option value="imagery">Lunar imagery</option>
+          <option value="elevation">Elevation</option>
+          <option value="wireframe">Mesh wireframe</option>
+        </select>
         <button class="tool" id="best-site" title="Find the best landing site for a date range"><svg><use href="#i-best"/></svg>Best site</button>
         <button class="tool" id="map-toggle" aria-expanded="false" aria-controls="map-panel"><svg><use href="#i-map"/></svg>South pole map</button>
         <button class="tool site-only" id="find-sun" title="Turn to face the Sun"><svg><use href="#i-sun"/></svg>Sun</button>
@@ -46,6 +51,11 @@
         <button class="tool icon site-only" id="reset-view" title="Reset view" aria-label="Reset view"><svg><use href="#i-reset"/></svg></button>
       </div>
       <p class="scene-hint">Drag to look around · scroll to zoom</p>
+      <div class="terrain-legend" id="terrain-elevation-legend" hidden>
+        <span>Elevation above the lunar reference sphere</span>
+        <div class="terrain-legend-ramp" aria-hidden="true"></div>
+        <div class="terrain-legend-labels"><span>−8 km</span><span>−0.5 km</span><span>+7 km</span></div>
+      </div>
       <section class="map-panel" id="map-panel" hidden aria-label="South pole map">
         <div class="map-head"><h2>South pole</h2><span id="map-count" class="tag"></span>
           <button class="tool icon" id="map-close" aria-label="Close map"><svg><use href="#i-cross"/></svg></button></div>
@@ -91,6 +101,7 @@
         <button type="button" data-open="dates">Mission dates</button>
         <button type="button" data-open="compare">Compare landing sites</button>
         <button type="button" data-open="equipment">Lander settings &amp; sources</button>
+        <button type="button" data-open="technical">Mission data</button>
       </nav>
       <button type="button" data-open="site" class="sheet-link">Change landing site</button>
     </section>
@@ -100,7 +111,6 @@
     </section>
     <section data-screen="settings" id="pane-settings" hidden aria-labelledby="settings-heading">
       <h1 id="settings-heading" tabindex="-1">Mission settings</h1>
-      <label class="switch equipment-only"><input type="checkbox" id="advanced"><span class="track" aria-hidden="true"></span>Advanced settings</label>
     <section class="group mission-fields">
       <h2>Mission dates</h2>
       <div class="pair">
@@ -137,6 +147,12 @@
     <section data-screen="compare" hidden aria-labelledby="compare-heading">
       <h1 id="compare-heading" tabindex="-1">Compare landing sites</h1>
       <div id="pane-compare"></div>
+    </section>
+    <section data-screen="technical" hidden aria-labelledby="technical-heading">
+      <h1 id="technical-heading" tabindex="-1">Mission data</h1>
+      <div id="technical-summary"></div>
+      <div id="technical-sample"></div>
+      <button type="button" class="btn ghost" id="download-analysis" disabled><svg aria-hidden="true"><use href="#i-down"/></svg>Download full analysis JSON</button>
     </section>
   </aside>
   <button type="button" class="btn ghost sheet-reopen" id="sheet-reopen" hidden>Explore site</button>

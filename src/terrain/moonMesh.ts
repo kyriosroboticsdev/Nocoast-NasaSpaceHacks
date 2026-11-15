@@ -156,6 +156,8 @@ type Patch = {
   lastUsed: number;
 };
 
+export type MoonMeshLayer = 'imagery' | 'elevation' | 'wireframe';
+
 type Leaf = { face: number; level: number; ix: number; iy: number; key: number; mask: number };
 
 export type MoonMeshStats = {
@@ -181,6 +183,7 @@ export type MoonMesh = {
   /** Nominal cell edge of a level in metres. */
   cellMeters: (level: number) => number;
   stats: () => MoonMeshStats;
+  setLayer: (layer: MoonMeshLayer) => void;
   invalidateHeights: (intersects: (center: T.Vector3, radius: number) => boolean) => void;
   dispose: () => void;
 };
@@ -217,6 +220,29 @@ export function createMoonMesh(options: {
   };
   const wireMaterial = new T.LineBasicMaterial({ color: WIRE_COLOR });
   const shaded = options.shadedMaterial;
+  const elevationMaterial = new T.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+  elevationMaterial.onBeforeCompile = shader => {
+    // Recover the elevation ramp from the tinted vertex colors used for the wireframe fill.
+    const base = [FILL_BASE.r, FILL_BASE.g, FILL_BASE.b].map(channel => channel.toFixed(9)).join(', ');
+    shader.vertexShader = shader.vertexShader.replace('#include <color_vertex>', `
+      #include <color_vertex>
+      vColor.rgb = vec3(${base}) + (vColor.rgb - vec3(${base})) / ${FILL_TINT};
+    `);
+  };
+  let layer: MoonMeshLayer = shaded ? 'imagery' : 'wireframe';
+
+  function applyLayer(patch: Patch) {
+    patch.fill.material = layer === 'elevation' ? elevationMaterial
+      : layer === 'imagery' && shaded ? shaded : fillMaterial;
+    if (layer === 'wireframe') group.add(patch.wire);
+    else group.remove(patch.wire);
+  }
+
+  function setLayer(next: MoonMeshLayer) {
+    if (next === layer) return;
+    layer = next;
+    for (const patch of shown.values()) applyLayer(patch);
+  }
 
   const variants: (IndexVariant | undefined)[] = [];
   const variant = (mask: number) => (variants[mask] ??= buildIndexVariant(mask));
@@ -569,7 +595,7 @@ export function createMoonMesh(options: {
       }
       if (shown.get(leaf.key) !== patch) {
         group.add(patch.fill);
-        if (!shaded) group.add(patch.wire);
+        applyLayer(patch);
         changed = true;
       }
       next.set(leaf.key, patch);
@@ -633,6 +659,7 @@ export function createMoonMesh(options: {
     cache.clear();
     shown.clear();
     fillMaterial.dispose();
+    elevationMaterial.dispose();
     wireMaterial.dispose();
   }
 
@@ -645,5 +672,5 @@ export function createMoonMesh(options: {
     }
   }
 
-  return { group, update, intersect, levelAt, cellMeters, stats, invalidateHeights, dispose };
+  return { group, update, intersect, levelAt, cellMeters, stats, setLayer, invalidateHeights, dispose };
 }

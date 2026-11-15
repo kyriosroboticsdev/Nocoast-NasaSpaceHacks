@@ -152,7 +152,26 @@ body.advanced .actions.adv-only { display: flex; }
 .sky3d-label.earth { color: #8fbaff; }
 .sky3d-label.hidden { opacity: .8; font-style: italic; }
 .sky3d-label.compass { color: #d3dbea; transform: translate(-50%, 0); font-size: 13px; }
-.sky3d-label.lander { color: #fff; }
+.sky3d-label.lander {
+  color: #fff;
+  padding: 3px 8px;
+  border: 1px solid #ffffff52;
+  border-radius: 5px;
+  background: #101421e6;
+  transform: translate(-50%, calc(-100% - 8px));
+}
+.sky3d-label.lander::after {
+  content: "";
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px #101421;
+  transform: translateX(-50%);
+}
 .scene-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); margin: 0; padding: 24px; text-align: center; }
 .scene-now { position: absolute; left: 14px; top: 14px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; max-width: calc(100% - 260px); }
 .now {
@@ -351,6 +370,21 @@ body.pre-enter .app, body.pre-enter .bar { opacity: 0; }
 .workspace-header .status:not(:empty) { padding: 4px 9px; border-radius: 6px; background: var(--glass); }
 .workspace-header .status[data-kind="err"] { color: #ffd1c8; }
 .mission-workspace .scene-tools { z-index: 4; top: var(--gutter); right: var(--gutter); }
+#terrain-layer { color: var(--text); cursor: pointer; }
+.terrain-legend {
+  position: absolute;
+  top: calc(var(--gutter) + 44px);
+  right: var(--gutter);
+  width: 186px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--glass);
+  font-size: 11px;
+  pointer-events: none;
+}
+.terrain-legend-ramp { height: 5px; margin: 6px 0 4px; border-radius: 3px; background: linear-gradient(90deg in srgb-linear, #234d70, #6aa4a2, #e7d29c); }
+.terrain-legend-labels { display: flex; justify-content: space-between; }
 .mission-workspace .scene-now { top: 66px; left: var(--gutter); max-width: min(440px, calc(100vw - 44px)); }
 .mission-workspace:not(.advanced) .now span { display: none; }
 .mission-workspace .scene-now { flex-direction: row; flex-wrap: wrap; }
@@ -376,6 +410,12 @@ body.pre-enter .app, body.pre-enter .bar { opacity: 0; }
 }
 [data-panel="site"] .mission-sheet { bottom: var(--gutter); max-height: calc(100dvh - 130px); }
 [data-panel="compare"] .mission-sheet { width: min(610px, calc(100vw - 44px)); }
+[data-panel="technical"] .mission-sheet { width: min(540px, calc(100vw - 2 * var(--gutter))); }
+.technical-data { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 18px; margin: 0 0 16px; }
+.technical-data div { min-width: 0; padding-top: 6px; border-top: 1px solid var(--line); }
+.technical-data dt { color: var(--muted); font-size: 12px; }
+.technical-data dd { margin: 3px 0 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+#technical-summary h2, #technical-sample h2 { margin: 14px 0 8px; font-size: 15px; }
 [data-panel="results"][data-date-grid="true"] .mission-sheet { width: min(850px, calc(100vw - 44px)); }
 .mission-sheet h1 { margin: 0 0 14px; font-size: 25px; line-height: 1.15; letter-spacing: -.025em; text-wrap: balance; }
 .sheet-nav { display: flex; justify-content: space-between; margin: -4px 0 14px; }
@@ -431,6 +471,7 @@ body[data-panel="dates"] :is(.equipment-only,#needs-box,#panel-box,#relay-box,.m
   .mission-workspace .scene-tools { top: 56px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 24px); }
   .mission-workspace .map-panel { top: 100px; }
   .mission-workspace .scene-now { top: 104px; }
+  .terrain-legend { top: 148px; }
 }
 
 .v-preliminary, .d-preliminary { background: var(--caution); color: #1d1606; }

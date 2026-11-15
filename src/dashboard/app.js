@@ -378,7 +378,15 @@ $("reset-view").addEventListener("click", () => sky3d?.resetView());
 let bestSite = null;   // created once the contract loads (needs the supported date range)
 $("best-site")?.addEventListener("click", () => bestSite?.open());
 
-// Both viewpoints use the same scene and the same site/time data.
+// All viewpoints use the same scene and the same site/time data.
+const terrainLayer = $("terrain-layer");
+function syncTerrainLayer() {
+  terrainLayer.hidden = state.view === "site";
+  $("terrain-elevation-legend").hidden = terrainLayer.hidden || terrainLayer.value !== "elevation";
+  sky3d?.setTerrainLayer(terrainLayer.value);
+}
+terrainLayer.addEventListener("change", syncTerrainLayer);
+
 function setView(v) {
   state.view = v === "globe" || v === "terrain" ? v : "site";
   document.querySelectorAll("#view-seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === state.view)));
@@ -386,6 +394,7 @@ function setView(v) {
     ? "Drag to orbit · Middle-drag to pan · Scroll to zoom"
     : "Drag to look around · Scroll to zoom";
   if (sky3d) sky3d.setMode(state.view === "globe" ? "globe" : state.view === "terrain" ? "bird" : "lander");
+  syncTerrainLayer();
 }
 document.querySelectorAll("#view-seg button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
 function paintLandingSun(r) {
@@ -528,6 +537,7 @@ function powerAt(p, ms) {
 function renderNow() {
   const r = state.results.get(state.focus);
   if (r) state.tIdx = Math.min(state.tIdx, r._t.length - 1);
+  if (state.pane === "technical") renderTechnicalSample();
   if (!r) {
     drawScene(null);
     $("scene-now").textContent = state.loading ? "Calculating…" : "No current result.";
@@ -542,7 +552,7 @@ function renderNow() {
     const el = s[`${body}ElevationDeg`][i], hz = s[`${body}HorizonDeg`][i], next = untilNext(r, body);
     const state_ = up == null ? "unknown" : up ? (body === "sun" ? "up" : "in view") : "behind terrain";
     const when = next == null ? "no change before the stay ends" : `${up ? (body === "sun" ? "sets" : "sets") : "back"} in ${fmtDur(next)}`;
-    const extra = advanced ? ` · el ${el.toFixed(2)}°${hz == null ? "" : ` · horizon ${hz.toFixed(2)}°`} · az ${s[`${body}AzimuthDeg`][i].toFixed(1)}°`
+    const extra = advanced ? ` · el ${angle(el)} · horizon ${angle(hz)} · az ${angle(s[`${body}AzimuthDeg`][i])}`
       : up ? ` · ${el.toFixed(1)}° above level` : "";
     return `<div class="now ${up ? "on" : "off"}">${icon(body)}<b>${name} ${state_}</b><span>${extra} · ${when}</span></div>`;
   };
@@ -777,6 +787,64 @@ function renderDays() {
 function renderResults() {
   $("results").innerHTML = state.mode === "days" ? renderDays() : renderSummary();
   renderCompare();
+  if (state.pane === "technical") renderTechnical();
+}
+
+const angle = (value) => Number.isFinite(value) ? `${value.toFixed(2)}°` : "—";
+const technicalAnalysis = () => state.fresh?.has(state.focus) ? state.results.get(state.focus) : null;
+function dataRows(rows) {
+  return `<dl class="technical-data">${rows.map(([label, value]) =>
+    `<div><dt>${esc(label)}</dt><dd>${esc(value ?? "—")}</dd></div>`).join("")}</dl>`;
+}
+function renderTechnicalSample() {
+  const r = technicalAnalysis();
+  if (!r) { $("technical-sample").replaceChildren(); return; }
+  const i = Math.min(state.tIdx, r._t.length - 1), ms = r._t[i], s = r.series;
+  const azEl = (body) => [angle(s[`${body}AzimuthDeg`][i]), angle(s[`${body}ElevationDeg`][i])].join(" / ");
+  const p = powerAt(state.power.get(state.focus), ms);
+  const soc = batteryAt(state.mission.get(state.focus), ms);
+  $("technical-sample").innerHTML = `<h2>Timeline sample</h2>${dataRows([
+    ["Timestamp", s.timesUtc[i]],
+    ["Sun azimuth / elevation", azEl("sun")],
+    ["Sun terrain horizon", angle(s.sunHorizonDeg[i])],
+    ["Earth azimuth / elevation", azEl("earth")],
+    ["Earth terrain horizon", angle(s.earthHorizonDeg[i])],
+    ["Panel output", fmtW(p?.powerW)],
+    ["Battery state of charge", Number.isFinite(soc) ? pct(soc) : "—"],
+  ])}`;
+}
+function renderTechnical() {
+  const r = technicalAnalysis();
+  $("download-analysis").disabled = !r;
+  if (!r) {
+    $("technical-summary").textContent = pending(state.focus) ? "Calculating mission data…" : "Mission data unavailable.";
+    renderTechnicalSample();
+    return;
+  }
+  const visibility = (summary) => summary.percentOfMission == null ? "—" : pct(summary.percentOfMission / 100);
+  const { site, horizon } = r;
+  const m = state.mission.get(state.focus);
+  const su = m?.summary;
+  $("technical-summary").innerHTML = `<h2>Site and model</h2>${dataRows([
+    ["Coordinates", `${site.latitudeDeg.toFixed(4)}° latitude, ${site.longitudeEastDeg.toFixed(4)}° E`],
+    ["Surface elevation", site.surfaceElevationM == null ? "—" : `${Math.round(site.surfaceElevationM).toLocaleString()} m`],
+    ["Terrain quality", site.terrainQuality],
+    ["Horizon source", site.horizonSource],
+    ["Horizon sampling", `${horizon.sampleCount} bearings at ${horizon.azimuthStepDeg}° intervals`],
+    ["Time sampling", `${r.baseStepSeconds} s base / ${r.eventRefinementStepSeconds} s near events`],
+    ["Reference frame", r.frameId],
+    ["Antenna minimum elevation", angle(r.visibility.antennaMinElevationDeg)],
+  ])}<h2>Mission totals</h2>${dataRows([
+    ["Sun visibility", visibility(r.sun.summary)],
+    ["Direct Earth visibility", visibility(r.communication.summary)],
+    ["Earth or relay visibility", r.commsEffective ? visibility(r.commsEffective.summary) : "Relay disabled"],
+    ["Longest direct blackout", fmtDur(r.communication.summary.longestGapSeconds)],
+    ["Unknown Sun / Earth coverage", `${fmtDur(r.sun.summary.unknownSeconds)} / ${fmtDur(r.communication.summary.unknownSeconds)}`],
+    ["Power availability", pct(su?.powerAvailabilityFraction)],
+    ["Solar energy / unmet demand", `${fmtWh(su?.solarEnergyWh)} / ${fmtWh(su?.unservedEnergyWh)}`],
+    ["Minimum battery energy", fmtWh(su?.minimumBatteryWh)],
+  ])}${m?.error ? `<p class="hint">${esc(m.error)}</p>` : ""}`;
+  renderTechnicalSample();
 }
 $("results").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
@@ -924,11 +992,6 @@ document.querySelectorAll(".modes button").forEach((b) => b.addEventListener("cl
   setMode(b.dataset.mode);
   setPane("results");
 }));
-$("advanced").addEventListener("change", () => {
-  advanced = $("advanced").checked; document.body.classList.toggle("advanced", advanced); save("advancedMode", advanced);
-  renderNeedsBox(); renderSources(); renderAll();
-});
-
 // ============================================================ mission inputs
 function syncInputs() {
   $("active-site").textContent = siteById(state.focus)?.name ?? "Mission planner";
@@ -966,6 +1029,26 @@ $("antenna").addEventListener("change", () => {
 });
 
 // ============================================================ exports, tooltips, boot
+$("download-analysis").addEventListener("click", () => {
+  const r = technicalAnalysis();
+  if (!r) return;
+  const { _t, solarInput, ...analysis } = r;
+  const power = state.power.get(state.focus);
+  const { _t: _powerTimes, ...solarPower } = power ?? {};
+  const bundle = {
+    siteId: state.focus,
+    settings: { panel: state.panel, lander: state.needs, relay: state.relay, antennaMinElevationDeg: state.antenna },
+    analysis,
+    solarInput: solarInput ?? inputs.get(state.focus) ?? null,
+    solarPower: power ? solarPower : null,
+    mission: state.mission.get(state.focus) ?? null,
+  };
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" }));
+  a.download = `nocoast-${state.focus}-${toDate(state.start)}-analysis.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
 $("export").addEventListener("click", () => {
   const site = siteById(state.focus), result = state.results.get(state.focus);
   if (!site || !result || pending(site.id)) return setStatus("Wait for this location's calculation before exporting.", "busy");
@@ -1166,8 +1249,8 @@ if (PRESENT) {
     return;
   }
   const c = state.contract, qs = new URLSearchParams(location.search);
-  advanced = qs.has("advanced") ? qs.get("advanced") === "1" : !!load("advancedMode", false);
-  $("advanced").checked = advanced; document.body.classList.toggle("advanced", advanced);
+  advanced = qs.get("advanced") === "1";
+  document.body.classList.toggle("advanced", advanced);
   state.sites = c.sites.map((s) => ({ id: s.siteId, name: s.displayName, lat: s.latitudeDeg, lon: s.longitudeEastDeg }));
   bestSite = initBestSite({
     supported: { start: c.time.supportedStartUtc, end: c.time.supportedEndUtc, maxSeconds: c.time.maxMissionDurationSeconds },

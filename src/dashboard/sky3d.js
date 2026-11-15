@@ -77,8 +77,8 @@ function globeMaterial(polarDetail) {
       dx.x -= round(dx.x);
       dy.x -= round(dy.x);
       vec3 photo = textureGrad(lunarImagery, uv, dx, dy).rgb;
-      // Use neutral regolith where the polar DEM supplies the surface detail.
-      float relief = polarDetail * smoothstep(0.9983, 0.99875, d.y);
+      // Blend in a neutral base where the polar DEM supplies finer detail than the imagery.
+      float relief = 0.45 * polarDetail * smoothstep(0.9983, 0.99875, d.y);
       diffuseColor.rgb *= mix(photo, vec3(0.21), relief);
     `);
   };
@@ -270,6 +270,7 @@ export function createSkyView(container) {
   globeLayer.position.y = -MOON_RADIUS;
   scene.add(globeLayer);
   let moonMesh;
+  let terrainLayer = "imagery";
   let polarField, siteDetail;
   const polarTiles = createPolarDetail(MOON_RADIUS, bounds => {
     moonMesh?.invalidateHeights((center, radius) => {
@@ -292,6 +293,7 @@ export function createSkyView(container) {
     const tiledField = polarTiles.enhance(polarField);
     const field = siteDetail ? withSiteDetail(tiledField,...siteDetail) : tiledField;
     moonMesh = createMoonMesh({ radius: MOON_RADIUS, center: new THREE.Vector3(), field, shadedMaterial });
+    moonMesh.setLayer(terrainLayer);
     globeLayer.add(moonMesh.group);
   }
   void loadPolarField().then(field => {
@@ -306,7 +308,7 @@ export function createSkyView(container) {
   Object.assign(sunLight.shadow.camera, { left: -12000, right: 12000, top: 12000, bottom: -12000, near: 100, far: 45000 });
   sunLight.shadow.mapSize.set(4096, 4096); sunLight.shadow.bias = -0.0008; sunLight.shadow.normalBias = 18;
   scene.add(sunLight, sunLight.target);
-  const earthshine = new THREE.AmbientLight(0x7f95c8, 0.16); scene.add(earthshine);
+  const earthshine = new THREE.AmbientLight(0x7f95c8, 0.19); scene.add(earthshine);
 
   // alt-az guide: true horizontal circle, elevation rings, compass meridians
   const guide = new THREE.Group();
@@ -348,7 +350,7 @@ export function createSkyView(container) {
   const lineMats = [];
 
   const st = { siteKey: null, r: undefined, i: 0, mode: "lander", yaw: 0, pitch: 4, fov: 70, texts: {}, visible: true,
-    labels: new Map(), aimed: false, lift: 0, night: 1.6, shine: 0.16 };
+    labels: new Map(), aimed: false, lift: 0, night: 1.72, shine: 0.19 };
 
   // ---------------------------------------------------------------- terrain
   function gridGeometry(grid, tileM, skipInside, round) {
@@ -496,7 +498,7 @@ export function createSkyView(container) {
       earth.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(P, N, Z));
     }
     sunLight.position.copy(sunDir).multiplyScalar(20000); sunLight.target.position.set(0, 0, 0);
-    st.shine = s.sunVisible[i] ? (st.mode === "bird" ? 0.3 : 0.14) : st.night;     // night: brightened so the ground stays readable
+    st.shine = s.sunVisible[i] ? (st.mode === "lander" ? 0.18 : 0.38) : st.night;
     // the dish follows Earth
     const dish = landerModel.getObjectByName("dish");
     dish.lookAt(earth.position); dish.rotateX(Math.PI / 2);
@@ -659,6 +661,7 @@ export function createSkyView(container) {
 
   return {
     setSite, setResult, setTime, setMode, aim,
+    setTerrainLayer(layer) { terrainLayer = layer; moonMesh?.setLayer(layer); },
     setTexts(t) { st.texts = t; },
     get mode() { return st.mode; },
     resetView() { st.fov = 70; st.pitch = 4; moveCamera(st.mode); },
@@ -670,7 +673,7 @@ export function createSkyView(container) {
       applyLanderCamera();
     },
     get view() { return { yaw: st.yaw, pitch: st.pitch, fov: st.fov, lift: st.lift }; },
-    // Fill light used while the Sun is behind terrain (0.8 by default).
+    // Fill light used while the Sun is behind terrain.
     setNightLight(v) { st.night = v; setTime(st.i); },
     forceMotion() { st.forceMotion = true; },
     /** Turn the orbiting camera about the vertical axis through its target (bird and globe views). */

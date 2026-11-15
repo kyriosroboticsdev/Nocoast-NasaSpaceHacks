@@ -122,7 +122,7 @@ async function start() {
   renderer.domElement.setAttribute('aria-label','Lunar terrain. Click or tap to focus. Arrow keys pan the map.');
   const light = new T.DirectionalLight(0xffffff,2.25);
   light.position.set(-1,.45,-.68);
-  scene.add(light,new T.AmbientLight(0xffffff,1.35));
+  scene.add(light,new T.AmbientLight(0xffffff,1.55));
   const globeMap = new T.TextureLoader().load(base+'terrain/lroc-color-2k.jpg');
   globeMap.colorSpace = T.SRGBColorSpace;
   globeMap.wrapS = T.RepeatWrapping;

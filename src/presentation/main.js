@@ -510,7 +510,7 @@ const steps = [
       focusOn(null);
       await caption("left", n, "Relay path",
         `<p>When terrain blocks the direct line to Earth, a relay satellite can carry the link.</p>
-         <p>This tool picks a route between Earth and the Moon at the mission start. It weighs time in sunlight, time in contact with Earth, obstacles and distance, and colours each waypoint by what it can see. It is a first-pass corridor model and does not propagate an orbit.</p>`);
+         <p>This tool picks a route between Earth and the Moon at the mission start. A* weighs route distance, the shares in sunlight and with Earth line of sight, and obstacle penalties. Each waypoint is coloured by what it can see. This is a first-pass corridor screen at a fixed epoch.</p>`);
       await scrollToEl(".pathfind-cluster");
       focusOn("#pathfind-panel");
       press("#compute-pathfind");

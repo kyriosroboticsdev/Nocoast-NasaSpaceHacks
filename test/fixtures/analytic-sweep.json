@@ -1,0 +1,1920 @@
+{
+  "schemaVersion": "0.1.0",
+  "artifactType": "solar-input",
+  "artifactId": "analytic-sweep-v1",
+  "scenarioId": "analytic-sweep-v1",
+  "generatedAtUtc": "2026-11-14T17:27:32Z",
+  "label": "Analytic test sweep · 24 hours",
+  "frameId": "MOON_ME_DE421",
+  "siteId": "connecting-ridge-cr1",
+  "site": {
+    "latitudeDeg": -89.4555,
+    "longitudeEastDeg": 222.6192,
+    "surfaceElevationM": 1949.6080773175818,
+    "referenceRadiusM": 1737400
+  },
+  "observerHeightAboveGroundM": 2,
+  "time": {
+    "startUtc": "2027-01-01T00:00:00Z",
+    "endUtc": "2027-01-02T00:00:00Z",
+    "baseStepSeconds": 600,
+    "visibilityInterpolation": "previous-sample-hold"
+  },
+  "provenance": {
+    "ephemeris": {
+      "provider": "Synthetic engineering test fixture; not a lunar ephemeris"
+    },
+    "visibility": {
+      "provider": "Synthetic mask for testing power attenuation; not NASA terrain",
+      "mode": "synthetic-test",
+      "sunModel": "fractional-test-v1"
+    }
+  },
+  "samples": [
+    {
+      "timeUtc": "2027-01-01T00:00:00Z",
+      "sun": {
+        "azimuthDeg": 90,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T00:10:00Z",
+      "sun": {
+        "azimuthDeg": 92.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T00:20:00Z",
+      "sun": {
+        "azimuthDeg": 95,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T00:30:00Z",
+      "sun": {
+        "azimuthDeg": 97.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T00:40:00Z",
+      "sun": {
+        "azimuthDeg": 100,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T00:50:00Z",
+      "sun": {
+        "azimuthDeg": 102.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T01:00:00Z",
+      "sun": {
+        "azimuthDeg": 105,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T01:10:00Z",
+      "sun": {
+        "azimuthDeg": 107.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T01:20:00Z",
+      "sun": {
+        "azimuthDeg": 110,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T01:30:00Z",
+      "sun": {
+        "azimuthDeg": 112.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T01:40:00Z",
+      "sun": {
+        "azimuthDeg": 115,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T01:50:00Z",
+      "sun": {
+        "azimuthDeg": 117.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T02:00:00Z",
+      "sun": {
+        "azimuthDeg": 120,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T02:10:00Z",
+      "sun": {
+        "azimuthDeg": 122.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T02:20:00Z",
+      "sun": {
+        "azimuthDeg": 125,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T02:30:00Z",
+      "sun": {
+        "azimuthDeg": 127.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T02:40:00Z",
+      "sun": {
+        "azimuthDeg": 130,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T02:50:00Z",
+      "sun": {
+        "azimuthDeg": 132.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T03:00:00Z",
+      "sun": {
+        "azimuthDeg": 135,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T03:10:00Z",
+      "sun": {
+        "azimuthDeg": 137.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T03:20:00Z",
+      "sun": {
+        "azimuthDeg": 140,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T03:30:00Z",
+      "sun": {
+        "azimuthDeg": 142.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T03:40:00Z",
+      "sun": {
+        "azimuthDeg": 145,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T03:50:00Z",
+      "sun": {
+        "azimuthDeg": 147.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T04:00:00Z",
+      "sun": {
+        "azimuthDeg": 150,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T04:10:00Z",
+      "sun": {
+        "azimuthDeg": 152.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T04:20:00Z",
+      "sun": {
+        "azimuthDeg": 155,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T04:30:00Z",
+      "sun": {
+        "azimuthDeg": 157.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T04:40:00Z",
+      "sun": {
+        "azimuthDeg": 160,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T04:50:00Z",
+      "sun": {
+        "azimuthDeg": 162.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T05:00:00Z",
+      "sun": {
+        "azimuthDeg": 165,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T05:10:00Z",
+      "sun": {
+        "azimuthDeg": 167.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T05:20:00Z",
+      "sun": {
+        "azimuthDeg": 170,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T05:30:00Z",
+      "sun": {
+        "azimuthDeg": 172.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T05:40:00Z",
+      "sun": {
+        "azimuthDeg": 175,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T05:50:00Z",
+      "sun": {
+        "azimuthDeg": 177.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T06:00:00Z",
+      "sun": {
+        "azimuthDeg": 180,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T06:10:00Z",
+      "sun": {
+        "azimuthDeg": 182.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T06:20:00Z",
+      "sun": {
+        "azimuthDeg": 185,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T06:30:00Z",
+      "sun": {
+        "azimuthDeg": 187.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T06:40:00Z",
+      "sun": {
+        "azimuthDeg": 190,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T06:50:00Z",
+      "sun": {
+        "azimuthDeg": 192.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T07:00:00Z",
+      "sun": {
+        "azimuthDeg": 195,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T07:10:00Z",
+      "sun": {
+        "azimuthDeg": 197.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T07:20:00Z",
+      "sun": {
+        "azimuthDeg": 200,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T07:30:00Z",
+      "sun": {
+        "azimuthDeg": 202.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T07:40:00Z",
+      "sun": {
+        "azimuthDeg": 205,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T07:50:00Z",
+      "sun": {
+        "azimuthDeg": 207.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T08:00:00Z",
+      "sun": {
+        "azimuthDeg": 210,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T08:10:00Z",
+      "sun": {
+        "azimuthDeg": 212.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T08:20:00Z",
+      "sun": {
+        "azimuthDeg": 215,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T08:30:00Z",
+      "sun": {
+        "azimuthDeg": 217.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T08:40:00Z",
+      "sun": {
+        "azimuthDeg": 220,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T08:50:00Z",
+      "sun": {
+        "azimuthDeg": 222.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T09:00:00Z",
+      "sun": {
+        "azimuthDeg": 225,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T09:10:00Z",
+      "sun": {
+        "azimuthDeg": 227.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T09:20:00Z",
+      "sun": {
+        "azimuthDeg": 230,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T09:30:00Z",
+      "sun": {
+        "azimuthDeg": 232.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T09:40:00Z",
+      "sun": {
+        "azimuthDeg": 235,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T09:50:00Z",
+      "sun": {
+        "azimuthDeg": 237.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T10:00:00Z",
+      "sun": {
+        "azimuthDeg": 240,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T10:10:00Z",
+      "sun": {
+        "azimuthDeg": 242.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T10:20:00Z",
+      "sun": {
+        "azimuthDeg": 245,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T10:30:00Z",
+      "sun": {
+        "azimuthDeg": 247.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T10:40:00Z",
+      "sun": {
+        "azimuthDeg": 250,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T10:50:00Z",
+      "sun": {
+        "azimuthDeg": 252.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T11:00:00Z",
+      "sun": {
+        "azimuthDeg": 255,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T11:10:00Z",
+      "sun": {
+        "azimuthDeg": 257.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T11:20:00Z",
+      "sun": {
+        "azimuthDeg": 260,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T11:30:00Z",
+      "sun": {
+        "azimuthDeg": 262.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T11:40:00Z",
+      "sun": {
+        "azimuthDeg": 265,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T11:50:00Z",
+      "sun": {
+        "azimuthDeg": 267.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T12:00:00Z",
+      "sun": {
+        "azimuthDeg": 270,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T12:10:00Z",
+      "sun": {
+        "azimuthDeg": 272.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T12:20:00Z",
+      "sun": {
+        "azimuthDeg": 275,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T12:30:00Z",
+      "sun": {
+        "azimuthDeg": 277.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T12:40:00Z",
+      "sun": {
+        "azimuthDeg": 280,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T12:50:00Z",
+      "sun": {
+        "azimuthDeg": 282.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T13:00:00Z",
+      "sun": {
+        "azimuthDeg": 285,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T13:10:00Z",
+      "sun": {
+        "azimuthDeg": 287.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T13:20:00Z",
+      "sun": {
+        "azimuthDeg": 290,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T13:30:00Z",
+      "sun": {
+        "azimuthDeg": 292.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T13:40:00Z",
+      "sun": {
+        "azimuthDeg": 295,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T13:50:00Z",
+      "sun": {
+        "azimuthDeg": 297.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 0.5,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T14:00:00Z",
+      "sun": {
+        "azimuthDeg": 300,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T14:10:00Z",
+      "sun": {
+        "azimuthDeg": 302.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T14:20:00Z",
+      "sun": {
+        "azimuthDeg": 305,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T14:30:00Z",
+      "sun": {
+        "azimuthDeg": 307.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T14:40:00Z",
+      "sun": {
+        "azimuthDeg": 310,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T14:50:00Z",
+      "sun": {
+        "azimuthDeg": 312.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T15:00:00Z",
+      "sun": {
+        "azimuthDeg": 315,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T15:10:00Z",
+      "sun": {
+        "azimuthDeg": 317.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T15:20:00Z",
+      "sun": {
+        "azimuthDeg": 320,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T15:30:00Z",
+      "sun": {
+        "azimuthDeg": 322.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T15:40:00Z",
+      "sun": {
+        "azimuthDeg": 325,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T15:50:00Z",
+      "sun": {
+        "azimuthDeg": 327.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T16:00:00Z",
+      "sun": {
+        "azimuthDeg": 330,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T16:10:00Z",
+      "sun": {
+        "azimuthDeg": 332.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T16:20:00Z",
+      "sun": {
+        "azimuthDeg": 335,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T16:30:00Z",
+      "sun": {
+        "azimuthDeg": 337.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T16:40:00Z",
+      "sun": {
+        "azimuthDeg": 340,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T16:50:00Z",
+      "sun": {
+        "azimuthDeg": 342.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T17:00:00Z",
+      "sun": {
+        "azimuthDeg": 345,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T17:10:00Z",
+      "sun": {
+        "azimuthDeg": 347.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T17:20:00Z",
+      "sun": {
+        "azimuthDeg": 350,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T17:30:00Z",
+      "sun": {
+        "azimuthDeg": 352.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T17:40:00Z",
+      "sun": {
+        "azimuthDeg": 355,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T17:50:00Z",
+      "sun": {
+        "azimuthDeg": 357.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T18:00:00Z",
+      "sun": {
+        "azimuthDeg": 0,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T18:10:00Z",
+      "sun": {
+        "azimuthDeg": 2.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T18:20:00Z",
+      "sun": {
+        "azimuthDeg": 5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T18:30:00Z",
+      "sun": {
+        "azimuthDeg": 7.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T18:40:00Z",
+      "sun": {
+        "azimuthDeg": 10,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T18:50:00Z",
+      "sun": {
+        "azimuthDeg": 12.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T19:00:00Z",
+      "sun": {
+        "azimuthDeg": 15,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T19:10:00Z",
+      "sun": {
+        "azimuthDeg": 17.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T19:20:00Z",
+      "sun": {
+        "azimuthDeg": 20,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T19:30:00Z",
+      "sun": {
+        "azimuthDeg": 22.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T19:40:00Z",
+      "sun": {
+        "azimuthDeg": 25,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T19:50:00Z",
+      "sun": {
+        "azimuthDeg": 27.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T20:00:00Z",
+      "sun": {
+        "azimuthDeg": 30,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T20:10:00Z",
+      "sun": {
+        "azimuthDeg": 32.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T20:20:00Z",
+      "sun": {
+        "azimuthDeg": 35,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T20:30:00Z",
+      "sun": {
+        "azimuthDeg": 37.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T20:40:00Z",
+      "sun": {
+        "azimuthDeg": 40,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T20:50:00Z",
+      "sun": {
+        "azimuthDeg": 42.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T21:00:00Z",
+      "sun": {
+        "azimuthDeg": 45,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T21:10:00Z",
+      "sun": {
+        "azimuthDeg": 47.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T21:20:00Z",
+      "sun": {
+        "azimuthDeg": 50,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T21:30:00Z",
+      "sun": {
+        "azimuthDeg": 52.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T21:40:00Z",
+      "sun": {
+        "azimuthDeg": 55,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T21:50:00Z",
+      "sun": {
+        "azimuthDeg": 57.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T22:00:00Z",
+      "sun": {
+        "azimuthDeg": 60,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T22:10:00Z",
+      "sun": {
+        "azimuthDeg": 62.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T22:20:00Z",
+      "sun": {
+        "azimuthDeg": 65,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T22:30:00Z",
+      "sun": {
+        "azimuthDeg": 67.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T22:40:00Z",
+      "sun": {
+        "azimuthDeg": 70,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T22:50:00Z",
+      "sun": {
+        "azimuthDeg": 72.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T23:00:00Z",
+      "sun": {
+        "azimuthDeg": 75,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T23:10:00Z",
+      "sun": {
+        "azimuthDeg": 77.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T23:20:00Z",
+      "sun": {
+        "azimuthDeg": 80,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T23:30:00Z",
+      "sun": {
+        "azimuthDeg": 82.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T23:40:00Z",
+      "sun": {
+        "azimuthDeg": 85,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-01T23:50:00Z",
+      "sun": {
+        "azimuthDeg": 87.5,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    },
+    {
+      "timeUtc": "2027-01-02T00:00:00Z",
+      "sun": {
+        "azimuthDeg": 90,
+        "elevationDeg": 5,
+        "rangeAu": 1
+      },
+      "solarVisibleFraction": 1,
+      "quality": {
+        "status": "valid",
+        "reason": null
+      }
+    }
+  ]
+}

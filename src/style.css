@@ -764,3 +764,33 @@ body.show-tech .provenance-plain { display: none; }
   .time-controls { order: 0; }
   .viz-stack { order: 1; }
 }
+/* Solar output reuses the assessment grid; long provenance must wrap on phones. */
+.solar-warning { grid-column: 1 / -1; margin: 4px 0; color: #f3ce8d; overflow-wrap: anywhere; font-size: 0.82rem; line-height: 1.5; }
+.viability.unknown { color: #f3ce8d; }
+.battery-chart-wrap { grid-column: 1 / -1; min-width: 0; }
+.battery-chart { display: block; width: 100%; height: auto; }
+.battery-chart text { fill: #b8c7d8; font: 18px system-ui, sans-serif; }
+.battery-chart-wrap p { font-size: 0.74rem; color: var(--muted); }
+.mission-error { color: #ffb0a8; overflow-wrap: anywhere; }
+.mission-planning { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 14px; }
+.mission-plan-controls, .mission-results { min-width: 0; }
+.mission-plan-controls p, .mission-results p { font-size: 0.83rem; line-height: 1.5; overflow-wrap: anywhere; }
+.mission-results h2:not(:first-child) { margin-top: 24px; }
+.mission-actions { display: grid; gap: 8px; margin-top: 12px; }
+.mission-actions button, .mission-results button { min-height: 44px; }
+.mission-table-scroll { max-width: 100%; overflow-x: auto; margin: 12px 0; }
+.mission-table-scroll table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 0.8rem; }
+.mission-table-scroll th, .mission-table-scroll td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--line); }
+.mission-table-scroll th { color: var(--accent); }
+.battery-advanced { margin: 10px 0; }
+@media (max-width: 760px) { .mission-planning { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+  .metric-tooltip {
+    position: fixed;
+    inset: auto 16px 16px;
+    width: auto;
+    max-width: none;
+    max-height: 60vh;
+    overflow: auto;
+  }
+}

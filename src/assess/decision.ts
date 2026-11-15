@@ -17,7 +17,7 @@ export type RankedSite = {
   sunlightPct: number;
   earthLosPct: number;
   simultaneousPct: number;
-  meanPowerW: number;
+  meanPowerW: number | null;
   score: number;
   assessment: MissionAssessment;
 };
@@ -29,7 +29,7 @@ export type DateSuggestion = {
   sunlightPct: number;
   earthLosPct: number;
   simultaneousPct: number;
-  meanPowerW: number;
+  meanPowerW: number | null;
   score: number;
   deltaSimultaneousPct: number;
   label: string;
@@ -112,25 +112,8 @@ export function findBestWindow(assessment: MissionAssessment): {
 
 /** Soft score; authority penalties keep sphere/analytic from outranking LOLA+JPL. */
 export function scoreAssessment(a: MissionAssessment): number {
-  const viab =
-    a.viability === 'GO' ? 30 :
-    a.viability === 'RISKY' ? 12 : 0;
-  const tier = authorityTier(a.horizonModel);
-  const tierBonus = tier === 'study' ? 40 : tier === 'overview' ? 15 : -25;
-  const analyticPenalty = /analytic/i.test(a.ephemerisSource) ? -18 : 0;
-  const gapPenalty = (a.unknownHours ?? 0) * 0.4;
-  return (
-    a.simultaneousPct * 2.2 +
-    a.sunlightPct * 0.9 +
-    a.earthLosPct * 0.9 +
-    Math.min(40, a.meanPowerW) * 0.35 +
-    viab +
-    tierBonus +
-    analyticPenalty -
-    gapPenalty -
-    a.longestSunBlackoutHours * 0.15 -
-    a.longestEarthBlackoutHours * 0.1
-  );
+  return a.mission?.viability.qualifiedForMissionDecision && a.mission.viability.score != null
+    ? a.mission.viability.score : -Infinity;
 }
 
 export function rankAssessments(
@@ -142,6 +125,7 @@ export function rankAssessments(
   }>,
 ): RankedSite[] {
   return rows
+    .filter(r => r.assessment.mission?.viability.qualifiedForMissionDecision)
     .map(r => ({
       siteId: r.siteId,
       label: r.label,
@@ -173,6 +157,7 @@ export function buildDateSuggestions(
 ): DateSuggestion[] {
   const baseScore = scoreAssessment(baseline);
   return candidates
+    .filter(c => c.assessment.mission?.viability.qualifiedForMissionDecision)
     .map(c => {
       const score = scoreAssessment(c.assessment);
       const sign = c.offsetDays > 0 ? '+' : '';
@@ -204,10 +189,12 @@ export function buildDateSuggestions(
 
 /** Plain-language why this site/date wins or fails — for Learn + NO-GO prompts. */
 export function explainVerdict(a: MissionAssessment): string {
+  if (a.mission?.viability.score != null) return `${a.siteLabel}: ${a.viabilityReason} Mission score ${a.mission.viability.score.toFixed(1)}/100; unserved load ${a.mission.summary.unservedEnergyWh!.toFixed(1)} Wh.`;
+  if (a.viability === 'UNKNOWN') return `${a.siteLabel}: ${a.viabilityReason}`;
   const parts: string[] = [];
   if (a.viability === 'GO') {
     parts.push(
-      `${a.siteLabel} works for this window: sunlit ${a.sunlightPct.toFixed(0)}% of the time, in contact with Earth ${a.earthLosPct.toFixed(0)}%, and both at once ${a.simultaneousPct.toFixed(0)}% — enough to recharge while talking home (average ~${a.meanPowerW.toFixed(0)} W).`,
+      `${a.siteLabel} works for this window: sunlit ${a.sunlightPct.toFixed(0)}% of the time, in contact with Earth ${a.earthLosPct.toFixed(0)}%, and both at once ${a.simultaneousPct.toFixed(0)}% — enough to recharge while talking home (average ~${a.meanPowerW?.toFixed(0) ?? 'unknown'} W).`,
     );
   } else if (a.viability === 'RISKY') {
     parts.push(
@@ -215,7 +202,7 @@ export function explainVerdict(a: MissionAssessment): string {
     );
   } else {
     parts.push(
-      `${a.siteLabel} does not work here: sun ${a.sunlightPct.toFixed(0)}%, Earth contact ${a.earthLosPct.toFixed(0)}%, both at once ${a.simultaneousPct.toFixed(0)}%, average power ~${a.meanPowerW.toFixed(0)} W.`,
+      `${a.siteLabel} does not work here: sun ${a.sunlightPct.toFixed(0)}%, Earth contact ${a.earthLosPct.toFixed(0)}%, both at once ${a.simultaneousPct.toFixed(0)}%, average power ~${a.meanPowerW?.toFixed(0) ?? 'unknown'} W.`,
     );
   }
   if (a.horizonModel === 'sphere_optimistic') {

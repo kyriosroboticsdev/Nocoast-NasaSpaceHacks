@@ -1,0 +1,110 @@
+[
+  {
+    "site": "Site01",
+    "latitudeDeg": -89.4555,
+    "longitudeEastDeg": 222.6192,
+    "sourceUrl": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site01/Site01_final_adj_5mpp_surf.tif",
+    "lastModified": "Fri, 05 Jun 2020 18:39:35 GMT",
+    "projection": "south polar stereographic; pole scale 1; longitude origin 0",
+    "referenceRadiusM": 1737400.0,
+    "sizePixels": [
+      3200,
+      3200
+    ],
+    "pixelScaleM": [
+      5.0,
+      5.0
+    ],
+    "upperLeftPixelCornerXYM": [
+      -19000.0,
+      -4000.0
+    ],
+    "sampleXYM": [
+      -11180.09893702774,
+      -12150.092006988278
+    ],
+    "samplePixelCenterIndex": [
+      1563.480212594452,
+      1629.5184013976555
+    ],
+    "sample2x2M": [
+      [
+        1950.0135498046875,
+        1949.451904296875
+      ],
+      [
+        1949.7816162109375,
+        1949.1575927734375
+      ]
+    ],
+    "surfaceElevationM": 1949.6080773175818,
+    "sampling": "bilinear interpolation of four float32 DEM pixels; no coordinate snapping",
+    "noData": "nan",
+    "sourceGeoDoubleParams": [
+      -90.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1737400.0,
+      1737400.0,
+      0.0
+    ],
+    "insideRaster": true,
+    "checkedDate": "2026-11-14"
+  },
+  {
+    "site": "Site04",
+    "latitudeDeg": -89.7742,
+    "longitudeEastDeg": 203.4952,
+    "sourceUrl": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site04/Site04_final_adj_5mpp_surf.tif",
+    "lastModified": "Fri, 05 Jun 2020 18:40:02 GMT",
+    "projection": "south polar stereographic; pole scale 1; longitude origin 0",
+    "referenceRadiusM": 1737400.0,
+    "sizePixels": [
+      3200,
+      3200
+    ],
+    "pixelScaleM": [
+      5.0,
+      5.0
+    ],
+    "upperLeftPixelCornerXYM": [
+      -9000.0,
+      1000.0
+    ],
+    "sampleXYM": [
+      -2729.717354475613,
+      -6279.358649328685
+    ],
+    "samplePixelCenterIndex": [
+      1253.5565291048774,
+      1455.371729865737
+    ],
+    "sample2x2M": [
+      [
+        1735.1455078125,
+        1735.2119140625
+      ],
+      [
+        1735.3544921875,
+        1735.216796875
+      ]
+    ],
+    "surfaceElevationM": 1735.2179263340893,
+    "sampling": "bilinear interpolation of four float32 DEM pixels; no coordinate snapping",
+    "noData": "nan",
+    "sourceGeoDoubleParams": [
+      -90.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1737400.0,
+      1737400.0,
+      0.0
+    ],
+    "insideRaster": true,
+    "checkedDate": "2026-11-14"
+  }
+]

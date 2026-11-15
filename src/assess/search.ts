@@ -187,7 +187,8 @@ export async function rankSearchCandidates(options: {
   return {
     hits,
     assessed: pool.length,
-    limitations: catalog.method.honesty,
+    limitations: catalog.method.honesty + (pool.length && !hits.length
+      ? ' No solar-qualified candidates: analytic search ephemerides and unvalidated coarse horizons cannot support power rankings.' : ''),
   };
 }
 

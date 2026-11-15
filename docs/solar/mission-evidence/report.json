@@ -1,0 +1,65 @@
+{
+  "contract": "../MISSION_UI_CONTRACT.md",
+  "targetViewports": [
+    "1440x1000",
+    "390x844"
+  ],
+  "renderedEvidence": [
+    {
+      "viewport": "1440x1000",
+      "artifact": "browser-checks.json",
+      "observation": "Desktop paired assessment cards, battery controls and two SVGs inspected; clientWidth1425 equals scrollWidth. Actual mission metrics recorded."
+    },
+    {
+      "viewport": "1440x1000",
+      "artifact": "desktop.png",
+      "observation": "Desktop page context; artifact retained alongside the detailed viewport and mission DOM observations."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "phone.png",
+      "observation": "Current optimization controls/results, preliminary qualifications and unknown-site reason fit the phone; wide table scrolls within its container."
+    }
+  ],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "Battery/requirement inputs have explicit labels; DOM ids unique. Native form controls and visible focus styles retained; help and Apply buttons have contextual names. Editing validation and native focus were exercised."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "1440x1000 client1425/scroll1425; 390x844 client375/scroll375. Phone table520px scrolls locally in309px container. Inspected phone rendering and desktop paired-card layout; chart contains physical Wh and reserve."
+  },
+  "contentStates": {
+    "loading": {
+      "status": "pass",
+      "evidence": "Initial IAB state reported Updating power & comms assessment before data populated; jobs showed preparation/progress and enabled cancellation."
+    },
+    "empty": {
+      "status": "pass",
+      "evidence": "Initial report areas explain Run optimization/Test current hardware before any report exists. All-unknown optimization exclusion is covered by model tests."
+    },
+    "error": {
+      "status": "pass",
+      "evidence": "Reserve0.9 with initial0.8 rejected without changing valid settings; Reset restored draft. Excessive grid reported10000-scenario budget error."
+    },
+    "partial": {
+      "status": "pass",
+      "evidence": "Default SR1 unknown battery totals/outage remain Unknown; site excluded with terrain_visibility_missing. Delay worst case remains Unknown for incomplete scenarios."
+    },
+    "success": {
+      "status": "pass",
+      "evidence": "Nominal and robust optimizer completed; CR1 selected90/180 without changing hardware budget. Apply updated panel and model; raising allowed contact gap to72h produced conditional requirements met. JSON retained replay contexts."
+    },
+    "permission": {
+      "status": "not-applicable",
+      "reason": "Local simulation and user-triggered JSON download, no external writes."
+    }
+  },
+  "checks": {
+    "tests": 94,
+    "productionBuild": "passed; existing bundle size warning",
+    "branch": "solar-integration",
+    "sourceBaseline": "162caf9",
+    "physicalQualification": "Preliminary until upstream validation; finite grid/delays only."
+  }
+}

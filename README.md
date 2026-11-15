@@ -60,13 +60,24 @@ Open the printed local URL. The guided tour starts automatically and walks throu
 
 1. Planner mode opens with **Connecting Ridge (CR1)** vs. **Shackleton Rim (SR1)**, mission week
    starting **15 Jan 2027 UTC**.
-2. Read the plain-English verdict and the four big metric cards.
+2. Read the plain-English verdict and the four big metric cards. Expert view adds panel watts,
+   battery energy, unmet load, and coverage.
 3. Drag the time slider — watch the Sun/Earth markers move on the 360° skyline and the mission
    timeline below.
 4. Switch to **Learn** for the plain-language story and guided scenarios, or flip on **Expert view**
    for the full numeric breakdown judges and specialists want.
 5. **Copy shareable link** or **Export time series JSON** to hand the exact scenario to someone else
    (shaped for downstream tools, including a Quest/VR viewer).
+
+## Science data (bundled for offline)
+
+| Product | Path | Notes |
+| --- | --- | --- |
+| 360° LOLA horizons | `public/science/horizons/{site}.json` | CR1 / SR1 · 0.25° · 5 m near-field + 320 m overview |
+| Sun / Earth ephemeris | `public/science/ephemeris/{site}-{sun\|earth}.json` | Precomputed JPL Horizons az/el for Jan 2027 |
+| Study sites | `public/terrain/sites.json` | `horizonStatus: ready`, `horizonUrl` set |
+
+Regenerate with `npm run science` when that script is present. Custom lat/lon and non-study sites use an **optimistic sphere horizon**, labeled in the UI.
 
 ## Architecture
 
@@ -75,10 +86,12 @@ src/scenario/     shared Planner <-> Learn state, catalog, URL sync
 src/horizon/       load / sphere fallback / elevation-at-azimuth
 src/ephemeris/     bundled Horizons + live API client + analytic fallback
 src/science/       client for the optional live Person 2 backend (see below)
-src/assess/        sunlight, Earth line-of-sight, blackouts, power proxy, viability
+src/assess/        sunlight, Earth line-of-sight, blackouts, viability
+src/power/         solar adapter, battery/load dispatch, panel and landing-delay planning
 src/ui/plain.ts     plain-English verdicts and the 4 simple metric cards
 src/viz/           360° skyline ribbon + mission timeline
-src/app.ts         mode shell + assessment orchestration
+src/app.ts         mode shell + assessment orchestration (navigator)
+src/dashboard/     NoCoast front page
 src/main.ts        3D Three.js lunar south-pole terrain viewer
 backend/           optional Python/FastAPI science service (real Skyfield + JPL DE421 + NASA DEMs)
 ```
@@ -116,3 +129,7 @@ back to the bundled/offline data otherwise, so the app always works without it. 
 | [docs/TERRAIN_PLAN.md](./docs/TERRAIN_PLAN.md) | The 3D terrain pipeline's build-out plan |
 | [docs/PERSON2_COMMS.md](./docs/PERSON2_COMMS.md) | The Python science backend: models, API, run instructions |
 | [docs/PERSON2_INTEGRATION_REPORT.md](./docs/PERSON2_INTEGRATION_REPORT.md) | Full record of how the backend was integrated into this app |
+| [docs/solar/README.md](./docs/solar/README.md) | Solar input contract, units, and limitations |
+| [docs/solar/MISSION_MODEL.md](./docs/solar/MISSION_MODEL.md) | Battery assumptions, score policy, and landing-delay analysis |
+
+Panel generation, battery dispatch, and landing-delay comparisons live in `src/power/`. Visibility owns terrain obstruction; solar consumes that mask once. Missing inputs stay unknown.

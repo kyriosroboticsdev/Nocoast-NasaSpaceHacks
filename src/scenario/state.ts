@@ -4,6 +4,8 @@ import {
   type ScenarioState,
   type ScenarioThresholds,
 } from './types';
+import { validateMissionSettings, type MissionSettings } from '../power/mission';
+import { delayOffsets } from '../power/planning';
 
 type Listener = (state: ScenarioState) => void;
 
@@ -72,6 +74,10 @@ export function setScrubUtc(scrubUtc: string) {
 
 export function setThresholds(thresholds: Partial<ScenarioThresholds>) {
   setScenario({ thresholds: { ...state.thresholds, ...thresholds } });
+}
+export function setMissionSettings(missionSettings: MissionSettings) {
+  validateMissionSettings(missionSettings, state.thresholds.batteryFloorW);
+  setScenario({ missionSettings });
 }
 
 export function toggleCompare(enabled: boolean) {
@@ -147,17 +153,45 @@ export function applyUrlParams(search: string) {
   }
 
   const thresholds: Partial<ScenarioThresholds> = {};
-  const minEl = parseFinite(params.get('minEl'), -5, 90);
+  const minEl = parseFinite(params.get('minEarthElevationDeg') ?? params.get('minEl'), -5, 90);
   if (minEl != null) thresholds.minEarthElevationDeg = minEl;
-  const area = parseFinite(params.get('area'), 0.01, 1000);
+  const area = parseFinite(params.get('panelAreaM2') ?? params.get('area'), 0, 1000000);
   if (area != null) thresholds.panelAreaM2 = area;
-  const eff = parseFinite(params.get('eff'), 0.01, 1);
+  const eff = parseFinite(params.get('panelEfficiency') ?? params.get('eff'), 0, 1);
   if (eff != null) thresholds.panelEfficiency = eff;
-  const tilt = parseFinite(params.get('tilt'), -90, 90);
+  const tilt = parseFinite(params.get('panelTiltDeg') ?? params.get('tilt'), 0, 180);
   if (tilt != null) thresholds.panelTiltDeg = tilt;
-  const floor = parseFinite(params.get('floor'), 0, 1e6);
+  const bearing = parseFinite(params.get('panelAzimuthDeg'), 0, 359.999999);
+  if (bearing != null) thresholds.panelAzimuthDeg = bearing;
+  const floor = parseFinite(params.get('batteryFloorW') ?? params.get('floor'), 0, 1e6);
   if (floor != null) thresholds.batteryFloorW = floor;
   if (Object.keys(thresholds).length) patch.thresholds = { ...state.thresholds, ...thresholds };
+  const parseSettings = (key: string) => {
+    const value = params.get(key);
+    if (!value || value.length > 4096) return null;
+    try { const parsed = JSON.parse(value); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null; }
+    catch { return null; }
+  };
+  const battery = parseSettings('battery'), requirements = parseSettings('requirements');
+  if (battery || requirements) {
+    const next = structuredClone(state.missionSettings);
+    for (const [section, values] of [['battery', battery], ['requirements', requirements]] as const) {
+      if (!values) continue;
+      for (const key of Object.keys(next[section])) if (Object.hasOwn(values, key)) (next[section] as Record<string, number>)[key] = values[key];
+    }
+    try { validateMissionSettings(next, patch.thresholds?.batteryFloorW ?? state.thresholds.batteryFloorW); patch.missionSettings = next; }
+    catch { /* Invalid coupled settings leave the current configuration intact. */ }
+  }
+  const planning = parseSettings('planning');
+  if (planning) {
+    const next = { ...state.planning };
+    for (const key of ['maxDelayHours', 'delayStepHours', 'orientationStepDeg'] as const) if (Object.hasOwn(planning, key)) next[key] = planning[key];
+    if (typeof planning.robustOptimization === 'boolean') next.robustOptimization = planning.robustOptimization;
+    try { delayOffsets(next.maxDelayHours, next.delayStepHours);
+      if (![5, 15, 30, 45, 90].includes(next.orientationStepDeg)) throw new Error('Invalid grid.');
+      patch.planning = next;
+    } catch { /* Keep valid prior planning options. */ }
+  }
 
   // Clamp scrub into mission window once start/duration known.
   const startUtc = patch.startUtc ?? state.startUtc;
@@ -194,7 +228,11 @@ export function scenarioToSearchParams(s: ScenarioState = state): string {
   p.set('area', String(s.thresholds.panelAreaM2));
   p.set('eff', String(s.thresholds.panelEfficiency));
   p.set('tilt', String(s.thresholds.panelTiltDeg));
+  p.set('panelAzimuthDeg', String(s.thresholds.panelAzimuthDeg));
   p.set('floor', String(s.thresholds.batteryFloorW));
+  p.set('battery', JSON.stringify(s.missionSettings.battery));
+  p.set('requirements', JSON.stringify(s.missionSettings.requirements));
+  p.set('planning', JSON.stringify(s.planning));
   return p.toString();
 }
 

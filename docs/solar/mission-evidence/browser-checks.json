@@ -1,0 +1,57 @@
+{
+  "configuredViewport": "1440x1000",
+  "clientWidth": 1425,
+  "scrollWidth": 1425,
+  "batteryCharts": 2,
+  "allBatteryAndRequirementInputsLabeled": true,
+  "duplicateIds": [],
+  "defaultCR1": {
+    "initialBatteryWh": 1600,
+    "finalBatteryWh": 200,
+    "unservedWh": 5048.7080832057645,
+    "firstPowerLossOffsetSeconds": 134142.42482997527,
+    "longestPowerOutageSeconds": 470657.57517002476,
+    "score": 10.663997522058612
+  },
+  "optimization": {
+    "gridDeg": 30,
+    "bestSite": "connecting-ridge-cr1",
+    "tiltDeg": 90,
+    "azimuthDeg": 180,
+    "unservedWh": 0,
+    "minimumNominalScore": 48.080133555926544,
+    "SR1": "Excluded for terrain_visibility_missing"
+  },
+  "robust": {
+    "delaysHours": [
+      0,
+      12,
+      24,
+      36,
+      48
+    ],
+    "minimumScoreRounded": 20.4,
+    "site": "connecting-ridge-cr1"
+  },
+  "delayCurrentFlatPanel": {
+    "worstUnservedDelayHours": 48,
+    "worstUnservedWhRounded": 5210,
+    "SR1": "Worst case unknown; all five tested scenarios incomplete"
+  },
+  "validation": {
+    "reserveAboveInitial": "Rejected; stored valid reserve remained0.1",
+    "cancel": "Cancelled without a partial optimum",
+    "budget": "Rejected >10000 scenario evaluations",
+    "resetInvalidDraft": "Restored0.1 and cleared error"
+  },
+  "export": "mission-integration-0.2.0; both reports contain10 replayable source contexts; mission parameters and score components verified",
+  "phone": {
+    "configuredViewport": "390x844",
+    "clientWidth": 375,
+    "scrollWidth": 375,
+    "tableClientWidth": 309,
+    "tableScrollWidth": 520,
+    "tableScrollIsLocal": true
+  },
+  "captureNotes": "DevTools screenshot connection stalled. Final IAB screenshots and DOM observations were used. The desktop screenshot shows page context; viewport widths and mission metrics are recorded here. Minor explanatory copy was refreshed afterward without structural changes."
+}

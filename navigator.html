@@ -35,7 +35,7 @@
         <p>Because the Sun sits so low, any ridge or crater rim a few kilometers away can block it for days. Earth — which a lander must see to call home — can hide behind the same skyline. Move the landing spot a little, or shift the date by a week, and a great site can turn into a dead one. That is why NASA mission planners agonize over <em>where</em> and <em>when</em>.</p>
         <p class="learn-earth-analog" id="learn-earth-analog">Think of it like a remote cabin where the solar power and the phone line each cut out for days at a time, on their own schedules. Mission planning is picking the spot and the week where both stay on — this tool lets you try it yourself.</p>
         <p class="learn-tip" id="learn-verdict-tip">Try CR1 vs SR1 on the same week, then slip the start date — small moves can flip which site survives. The verdict grades your whole <strong>mission window</strong>; the time slider explores <strong>moments</strong> inside it.</p>
-        <p class="learn-power-comms expert-only" id="learn-power-comms">Communications need Earth above the terrain plus a minimum-elevation margin; power needs the Sun clear of ridges, then a rough panel estimate (area × efficiency × tilt) compared to a battery floor. The critical window is <strong>Sun + Earth together</strong> — hours you can recharge while talking to Earth with no relay. Use the <strong>?</strong> controls on the metrics for how each number is calculated.</p>
+        <p class="learn-power-comms expert-only" id="learn-power-comms">Communications need Earth above the terrain plus a minimum-elevation margin. Power combines panel generation with a constant equipment load and battery dispatch: inspect unmet watt-hours and electrical outages, then compare powered Earth contact with the mission requirements. <strong>Sun + Earth together</strong> is still the overlap when you can recharge while talking home with no relay. Use the <strong>?</strong> controls on the metrics for how each number is calculated.</p>
       </article>
       <div class="guided">
         <h3>Guided scenarios</h3>
@@ -157,7 +157,7 @@
           <div class="decision-header">
             <h2>Find · compare · decide</h2>
             <p class="decision-lead">Not happy with your verdict? Let the tool hunt for something better: search the region for the best spot, rank every known site, or shift the launch date. Click <strong>Adopt</strong> or <strong>Apply</strong> on any result to make it your scenario.</p>
-            <p class="decision-lead expert-only">Prefer a high <strong>Sun + Earth together</strong> share (power while talking to Earth, no relay), watch longest gaps and average watts vs the battery floor, and treat unknown hours as coverage gaps — not outages.</p>
+            <p class="decision-lead expert-only">Prefer a high <strong>Sun + Earth together</strong> share, and grade the window on served electrical load, shortages, outages, and Earth contact against your requirements. Unknown hours are coverage gaps, not outages.</p>
           </div>
           <div class="decision-actions">
             <button type="button" id="find-best-location">Find best location</button>
@@ -286,10 +286,12 @@
             <input id="panel-area" type="number" min="0.1" max="50" step="0.1" value="2">
             <label for="panel-eff" class="has-metric-help" id="help-panel-eff">Panel efficiency</label>
             <input id="panel-eff" type="number" min="0.05" max="0.45" step="0.01" value="0.28">
-            <label for="panel-tilt" class="has-metric-help" id="help-panel-tilt">Panel tilt °</label>
-            <input id="panel-tilt" type="number" min="0" max="60" step="1" value="0">
-            <label for="battery-floor" class="has-metric-help" id="help-battery-floor">Battery floor W</label>
-            <input id="battery-floor" type="number" min="0" max="500" step="5" value="40">
+            <label for="panel-tilt" class="has-metric-help" id="help-panel-tilt">Tilt from horizontal °</label>
+            <input id="panel-tilt" type="number" min="0" max="180" step="any" value="0" required>
+            <label for="panel-azimuth" class="has-metric-help" id="help-panel-azimuth">Panel facing ° (N=0, E=90)</label>
+            <input id="panel-azimuth" type="number" min="0" max="359.999999" step="any" value="0" required>
+            <label for="battery-floor" class="has-metric-help" id="help-battery-floor">Equipment power demand W</label>
+            <input id="battery-floor" type="number" min="0" max="1000000" step="any" value="40" required>
             <label for="antenna-boresight-az" title="Fixed-mount directional antenna pointing (optional) — leave both angles blank to turn this off.">Antenna boresight az °</label>
             <input id="antenna-boresight-az" type="number" min="0" max="360" step="1" placeholder="off">
             <label for="antenna-boresight-el" title="Fixed-mount directional antenna pointing (optional) — leave both angles blank to turn this off.">Antenna boresight el °</label>
@@ -298,17 +300,76 @@
             <input id="antenna-beamwidth" type="number" min="1" max="180" step="1" value="20">
             <p class="control-hint" id="antenna-link-quality" hidden></p>
           </details>
+          <details class="thresholds expert-only" id="battery-settings" open>
+            <summary>Battery storage</summary>
+            <label for="battery-capacity">Capacity Wh</label>
+            <input id="battery-capacity" data-battery="capacityWh" type="number" min="0" max="1000000000" step="any" value="2000" required>
+            <label for="battery-initial">Initial charge (0–1)</label>
+            <input id="battery-initial" data-battery="initialSocFraction" type="number" min="0" max="1" step="any" value="0.8" required>
+            <label for="battery-reserve">Reserve cutoff (0–1)</label>
+            <input id="battery-reserve" data-battery="reserveSocFraction" type="number" min="0" max="1" step="any" value="0.1" required>
+            <details class="battery-advanced">
+              <summary>Efficiencies and power limits</summary>
+              <label for="battery-charge-eff">Charge efficiency (0–1)</label>
+              <input id="battery-charge-eff" data-battery="chargeEfficiency" type="number" min="0.000001" max="1" step="any" value="0.95" required>
+              <label for="battery-discharge-eff">Discharge efficiency (0–1)</label>
+              <input id="battery-discharge-eff" data-battery="dischargeEfficiency" type="number" min="0.000001" max="1" step="any" value="0.95" required>
+              <label for="battery-max-charge">Maximum charge W (bus)</label>
+              <input id="battery-max-charge" data-battery="maxChargeW" type="number" min="0" max="1000000000" step="any" value="500" required>
+              <label for="battery-max-discharge">Maximum discharge W (bus)</label>
+              <input id="battery-max-discharge" data-battery="maxDischargeW" type="number" min="0" max="1000000000" step="any" value="500" required>
+            </details>
+          </details>
+          <details class="thresholds expert-only" id="mission-requirements">
+            <summary>Mission requirements</summary>
+            <label for="required-power">Required power availability (0–1)</label>
+            <input id="required-power" data-requirement="minPowerAvailabilityFraction" type="number" min="0.000001" max="1" step="any" value="1" required>
+            <label for="required-comms">Required Earth contact (0–1)</label>
+            <input id="required-comms" data-requirement="minCommsAvailabilityFraction" type="number" min="0" max="1" step="any" value="0.5" required>
+            <label for="max-comms-gap">Maximum Earth blackout h</label>
+            <input id="max-comms-gap" data-requirement="maxCommsBlackoutHours" type="number" min="0" max="1440" step="any" value="24" required>
+          </details>
+          <button id="reset-mission-settings" type="button">Reset battery + requirements</button>
+          <p id="mission-config-error" role="alert" class="mission-error"></p>
+          <p class="control-hint expert-only">Model a lander, rover, or crew's equipment during the stay. Solar power serves the constant demand first; surplus charges the battery and deficits draw down to the reserve. Defaults are engineering examples. The score is project policy, not a probability of mission success.</p>
         </aside>
+      </section>
+
+      <section id="mission-planning" class="cluster mission-planning" aria-label="Panel optimization and landing delays">
+        <aside class="controls mission-plan-controls">
+          <h2>Test mission resilience</h2>
+          <p>Compare the two fixed study sites with the same panel area, efficiency, battery, consumption and requirements.</p>
+          <label for="orientation-step">Orientation grid step</label>
+          <select id="orientation-step"><option value="90">90° quick check</option><option value="45">45°</option><option value="30" selected>30°</option><option value="15">15°</option><option value="5">5° fine</option></select>
+          <label for="max-delay-hours">Maximum landing delay h</label>
+          <input id="max-delay-hours" type="number" min="0" max="336" step="any" value="48" required>
+          <label for="delay-step-hours">Delay step h</label>
+          <input id="delay-step-hours" type="number" min="0.000001" max="336" step="any" value="12" required>
+          <label class="check"><input type="checkbox" id="robust-optimization"> Optimize across all tested delays</label>
+          <div class="mission-actions">
+            <button id="optimize-mission" type="button">Optimize panels + sites</button>
+            <button id="test-delays" type="button">Test landing delays</button>
+            <button id="cancel-mission-job" type="button" disabled>Cancel analysis</button>
+          </div>
+          <p id="mission-job-status" role="status" aria-live="polite">Choose a tested grid and run an analysis. Nothing is applied automatically.</p>
+          <p class="control-hint">Finite grid search: up to 25 delays, 10,000 scenario evaluations and 100,000 source samples. Delays use whole-second increments. Unknown scenarios prevent a full worst-case claim. Export JSON to save reports before changing settings.</p>
+        </aside>
+        <div class="metrics mission-results">
+          <h2>Orientation + site comparison</h2>
+          <div id="optimization-results"><p>Run optimization to compare fixed orientations at CR1 and SR1.</p></div>
+          <h2>Landing-delay outcomes</h2>
+          <div id="delay-results"><p>Test the current hardware at each actual landing time, including zero delay.</p></div>
+        </div>
       </section>
 
       <!-- Time scrubber + skyline/timeline stay together -->
       <section class="cluster time-sky-cluster" aria-label="Mission time and skyline">
         <aside class="controls time-controls" data-tour="time">
           <h3>Mission time</h3>
-          <label for="start-utc">Mission start (UTC)</label>
+          <label for="start-utc">Landing / stay start (UTC)</label>
           <input id="start-utc" type="datetime-local">
 
-          <label for="duration">Mission length (Earth hours)</label>
+          <label for="duration">Stay at landing site (Earth hours)</label>
           <input id="duration" type="number" min="6" max="720" step="6" value="168">
 
           <div class="season-presets" id="season-presets">

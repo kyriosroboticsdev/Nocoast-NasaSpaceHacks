@@ -43,6 +43,7 @@ function earthPhrase(a: MissionAssessment): string {
 }
 
 function powerClause(a: MissionAssessment, th: ScenarioThresholds): string | null {
+  if (a.meanPowerW == null) return 'Solar power for this window is unknown';
   if (a.meanPowerW >= th.batteryFloorW) return null;
   return `Solar panels would average ~${fmtPower(a.meanPowerW)} against the ~${fmtPower(th.batteryFloorW)} the lander needs`;
 }
@@ -78,7 +79,7 @@ export function plainConsequence(a: MissionAssessment, th: ScenarioThresholds): 
   const problems: string[] = [];
   if (a.sunlightPct < 40) {
     problems.push('The site spends most of this window in darkness.');
-  } else if (a.meanPowerW < th.batteryFloorW) {
+  } else if (a.meanPowerW != null && a.meanPowerW < th.batteryFloorW) {
     problems.push('The solar panels cannot keep up — the batteries would drain faster than they recharge.');
   }
   if (a.longestEarthBlackoutHours >= 24) {
@@ -98,7 +99,8 @@ export function simpleCards(a: MissionAssessment, th: ScenarioThresholds): Simpl
   const sunTone: CardTone = a.sunlightPct >= 70 ? 'good' : a.sunlightPct >= 40 ? 'warn' : 'bad';
   const earthTone: CardTone = a.earthLosPct >= 70 ? 'good' : a.earthLosPct >= 40 ? 'warn' : 'bad';
   const powerTone: CardTone =
-    a.meanPowerW >= th.batteryFloorW ? 'good'
+    a.meanPowerW == null ? 'warn'
+    : a.meanPowerW >= th.batteryFloorW ? 'good'
     : a.meanPowerW >= th.batteryFloorW * 0.5 ? 'warn' : 'bad';
   const gap = a.longestEarthBlackoutHours;
   const gapTone: CardTone = gap <= 12 ? 'good' : gap <= 48 ? 'warn' : 'bad';

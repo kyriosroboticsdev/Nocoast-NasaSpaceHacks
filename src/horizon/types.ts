@@ -24,6 +24,8 @@ export type HorizonProfile = {
   notes: string[];
   bins: HorizonBin[];
   generatedAtUtc: string;
+  /** Set by terrain owner only after frame, ray coverage and numerical validation. */
+  validation?: { status: 'validated' | 'pending'; algorithmVersion: string };
 };
 
 export function sphereHorizon(siteId: string, lat: number, lon: number, elevM = 0, heightM = 2): HorizonProfile {

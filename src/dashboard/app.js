@@ -757,7 +757,11 @@ window.addEventListener("resize", () => drawStrip());
 
 (async function init() {
   renderSources(); renderNeedsBox();
-  $("map-img").src = apiUrl("api/polar_map.png");
+  // Built here, not in the HTML: the map comes from the API, whose origin is only known at runtime.
+  const mapImg = Object.assign(document.createElement("img"), {
+    id: "map-img", src: apiUrl("api/polar_map.png"),
+    alt: "Shaded LOLA terrain map of the lunar south pole, about 120 km across" });
+  $("map-wrap").prepend(mapImg);
   try { [state.contract, state.mapMeta] = await Promise.all([api("contract"), api("polar_map/meta").catch(() => null)]); }
   catch (e) { setStatus(`Can't reach the science server (${e.message}). Start it with ./run.ps1.`, "err"); $("results").innerHTML = ""; return; }
   const c = state.contract, qs = new URLSearchParams(location.search);

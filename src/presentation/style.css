@@ -17,7 +17,7 @@ body[data-side="left"] #app { left: var(--col); width: calc(100% - var(--col)); 
 body[data-side="right"] #app { left: 0; width: calc(100% - var(--col)); }
 
 #caption {
-  position: fixed; top: 0; bottom: 0; width: var(--col); padding: 34px 28px 70px;
+  position: fixed; top: 0; bottom: 0; width: var(--col); padding: 34px 28px 110px;
   display: flex; flex-direction: column; justify-content: center; gap: 12px; overflow: hidden;
   background: #0a1019; opacity: 0;
   transition: opacity .5s var(--ease), transform var(--move) var(--ease);
@@ -92,15 +92,33 @@ body[data-side="float"] #caption {
 #fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity .6s var(--ease); z-index: 1; }
 #caption { z-index: 2; }
 
-#veil h1.big { font-size: 58px; margin-bottom: 4px; }
-.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; margin-top: 26px; }
-.tile { padding: 16px 22px 18px; border: 1px solid #ffffff2e; border-radius: 14px; background: #0d1520cc; }
-#veil .tile h2 { margin: 0 0 4px; font-size: 28px; line-height: 1.15; letter-spacing: -.02em; }
-#veil .tile p { font-size: 19px; color: #c9d5e3; }
-#veil .tile code { font-size: 18px; }
+#veil h1.big { font-size: 62px; margin-bottom: 6px; }
+#veil .cols li { font-size: 18px; padding: 6px 0 6px 20px; }
+#veil .cols li::before { top: 16px; }
+#veil .chain { margin: 14px 0 6px; font-size: 27px; color: #badaf2; }
+#veil .points { margin-top: 18px; }
+#veil .points li { padding: 13px 0 13px 34px; font-size: 29px; line-height: 1.25; color: #c9d5e3; }
+#veil .points li::before { left: 4px; top: 50%; translate: 0 -50%; width: 11px; height: 11px; }
+#veil .points.small li { font-size: 25px; padding: 11px 0 11px 34px; }
+#veil .points b { margin-right: 18px; color: #fff; }
+#veil .points .katex { font-size: 1em; color: #edf2f8; }
+
+.nav {
+  position: fixed; z-index: 6; bottom: 16px; height: 34px; padding: 0 13px; border: 1px solid #ffffff36; border-radius: 999px;
+  background: #0a1019e6; color: #dbe6f2; font: 600 13px "Public Sans", system-ui, sans-serif; cursor: pointer;
+  transition: left var(--move) var(--ease), right var(--move) var(--ease), opacity .3s var(--ease), border-color .2s;
+}
+.nav:hover { border-color: #fff; }
+.nav:disabled { opacity: .35; cursor: default; }
+.nav[hidden] { display: none; }
+#nav-back { left: 16px; }
+#nav-next { right: 16px; }
+/* Beside a tool the two buttons sit in the lower corners of the text column. */
+body[data-side="left"] #nav-next { right: calc(100% - var(--col) + 16px); }
+body[data-side="right"] #nav-back { left: calc(100% - var(--col) + 16px); }
 
 #hint {
-  position: fixed; z-index: 6; left: 50%; bottom: 18px; translate: -50% 0; margin: 0; padding: 7px 14px;
+  position: fixed; z-index: 6; left: 50%; bottom: 60px; translate: -50% 0; margin: 0; padding: 7px 14px;
   border: 1px solid #ffffff36; border-radius: 999px; background: #0a1019e6; font-size: 13px; color: #dbe6f2;
   opacity: 0; transition: opacity .4s var(--ease), left var(--move) var(--ease);
 }

@@ -1174,8 +1174,14 @@ async function runSuggestDates() {
   el('date-status').textContent = 'Searching slips…';
   el('date-list').innerHTML = '<p class="empty-hint">Scoring nearby starts…</p>';
   try {
+    // Skip slips that would put any part of the stay outside the supported ephemeris year.
+    const inRange = (offsetDays: number) => {
+      const start = Date.parse(slipStartUtc(state.startUtc, offsetDays));
+      return start >= Date.parse('2027-01-01T00:00:00Z')
+        && start + state.durationHours * 3600000 <= Date.parse('2028-01-01T00:00:00Z');
+    };
     const candidates = await Promise.all(
-      DATE_SLIP_OFFSETS_DAYS.map(async offsetDays => {
+      DATE_SLIP_OFFSETS_DAYS.filter(inRange).map(async offsetDays => {
         const startUtc = slipStartUtc(state.startUtc, offsetDays);
         const assessment = await computeSlot(state, 'A', {
           siteId: state.primary.siteId,

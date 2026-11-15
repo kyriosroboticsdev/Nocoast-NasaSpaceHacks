@@ -1066,6 +1066,9 @@ if (PRESENT) {
   window.nocoastDemo = {
     get result() { return state.results.get(state.focus) ?? null; },
     get loading() { return state.loading; },
+    /** True when the focused site has no analysis or no power model, usually after a failed request. */
+    get failed() { return !state.results.has(state.focus) || Boolean(state.mission.get(state.focus)?.error); },
+    refresh: () => refresh(),
     get index() { return state.tIdx; },
     setTime(i) { const r = state.results.get(state.focus); if (r) { state.tIdx = Math.max(0, Math.min(r._t.length - 1, Math.round(i))); renderNow(); } },
     look(view) { if (sky3d) sky3d.look(view); },

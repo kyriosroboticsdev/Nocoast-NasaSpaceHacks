@@ -1,8 +1,16 @@
 // Guided walkthrough. The real planner runs in the frame; this script moves its camera and clock, presses
 // its buttons, and puts a short explanation beside each tool. Space advances once a step has finished.
+import katex from "katex";
+import "katex/dist/katex.min.css";
+
 const frame = document.getElementById("app");
 const $ = (id) => document.getElementById(id);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Back and Next can interrupt a step that is still running. Every wait below belongs to the step that
+// started it (gen); once another step has begun, the old one's next wait throws ABORT and it stops.
+let gen = 0;
+const ABORT = Symbol("abort");
+const sleep = (ms) => { const g = gen; return new Promise((r, no) => setTimeout(() => (g === gen ? r() : no(ABORT)), ms)); };
+const tex = (src) => katex.renderToString(src, { throwOnError: false });
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeInOut = (t) => (t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -16,9 +24,11 @@ let win, doc, demo;
 const q = (sel) => doc.querySelector(sel);
 
 function tween(ms, fn, ease = easeInOut) {
-  return new Promise((resolve) => {
+  const g = gen;
+  return new Promise((resolve, reject) => {
     const t0 = performance.now();
     (function step(now) {
+      if (g !== gen) { reject(ABORT); return; }
       const t = clamp((now - t0) / ms, 0, 1);
       fn(ease(t), t);
       if (t < 1) requestAnimationFrame(step); else resolve();
@@ -91,7 +101,15 @@ function setField(sel, value) {
 /** Wait for the planner to finish recalculating after a site or date change. */
 async function settled(timeout = 45000) {
   await sleep(700);
-  return waitFor(() => demo.result && !demo.loading, timeout);
+  let ok = await waitFor(() => demo.result && !demo.loading, timeout);
+  // A busy or restarting science API can fail one request; ask again before showing "can't tell".
+  for (let tries = 0; tries < 2 && demo.failed; tries++) {
+    await sleep(1500);
+    demo.refresh();
+    await sleep(700);
+    ok = await waitFor(() => demo.result && !demo.loading, timeout);
+  }
+  return ok;
 }
 
 // ------------------------------------------------------------------ camera and clock
@@ -190,6 +208,7 @@ function startSky() {
   })(t0);
 }
 
+let flames = null;
 // Engine exhaust for the landing: two plumes rising from under the camera, drawn over the scene.
 function startFlames() {
   const cv = $("fx"), ctx = cv.getContext("2d"), parts = [];
@@ -281,7 +300,8 @@ function showSkyline(on) {
 }
 
 const steps = [
-  { // 1
+  { // landing, then the planner fades in
+    bare: true, top: true,
     async run(n) {
       plan = makePlan();
       const s = series(), aimAt = plan.sunUp > 0 ? plan.sunUp : plan.start;
@@ -294,7 +314,7 @@ const steps = [
         `<p>This is the view from the lander's camera on the way down. The ground and the ridges are built from NASA's LOLA elevation data for this spot.</p>
          <p>The descent engines burn until the legs touch. The Sun is still behind the terrain here, so the scene is brightened to show the surface.</p>`);
       $("veil").classList.add("gone");
-      const flames = startFlames();
+      flames = startFlames();
       await tween(7600, (e, t) => {
         flames.level = clamp(t / .08, 0, 1) * (t < .93 ? 1 : (1 - t) / .07);      // throttle up, then cut just before touchdown
         demo.look({ lift: 460 * (1 - t) ** 2.3, pitch: lerp(-62, 3, easeInOut(t)), yaw: yaw0 - 70 * (1 - easeOut(t)), fov: lerp(78, 70, t) });
@@ -302,33 +322,18 @@ const steps = [
       flames.done = true;
       // touchdown: the camera settles on its legs
       await tween(900, (_, t) => demo.look({ lift: 0, pitch: 3 - 2.2 * Math.exp(-5 * t) * Math.cos(16 * t) * (1 - t) }), (t) => t);
-    },
-  },
-  { // 2
-    async run(n) {
-      const { sunUp, earthUp, start, h } = plan, last = count() - 1;
-      await caption("float", n, "Sunrise, then Earth",
-        `<p>Near the pole the Sun stays close to the horizon. It circles the sky once a month and spends days at a time behind ridges.</p>
-         <p>Earth sits low in one part of the sky and dips in and out of view. The clock now runs forward until both have come up.</p>`);
-      let at = start;
-      if (sunUp > 0) {
-        await panTo(bodyView("sun", at, 50));
-        const to = clamp(sunUp + 10 * h, 0, last);
-        await runClock(at, to, 6500, "sun", 50); at = to;
-      }
-      await panTo(bodyView("earth", at, 34), 1300);
-      const to = clamp(Math.max(at + 30 * h, earthUp > at ? earthUp + 14 * h : 0), 0, last);
-      await runClock(at, to, 5500, "earth", 34);
+      await sleep(900);
       // pull back to the whole planner
-      await sleep(500);
       const cap = caption("right", n, "The full planner",
         `<p>The same scene is the backdrop for the whole planner. The site and its mission panels are on the left, the camera controls are at the top, and the timeline runs along the bottom.</p>`);
+      cap.catch(() => {});
       press("#site-continue");
       doc.documentElement.classList.remove("present-bare");
-      await Promise.all([cap, panTo({ ...bodyView("earth", to, 70), pitch: 6 }, 1300)]);
+      await Promise.all([cap, panTo({ pitch: 6, fov: 70 }, 1300)]);
     },
   },
-  { // 3
+  { // timeline and skyline
+    top: true,
     async run(n) {
       const last = count() - 1;
       await caption("right", n, "Sun, Earth and the skyline over time",
@@ -354,8 +359,8 @@ const steps = [
     },
   },
   { // above the site
+    top: true, above: true,
     async run(n) {
-      markRow(null); showSkyline(false);
       const button = '#view-seg [data-view="terrain"]';
       await caption("right", n, "Above the site",
         `<p>"Above the site" lifts the camera off the lander and orbits the ground around it.</p>
@@ -369,9 +374,8 @@ const steps = [
     },
   },
   { // compare
+    top: true,
     async run(n) {
-      focusOn('#view-seg [data-view="site"]');
-      press('#view-seg [data-view="site"]');
       demo.startTerrain().catch(() => {});      // the terrain explorer further down loads while this step is up
       await caption("right", n, "Compare two sites",
         `<p>Pick a second site and the planner puts both in one table, for the same dates and the same lander.</p>
@@ -383,8 +387,8 @@ const steps = [
     },
   },
   { // pick a point
+    top: true, map: true,
     async run(n) {
-      focusOn(null);
       await caption("right", n, "Pick any point",
         `<p>Any point on the south pole map can be tested, not only the named sites.</p>
          <p>One click and the planner works out the hills around that point, then sunlight, power and Earth contact for the stay.</p>`);
@@ -412,8 +416,6 @@ const steps = [
   },
   { // terrain explorer: the whole run stays under 20 s once the terrain has loaded
     async run(n) {
-      focusOn(null);
-      if (!q("#map-panel").hidden) press("#map-close");
       await caption("left", n, "Terrain explorer",
         `<p>Below the workspace is the whole Moon as one terrain model, with the landing site marked.</p>
          <p>The buttons jump to the site, the whole Moon and the polar cap. The layer menu swaps the surface for the mesh it is built from.</p>`);
@@ -492,7 +494,7 @@ const steps = [
       focusOn("#date-list");
       press("#suggest-dates");
       await waitFor(() => doc.querySelectorAll("#date-list .rank-item").length > 0, 45000);
-      const best = q("#date-list .rank-item");
+      const best = [...doc.querySelectorAll("#date-list .rank-item")].find((el) => !el.disabled);
       if (!best) { $("cap-body").insertAdjacentHTML("beforeend", `<p>No better date turned up for this site, so the plan keeps its dates.</p>`); return; }
       const label = best.querySelector("strong")?.textContent.trim();
       await sleep(1400);
@@ -546,7 +548,8 @@ const steps = [
         <p>Change the dates, the panel or the battery in the lander settings and the grade is worked out again.</p>`;
     },
   },
-  { // 10
+  { // every tool
+    slide: true,
     run: (n) => slide(`<p class="kicker">${n} of ${total}</p><h1 style="--i:1">Everything in the planner</h1>
       <div class="cols" style="--i:2">
         <div><h2>Mission workspace</h2><ul>${items([
@@ -580,55 +583,88 @@ const steps = [
       </div>`),
   },
   { // maths and science
+    slide: true,
     run: (n) => slide(`<p class="kicker">${n} of ${total}</p><h1 class="big" style="--i:1">The maths and science</h1>
-      <div class="tiles" style="--i:2">${[
-        ["Horizon mask", "<code>d² / 2R</code> curvature drop, <code>R = 1737.4 km</code>"],
-        ["Sun and Earth positions", "JPL DE421 ephemeris"],
-        ["Visibility", "discs: Sun 0.53°, Earth 1.9°"],
-        ["Solar power", "<code>P = 1361 W/m² ÷ r² × A × η × cos θ</code>"],
-        ["Battery", "charge in, load out, reserve floor"],
-        ["Site search", "320 m LOLA grid, live rescoring"],
-        ["Relay path", "Dijkstra and A* on a waypoint graph"],
-        ["Mission grade", "power, sunlight and contact against the requirements"],
-      ].map(([h, p], k) => `<div class="tile rise" style="--i:${k + 3}"><h2>${h}</h2><p>${p}</p></div>`).join("")}</div>`),
+      <ul class="points">${items([
+        `<b>Horizon mask</b>${tex("\\Delta h = \\dfrac{d^2}{2R},\\quad R = 1737.4\\ \\text{km}")}`,
+        `<b>Sun and Earth positions</b>JPL DE421 ephemeris`,
+        `<b>Visibility</b>${tex("\\text{elevation} > \\text{horizon}(\\text{azimuth})")}`,
+        `<b>Solar power</b>${tex("P = \\dfrac{1361\\ \\text{W/m}^2}{r^2}\\,A\\,\\eta\\cos\\theta")}`,
+        `<b>Battery</b>${tex("E_{t+1} = E_t + (P - P_{\\text{load}})\\,\\Delta t")}`,
+        `<b>Site search</b>320 m LOLA grid`,
+        `<b>Relay path</b>Dijkstra and A*, ${tex("f(n) = g(n) + h(n)")}`,
+      ], 2)}</ul>`),
   },
   { // Azure
+    slide: true,
     run: (n) => slide(`<p class="kicker">${n} of ${total}</p><h1 class="big" style="--i:1">Running on Azure</h1>
-      <div class="flow" style="--i:2">
-        <div class="rise" style="--i:3"><b>Browser</b>3D scene and power model</div><i class="rise" style="--i:3">→</i>
-        <div class="rise" style="--i:4"><b>Static Web Apps</b>the built site</div><i class="rise" style="--i:4">→</i>
-        <div class="rise" style="--i:5"><b>Container Apps</b>FastAPI science API, 1 to 3 replicas, one always warm</div><i class="rise" style="--i:5">→</i>
-        <div class="rise" style="--i:6"><b>Blob Storage</b>240 MB of LOLA terrain and SPICE kernels</div>
-      </div>
-      <div class="tiles" style="--i:7">${[
-        ["GitHub Actions", "push to main → image on GHCR → live"],
-        ["OIDC sign-in", "no Azure password in the repository"],
-        ["Bicep", "every resource as code, West US 2"],
-        ["Log Analytics + App Insights", "logs and metrics"],
-      ].map(([h, p], k) => `<div class="tile rise" style="--i:${k + 8}"><h2>${h}</h2><p>${p}</p></div>`).join("")}</div>`),
+      <p class="chain" style="--i:2">Browser → Static Web Apps → Container Apps → Blob Storage</p>
+      <ul class="points">${items([
+        "<b>Static Web Apps</b>the built site",
+        "<b>Container Apps</b>FastAPI science API, 2 vCPU and 4 GB",
+        "<b>Scaling</b>1 to 3 replicas, one always warm",
+        "<b>Blob Storage</b>240 MB of LOLA terrain and SPICE kernels",
+        "<b>GitHub Actions</b>push to main, image on GHCR, live",
+        "<b>Bicep and OIDC</b>resources as code, no stored Azure password",
+      ], 3)}</ul>`),
+  },
+  { // datasets
+    slide: true,
+    run: (n) => slide(`<p class="kicker">${n} of ${total}</p><h1 class="big" style="--i:1">Datasets</h1>
+      <ul class="points small">${items([
+        "<b>LOLA polar elevation</b>80 m and 240 m mosaics, NASA PDS Geosciences",
+        "<b>LOLA 5 m maps</b>south pole mosaic and site tiles, NASA Goddard PGDA",
+        "<b>Whole-Moon elevation and colour</b>NASA SVS CGI Moon Kit",
+        "<b>Sun, Earth and Moon positions</b>JPL DE421 ephemeris",
+        "<b>Moon orientation and frames</b>NAIF SPICE kernels",
+        "<b>Earth imagery</b>three.js example textures",
+        "<b>Limits</b>terrain south of 75°S, dates in 2027, relay path is a first pass",
+      ], 2)}</ul>`),
   },
 ];
 total = steps.length;
 
 // ------------------------------------------------------------------ runner
 let at = -1, busy = true;
-async function advance() {
-  if (busy) return;
-  busy = true; hint("");
-  at++;
-  if (at >= steps.length) { location.href = PLANNER; return; }      // done: hand over to the real planner
-  try { await steps[at].run(at + 1); }
-  catch (error) { console.error(error); }
+/** Put the planner back into a neutral state, so a step starts the same whether it follows the one before it or not. */
+async function prepare(step) {
+  if (flames) flames.done = true;
+  markRow(null); showSkyline(false); focusOn(null);
+  if (step.slide) return;
+  if (!step.bare) { $("veil").classList.add("gone"); doc.documentElement.classList.remove("present-bare"); }
+  if (!step.map && !q("#map-panel").hidden) press("#map-close");
+  const site = q('#view-seg [data-view="site"]');
+  if (!step.above && site.getAttribute("aria-pressed") !== "true") site.click();
+  if (step.top && win.scrollY > 4) await scrollToY(0);
+}
+function showNav() {
+  $("nav-back").hidden = $("nav-next").hidden = false;
+  $("nav-back").disabled = at <= 0;
+  $("nav-next").textContent = at === steps.length - 1 ? "Open planner →" : "Next →";
+}
+async function go(to) {
+  if (!demo || to < 0) return;
+  if (to >= steps.length) { location.href = PLANNER; return; }      // done: hand over to the real planner
+  const g = ++gen;
+  at = to; busy = true; hint(""); showNav();
+  try { await prepare(steps[to]); await steps[to].run(to + 1); }
+  catch (error) { if (error !== ABORT) console.error(error); }
+  if (g !== gen) return;                                             // another step took over
   busy = false;
   hint(at === steps.length - 1 ? "<kbd>Space</kbd>open the planner" : "<kbd>Space</kbd>next");
 }
+const advance = () => { if (!busy) go(at + 1); };                    // Space waits for the step to finish
 function onKey(e) {
-  if (e.code !== "Space" && e.key !== "ArrowRight" && e.key !== "PageDown") return;
+  if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); e.stopPropagation(); if (!e.repeat) go(at - 1); return; }
+  if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); e.stopPropagation(); if (!e.repeat) go(at + 1); return; }
+  if (e.code !== "Space") return;
   e.preventDefault(); e.stopPropagation();
   if (!e.repeat) advance();
 }
 window.addEventListener("keydown", onKey, true);
 $("hint").addEventListener("click", advance);
+$("nav-back").addEventListener("click", () => go(at - 1));           // these two work at any time, mid-step included
+$("nav-next").addEventListener("click", () => go(at + 1));
 
 $("veil-content").innerHTML = WELCOME;
 startSky();
@@ -646,5 +682,6 @@ frame.addEventListener("load", async () => {
   await sleep(1200);          // let the terrain mesh finish building behind the title
   $("loading").textContent = "Ready.";
   busy = false;
+  showNav();
   hint("<kbd>Space</kbd>begin the landing");
 });

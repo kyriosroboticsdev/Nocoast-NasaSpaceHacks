@@ -12,6 +12,7 @@ import type { HorizonBin, HorizonProfile } from '../horizon/types';
 import type { BodyId, EphemerisSeries } from '../ephemeris/types';
 import type { EphemerisProvider } from '../ephemeris/horizons';
 import { interpolateSeries } from '../ephemeris/horizons';
+import { apiUrl } from '../apiBase';
 
 export type BackendSummary = {
   percentOfMission: number | null;
@@ -77,7 +78,7 @@ export function fetchBackendAnalysis(
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-      const res = await fetch(`${baseUrl}api/analyze?${params}`, { signal: controller.signal });
+      const res = await fetch(apiUrl(`api/analyze?${params}`, baseUrl), { signal: controller.signal });
       clearTimeout(timer);
       if (!res.ok) return null;
       return (await res.json()) as BackendAnalysis;

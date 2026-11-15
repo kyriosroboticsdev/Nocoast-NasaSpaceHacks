@@ -86,6 +86,12 @@ jobs:
           node-version: "22"
 
       - run: npm ci
+
+      # Point the built site at the Container App directly (Static Web Apps can't link an Express-mode
+      # Container App as its /api backend; Azure returns 500 on the link).
+      - name: Resolve backend URL
+        run: echo "VITE_API_ORIGIN=https://$(az containerapp show -n "$CONTAINER_APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)" >> "$GITHUB_ENV"
+
       - run: npm run build
 
       - name: Deploy to Azure Static Web Apps

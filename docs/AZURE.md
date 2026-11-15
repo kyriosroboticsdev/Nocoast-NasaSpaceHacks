@@ -164,3 +164,11 @@ push. The ACR resource is left in place but unused.
 GitHub OIDC: GitHub now presents the subject with numeric IDs
 (`repo:kyriosroboticsdev@218849459/Nocoast-NasaSpaceHacks@1457942253:ref:refs/heads/<branch>`), so the Entra
 app has federated credentials in both that form and the plain-name form, for `main` and `preview`.
+
+### No Static Web Apps linked backend (2026-11-15)
+
+Linking the Express-mode Container App as the Static Web App's `/api` backend never completes: the Bicep
+step sat in "Static Web Apps service is temporarily unavailable" retries for over an hour, and
+`az staticwebapp backends link` returns HTTP 500. So the Azure build sets `VITE_API_ORIGIN` to the Container
+App URL (`src/apiBase.ts`) and the frontend calls it cross-origin; FastAPI allows CORS for GETs. Local dev
+leaves `VITE_API_ORIGIN` unset, so `/api` stays same-origin through the Vite proxy and dev middleware.

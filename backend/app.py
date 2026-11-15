@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -11,6 +12,9 @@ from .pathfinding import earth_moon
 from .pathfinding.graph import NoPathError, Weights, shortest_path
 
 app = FastAPI(title="Lunar Navigator: Sun, Earth & Communication")
+# The Azure-hosted frontend calls this API cross-origin (Static Web Apps can't link an Express-mode Container
+# App as /api). Read-only public GET API with no cookies, so any origin may read it.
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
 DIST = ROOT / "dist"
 
 

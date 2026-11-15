@@ -2,6 +2,7 @@ import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createHeightField, parseGlobalLdem } from './terrain/heightField';
 import { createMoonMesh, MOON_MESH_MAX_LEVEL } from './terrain/moonMesh';
+import { apiUrl } from './apiBase';
 
 const radius = 1737400;
 const capRadius = 2 * radius * Math.tan(T.MathUtils.degToRad(1.5));
@@ -457,7 +458,7 @@ export async function startTerrain(): Promise<TerrainApi> {
     const params = new URLSearchParams({column:String(column),row:String(row),stride:String(stride)});
     const cachedSite = stride === 1 && (key === '17664/22272/1' || key === '19328/21120/1');
     const path = cachedSite ? `terrain/focus/${column}-${row}.bin` : `api/terrain/window?${params}`;
-    void fetch(base+path,{signal:controller.signal})
+    void fetch(cachedSite ? base+path : apiUrl(path, base),{signal:controller.signal})
       .then(async response => {
         if (!response.ok) throw new Error(String(response.status));
         const data = await response.arrayBuffer();

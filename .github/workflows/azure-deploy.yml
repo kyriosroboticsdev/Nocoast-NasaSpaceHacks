@@ -58,6 +58,23 @@ jobs:
           docker build -t "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}" -t "$ACR_NAME.azurecr.io/lunar-navigator-api:latest" .
           docker push --all-tags "$ACR_NAME.azurecr.io/lunar-navigator-api"
 
+      # Re-set the registry credential on every deploy, not just at first create: Container Apps on
+      # Express/Consumption (Azure for Students) needs the ACR admin username/password wired in as a
+      # secret (see infra/modules/backend.bicep), and that secret can go stale (e.g. if the admin
+      # password was regenerated, or the app was recreated by a bicep re-run) without the image tag
+      # changing — `az containerapp update --image` alone then fails pulling with
+      # "Authentication failed ... Provide 'registryCredentials'". This makes the registry config
+      # self-healing on every run instead of depending on whatever was set at creation time.
+      - name: Refresh Container App registry credentials
+        run: |
+          acr_password=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+          az containerapp registry set \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --server "$ACR_NAME.azurecr.io" \
+            --username "$ACR_NAME" \
+            --password "$acr_password"
+
       - name: Deploy image to Container App
         run: |
           az containerapp update \

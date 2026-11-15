@@ -1,5 +1,10 @@
+node_modules/
+dist/
+.cache/
+
 # Large lunar data — download via script, never commit
 data/
+exports/
 *.bsp
 *.bpc
 *.tls
@@ -7,9 +12,10 @@ data/
 *.img
 *.tif
 *.IMG
+
 # Python / Node
 __pycache__/
 .venv/
-node_modules/
-dist/
+.pytest_cache/
+.ruff_cache/
 .env

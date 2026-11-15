@@ -1,0 +1,110 @@
+name: Azure deploy (app)
+
+# Builds and ships app code to the infra provisioned by azure-infra.yml:
+#   - backend/  -> container image -> Azure Container App
+#   - frontend  -> static build    -> Azure Static Web App
+# Does not touch infrastructure — run azure-infra.yml first (once) so these resources already exist.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main, preview]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'lunarnav-dev-rg' }}
+  CONTAINER_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_NAME || 'lunarnavdev-api' }}
+  STATIC_WEB_APP_NAME: ${{ vars.AZURE_STATIC_WEB_APP_NAME || 'lunarnavdev-web' }}
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        if: ${{ vars.AZURE_CLIENT_ID != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure login (service principal)
+        if: ${{ vars.AZURE_CLIENT_ID == '' }}
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # The registry's real name has a uniqueString() suffix from the bicep deploy (not predictable
+      # ahead of time), so look it up by resource group instead of requiring a hand-set repo variable
+      # — the same pattern already used below for the Static Web App deploy token.
+      - name: Resolve Container Registry name
+        run: |
+          acr_name=$(az acr list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+          if [ -z "$acr_name" ]; then
+            echo "::error::No Container Registry found in resource group $RESOURCE_GROUP — run azure-infra.yml first."
+            exit 1
+          fi
+          echo "ACR_NAME=$acr_name" >> "$GITHUB_ENV"
+
+      # Build on the runner and push: ACR Tasks (`az acr build`) is disabled on Azure for Students
+      # subscriptions (TasksOperationsNotAllowed).
+      - name: Build + push backend image
+        run: |
+          az acr login --name "$ACR_NAME"
+          docker build -t "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}" -t "$ACR_NAME.azurecr.io/lunar-navigator-api:latest" .
+          docker push --all-tags "$ACR_NAME.azurecr.io/lunar-navigator-api"
+
+      - name: Deploy image to Container App
+        run: |
+          az containerapp update \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}"
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        if: ${{ vars.AZURE_CLIENT_ID != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure login (service principal)
+        if: ${{ vars.AZURE_CLIENT_ID == '' }}
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Fetch the Static Web App deploy token at run time instead of storing it as a repo secret.
+      - name: Get Static Web App deploy token
+        run: |
+          token=$(az staticwebapp secrets list --name "$STATIC_WEB_APP_NAME" -g "$RESOURCE_GROUP" --query properties.apiKey -o tsv)
+          echo "::add-mask::$token"
+          echo "SWA_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ env.SWA_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: "dist"
+          api_location: ""
+          output_location: ""
+          skip_app_build: true

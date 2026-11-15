@@ -1,0 +1,126 @@
+{
+  "schemaVersion": "0.1.0",
+  "status": "recommended-contract-not-generated-assets",
+  "researchDate": "2026-11-14",
+  "frameId": "MOON_ME_DE421",
+  "referenceRadiusM": 1737400,
+  "latitudeConvention": "planetocentric-north-positive-degrees",
+  "longitudeConvention": "east-positive-0-to-360-degrees",
+  "localVectorBasis": "ENU",
+  "observerHeightAboveGroundM": 2,
+  "glbAxes": {"x": "east", "y": "up", "z": "south"},
+  "unityFinalAxes": {"x": "east", "y": "up", "z": "north"},
+  "metersPerAssetUnit": 1,
+  "verticalExaggeration": 1,
+  "sites": [
+    {
+      "siteId": "connecting-ridge-cr1",
+      "displayName": "Connecting Ridge CR1",
+      "publishedLabel": "CR1",
+      "pgdaTileId": "Site01",
+      "latitudeDeg": -89.4555,
+      "longitudeEastDeg": 222.6192,
+      "surfaceElevationM": 1949.6080773175818,
+      "surfaceElevationMethod": "bilinear-5m-PGDA-DEM",
+      "demUrl": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site01/Site01_final_adj_5mpp_surf.tif",
+      "coordinateSourceUrl": "https://www.sciencedirect.com/science/article/pii/S0019103514004278"
+    },
+    {
+      "siteId": "shackleton-rim-sr1",
+      "displayName": "Shackleton Rim SR1",
+      "publishedLabel": "SR1",
+      "pgdaTileId": "Site04",
+      "latitudeDeg": -89.7742,
+      "longitudeEastDeg": 203.4952,
+      "surfaceElevationM": 1735.2179263340893,
+      "surfaceElevationMethod": "bilinear-5m-PGDA-DEM",
+      "demUrl": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site04/Site04_final_adj_5mpp_surf.tif",
+      "coordinateSourceUrl": "https://www.sciencedirect.com/science/article/pii/S0019103514004278"
+    },
+    {
+      "siteId": "peak-near-shackleton",
+      "displayName": "Peak Near Shackleton",
+      "publishedLabel": "PNS",
+      "pgdaTileId": "Site07",
+      "latitudeDeg": -88.811008,
+      "longitudeEastDeg": 123.690068,
+      "surfaceElevationM": 1645.248585134862,
+      "surfaceElevationMethod": "bilinear-5m-PGDA-DEM",
+      "demUrl": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site07/Site07_final_adj_5mpp_surf.tif",
+      "coordinateSourceUrl": "https://pgda.gsfc.nasa.gov/products/78"
+    },
+    {
+      "siteId": "de-gerlache-rim-1",
+      "displayName": "de Gerlache Rim 1",
+      "publishedLabel": "DGR1",
+      "pgdaTileId": "Site11",
+      "latitudeDeg": -88.683418,
+      "longitudeEastDeg": 292.067900,
+      "surfaceElevationM": 1793.7308968628276,
+      "surfaceElevationMethod": "bilinear-5m-PGDA-DEM",
+      "demUrl": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site11/Site11_final_adj_5mpp_surf.tif",
+      "coordinateSourceUrl": "https://pgda.gsfc.nasa.gov/products/78"
+    },
+    {
+      "siteId": "leibnitz-beta-plateau",
+      "displayName": "Leibnitz Beta Plateau",
+      "publishedLabel": "LBP",
+      "pgdaTileId": "Site20",
+      "latitudeDeg": -85.426577,
+      "longitudeEastDeg": 31.742761,
+      "surfaceElevationM": 6398.685706239586,
+      "surfaceElevationMethod": "bilinear-5m-PGDA-DEM",
+      "demUrl": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site20/Site20_final_adj_5mpp_surf.tif",
+      "coordinateSourceUrl": "https://pgda.gsfc.nasa.gov/products/78"
+    },
+    {
+      "siteId": "malapert-massif",
+      "displayName": "Malapert Massif",
+      "publishedLabel": "MAL",
+      "pgdaTileId": "Site23",
+      "latitudeDeg": -85.994785,
+      "longitudeEastDeg": 359.764216,
+      "surfaceElevationM": 4783.796733394672,
+      "surfaceElevationMethod": "bilinear-5m-PGDA-DEM",
+      "demUrl": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site23/Site23_final_adj_5mpp_surf.tif",
+      "coordinateSourceUrl": "https://pgda.gsfc.nasa.gov/products/78"
+    }
+  ],
+  "time": {
+    "scale": "UTC",
+    "serialization": "YYYY-MM-DDTHH:mm:ssZ",
+    "intervalConvention": "start-inclusive-end-exclusive",
+    "supportedStartUtc": "2027-01-01T00:00:00Z",
+    "supportedEndUtc": "2028-01-01T00:00:00Z",
+    "defaultStartUtc": "2027-01-01T00:00:00Z",
+    "defaultEndUtc": "2027-01-31T00:00:00Z",
+    "maxMissionDurationSeconds": 5184000,
+    "baseStepSeconds": 600,
+    "eventRefinementStepSeconds": 60,
+    "eventBracketTargetSeconds": 60,
+    "physicalTimingAccuracyClaim": null
+  },
+  "horizon": {
+    "azimuthStartDeg": 0,
+    "azimuthStepDeg": 0.25,
+    "sampleCount": 1440,
+    "maxRayDistanceM": 400000,
+    "numericalConvergenceTargetDeg": 0.05,
+    "physicalAngularAccuracyClaim": null,
+    "distanceBands": [
+      {"startM": 0, "endM": 5000, "pixelScaleM": 5},
+      {"startM": 5000, "endM": 100000, "pixelScaleM": 80},
+      {"startM": 100000, "endM": 400000, "pixelScaleM": 240}
+    ]
+  },
+  "visibility": {
+    "sunModel": "center-binary-v1",
+    "earthModel": "earth-center-line-of-sight-proxy-v1",
+    "antennaMinElevationDeg": 0,
+    "terrainClearanceMarginDeg": 0,
+    "boundaryComparison": "strict-greater-than",
+    "missingValue": null,
+    "allowFallbackInTerrainRanking": false,
+    "eclipseAttenuationModeled": false
+  }
+}

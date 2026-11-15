@@ -1,0 +1,17 @@
+:root{color-scheme:dark;font:16px/1.5 system-ui,sans-serif;background:#0a111a;color:#edf4ff;--muted:#a4b6cc;--line:#2b3c50;--accent:#7de4d4}
+*{box-sizing:border-box}body{margin:0}main{max-width:1450px;margin:auto;padding:clamp(16px,4vw,56px)}
+h1,p{margin:0}h1{font-size:clamp(2rem,5vw,3.5rem);letter-spacing:-.055em;line-height:1.1;margin:.25em 0}
+header>p:last-child,.hint,small{color:var(--muted)}.eyebrow,.badge{color:var(--accent);font:700 .72rem/1.5 ui-monospace,monospace;letter-spacing:.14em}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,300px);gap:16px;margin-top:24px}
+#viewport,aside{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#101b28}
+#viewport{position:relative;min-height:595px;isolation:isolate}canvas{position:absolute;inset:0;display:block;width:100%;height:100%;touch-action:none}
+.badge,.hint{position:absolute;z-index:1;pointer-events:none;background:#0b131ee8;border:1px solid var(--line);border-radius:8px;padding:.5rem .7rem;left:12px}.badge{top:12px}.hint{bottom:12px;font-size:.78rem;max-width:calc(100% - 24px)}
+aside{padding:20px}label{display:block;font-size:.8rem;font-weight:650;color:var(--muted);margin-bottom:4px}
+button,select{font:inherit;color:inherit;background:#18293b;border:1px solid #41556b;border-radius:8px;min-height:42px;padding:6px 10px}button{cursor:pointer}select{width:100%}button:disabled,select:disabled{opacity:.55;cursor:default}
+.buttons{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 16px}button:hover:enabled{background:#23445c}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}dl{margin:8px 0 0;font-size:.85rem}dl div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:6px 0}dt{color:var(--muted)}dd{margin:0;text-align:right}
+#status,.source,.coverage,#legend{margin-top:12px;font-size:.83rem}#status:empty{display:none}a{color:var(--accent)}
+.coverage{border:1px solid var(--line);border-radius:10px;padding:10px}.coverage p{color:var(--muted);margin-top:4px}
+.ramp{height:8px;border-radius:5px;background:linear-gradient(to right,#234d70,#6aa4a2,#e7d29c)}.range{display:flex;justify-content:space-between}
+@media(max-width:760px){.layout{grid-template-columns:1fr}#viewport{min-height:clamp(330px,60vh,550px)}}
+.embed header{display:none}.embed main{padding:0;max-width:none}.embed .layout{margin-top:0}.embed #viewport{min-height:680px}

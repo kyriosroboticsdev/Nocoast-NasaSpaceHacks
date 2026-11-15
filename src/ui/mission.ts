@@ -62,17 +62,28 @@ function scenarioKey(s: ScenarioState) {
   return JSON.stringify([s.startUtc, s.durationHours, s.primary, s.secondary, s.thresholds, s.missionSettings, s.planning]);
 }
 function message(text: string) { el('mission-job-status').textContent = text; }
+function resultMessage(kind: 'optimize' | 'delays', text: string, busy = false) {
+  const host = el(kind === 'optimize' ? 'optimization-results' : 'delay-results');
+  host.replaceChildren();
+  host.setAttribute('aria-busy', String(busy));
+  note(host, text);
+}
+function resetResults() {
+  resultMessage('optimize', 'Choose “Optimize panels + sites” to calculate fixed panel orientations for CR1 and SR1 with your current mission settings.');
+  resultMessage('delays', 'Choose “Test landing delays” to calculate outcomes at each actual landing time, including zero delay.');
+}
 function sync(s: ScenarioState, force = false) {
   const key = scenarioKey(s);
   if (!force && key === fingerprint) return; // Scrubbing/playback must not reset an input being edited.
   if (fingerprint && key !== fingerprint) {
     active?.abort(); jobId++; active = null;
     optimization = null; delays = null;
-    el('optimization-results').replaceChildren(); el('delay-results').replaceChildren();
+    resetResults();
     el<HTMLButtonElement>('cancel-mission-job').disabled = true;
     el<HTMLButtonElement>('optimize-mission').disabled = false; el<HTMLButtonElement>('test-delays').disabled = false;
     message('Settings changed; rerun the comparison.');
   }
+  if (!fingerprint) resetResults();
   fingerprint = key;
   document.querySelectorAll<HTMLInputElement>('[data-battery]').forEach(node => { node.value = String(s.missionSettings.battery[node.dataset.battery as keyof typeof s.missionSettings.battery]); });
   document.querySelectorAll<HTMLInputElement>('[data-requirement]').forEach(node => { node.value = String(s.missionSettings.requirements[node.dataset.requirement as keyof typeof s.missionSettings.requirements]); });
@@ -165,6 +176,12 @@ async function run(kind: 'optimize' | 'delays', baseUrl: string) {
   const state = structuredClone(getScenario()), controller = new AbortController();
   active?.abort(); active = controller;
   const token = ++jobId;
+  const progress = (text: string) => {
+    if (token !== jobId) return;
+    message(text); resultMessage(kind, text, true);
+  };
+  if (kind === 'optimize') optimization = null; else delays = null;
+  resultMessage(kind, 'Calculating matching Sun, terrain and communication inputs. This can take a little while…', true);
   el<HTMLButtonElement>('cancel-mission-job').disabled = false;
   el<HTMLButtonElement>('optimize-mission').disabled = true; el<HTMLButtonElement>('test-delays').disabled = true;
   message('Preparing matching Sun, horizon and communication inputs…');
@@ -175,21 +192,25 @@ async function run(kind: 'optimize' | 'delays', baseUrl: string) {
     if (kind === 'optimize') {
       const result = await optimizeMission({ contexts, panel: panelFromThresholds(state.thresholds), baseLoadW: state.thresholds.batteryFloorW,
         settings: state.missionSettings, stepDeg: state.planning.orientationStepDeg, signal: controller.signal,
-        onProgress: (done, total) => { if (token === jobId) message(`Testing orientations and sites: ${done}/${total} scenario slots processed…`); } });
+        onProgress: (done, total) => progress(`Testing orientations and sites: ${done}/${total} scenario slots processed…`) });
       if (token !== jobId) return;
       optimization = result; renderOptimization(result);
     } else {
       const report = await analyzeDelaysResponsive(contexts, panelFromThresholds(state.thresholds), state.thresholds.batteryFloorW,
-        state.missionSettings, controller.signal, (done, total) => { if (token === jobId) message(`Testing landing delays: ${done}/${total}…`); });
+        state.missionSettings, controller.signal, (done, total) => progress(`Testing landing delays: ${done}/${total}…`));
       if (token !== jobId) return;
       delays = report; renderDelays(report);
     }
     message('Analysis complete. Review qualifications before applying a result; export JSON to save this analysis.');
   } catch (error) {
-    if (token === jobId) message(error instanceof DOMException && error.name === 'AbortError' ? 'Analysis cancelled; no partial optimum was applied.'
-      : `Analysis failed: ${error instanceof Error ? error.message : error}`);
+    if (token === jobId) {
+      const text = error instanceof DOMException && error.name === 'AbortError' ? 'Analysis cancelled. Run the analysis again when ready.'
+        : `Analysis failed: ${error instanceof Error ? error.message : error}. Check the settings and try again.`;
+      message(text); resultMessage(kind, text);
+    }
   } finally {
     if (token === jobId) {
+      el(kind === 'optimize' ? 'optimization-results' : 'delay-results').setAttribute('aria-busy', 'false');
       active = null; el<HTMLButtonElement>('cancel-mission-job').disabled = true;
       el<HTMLButtonElement>('optimize-mission').disabled = false; el<HTMLButtonElement>('test-delays').disabled = false;
     }

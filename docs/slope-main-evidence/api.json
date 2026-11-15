@@ -1,0 +1,44 @@
+[
+  {
+    "siteId": "connecting-ridge-cr1",
+    "knownFraction": 0.9840002580603538,
+    "centerSlopeDeg": 7.0617,
+    "areaWithin10M2": 1062450.0,
+    "unknownAreaM2": 12375.0
+  },
+  {
+    "siteId": "shackleton-rim-sr1",
+    "knownFraction": 0.9760326446347639,
+    "centerSlopeDeg": 1.3615,
+    "areaWithin10M2": 400475.0,
+    "unknownAreaM2": 24725.0
+  },
+  {
+    "siteId": "peak-near-shackleton",
+    "knownFraction": 0.9840002580603538,
+    "centerSlopeDeg": 5.3591,
+    "areaWithin10M2": 1345625.0,
+    "unknownAreaM2": 12375.0
+  },
+  {
+    "siteId": "de-gerlache-rim-1",
+    "knownFraction": 0.9840002580603538,
+    "centerSlopeDeg": 1.1412,
+    "areaWithin10M2": 1039275.0,
+    "unknownAreaM2": 12375.0
+  },
+  {
+    "siteId": "leibnitz-beta-plateau",
+    "knownFraction": 0.9840002580603538,
+    "centerSlopeDeg": 8.7208,
+    "areaWithin10M2": 1250325.0,
+    "unknownAreaM2": 12375.0
+  },
+  {
+    "siteId": "malapert-massif",
+    "knownFraction": 0.9840002580603538,
+    "centerSlopeDeg": 3.5133,
+    "areaWithin10M2": 1071525.0,
+    "unknownAreaM2": 12375.0
+  }
+]

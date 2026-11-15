@@ -136,6 +136,16 @@
         </section>
       </section>
 
+      <section class="metrics slope-integrated" aria-label="Terrain slope screening">
+        <details id="terrain-slope-details">
+          <summary>Terrain slopes and area comparison</summary>
+          <p class="control-hint">Compare the known area below a shared slope limit around Site A and Site B. Steepness is one screening factor; landing safety remains unverified.</p>
+          <label for="slope-slot">Show slope map for</label>
+          <select id="slope-slot" aria-label="Show slope map for"></select>
+          <section id="slope-view" class="slope-view" aria-label="Terrain slope screen"></section>
+        </details>
+      </section>
+
       <!-- Decision loop: rank + date suggestions -->
       <section class="cluster decision-cluster" aria-label="Find and decide" data-tour="decision">
         <div class="decision-panel" id="decision-panel">
@@ -206,6 +216,7 @@
           </div>
           <p class="plain-summary" id="plain-summary-a"></p>
           <div class="simple-cards" id="simple-cards-a"></div>
+          <p id="slope-area-a" class="slope-slot-area" hidden></p>
           <p class="verdict-caption" id="verdict-caption-a">The grade scores your <strong>whole mission window</strong>; the chip shows the single moment the time slider points at. Tap <strong>?</strong> on any number for what it means.</p>
           <p class="nogo-prompt" id="nogo-prompt-a" hidden></p>
           <div class="metric-grid expert-only" id="metric-grid-a"></div>
@@ -226,6 +237,7 @@
           </div>
           <p class="plain-summary" id="plain-summary-b"></p>
           <div class="simple-cards" id="simple-cards-b"></div>
+          <p id="slope-area-b" class="slope-slot-area" hidden></p>
           <p class="verdict-caption expert-only" id="verdict-caption-b">Same shared UTC window as Site A. Compare the both-at-once %, gaps, and average power — not only the grade letter.</p>
           <div class="metric-grid expert-only" id="metric-grid-b"></div>
           <p class="metric-primer expert-only" id="metric-primer-b"></p>

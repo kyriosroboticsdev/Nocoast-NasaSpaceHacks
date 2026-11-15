@@ -27,6 +27,10 @@ see the tradeoff immediately, grounded in the same kind of data NASA itself uses
   communications, or both.
 - **Learn mode** tells the same story in plain language for students and the public, with guided
   scenarios (e.g. Apollo 11 vs. a real south-pole candidate site).
+- **Screen terrain steepness.** Open **Terrain slopes and area comparison** below the 3D viewer
+  to compare estimated area within an adjustable slope limit around Site A and Site B, using
+  the same 1.24 km square window. Missing 5 m terrain is reported as unknown. This is preliminary
+  slope screening, not a landing-safety certification. See [terrain slope documentation](docs/TERRAIN_SLOPES.md).
 
 ## Why the data can be trusted
 

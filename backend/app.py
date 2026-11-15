@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import analysis, polarmap, terrain, terrain_window
+from . import analysis, polarmap, slopes, terrain, terrain_window
 from .config import CONTRACT, ROOT, SITES, TIME, parse_utc
 from .pathfinding import earth_moon
 from .pathfinding.graph import NoPathError, Weights, shortest_path
@@ -111,6 +111,19 @@ def local_terrain(latitudeDeg: float = Query(..., ge=-90, le=-60),
                   halfExtentM: float = Query(6000, ge=100, le=20000), n: int = Query(241, ge=17, le=321)):
     """Height grid around a site (for the 3D sky view), from the same NASA terrain maps as the horizons."""
     return terrain.local_grid(round(latitudeDeg, 6), round(longitudeEastDeg % 360.0, 6), halfExtentM, n)
+
+
+@app.get("/api/terrain_slopes")
+def terrain_slopes(latitudeDeg: float = Query(..., ge=-90, le=-60),
+                   longitudeEastDeg: float = Query(..., ge=-360, le=360),
+                   halfExtentM: float = Query(620, ge=100, le=2000), n: int = Query(249, ge=17, le=401)):
+    """Preliminary local slope screen from the 5 m DEM only, in degrees from radial up."""
+    try:
+        return slopes.local_slope_grid(round(latitudeDeg, 6), round(longitudeEastDeg % 360, 6), halfExtentM, n)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except OSError as e:
+        raise HTTPException(503, "Terrain files unavailable. Run python -m scripts.fetch_data, then retry.") from e
 
 
 @app.get("/api/polar_map/meta")

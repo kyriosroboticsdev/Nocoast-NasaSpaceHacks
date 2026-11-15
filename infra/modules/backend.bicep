@@ -1,11 +1,10 @@
 // Container Apps environment + the backend API app (FastAPI: terrain horizon, ephemeris, pathfinding).
-// Auth to ACR and Blob Storage uses Container App secrets (ACR admin password + storage connection string):
-// Azure for Students subscriptions get "express" Container Apps environments, which reject managed-identity
-// registry pulls. The role assignments below are kept so switching back to identity auth is a small change.
+// Azure for Students subscriptions get "Express" Container Apps environments, which reject managed identities
+// (system- or user-assigned) and every private-registry pull we tried. So: no identity, and the image is a
+// public GHCR package pushed by .github/workflows/azure-deploy.yml. Blob Storage access is a connection
+// string held as a Container App secret.
 param location string
 param namePrefix string
-param registryLoginServer string
-param registryName string
 param storageAccountName string
 param logAnalyticsWorkspaceId string
 param appInsightsConnectionString string
@@ -15,10 +14,6 @@ param containerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
   name: last(split(logAnalyticsWorkspaceId, '/'))
-}
-
-resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
-  name: registryName
 }
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
@@ -42,9 +37,6 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
 resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: '${namePrefix}-api'
   location: location
-  identity: {
-    type: 'SystemAssigned'
-  }
   properties: {
     managedEnvironmentId: containerAppEnv.id
     configuration: {
@@ -54,17 +46,9 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
         transport: 'auto'
       }
       secrets: [
-        { name: 'acr-password', value: acr.listCredentials().passwords[0].value }
         {
           name: 'storage-connection'
           value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
-        }
-      ]
-      registries: [
-        {
-          server: registryLoginServer
-          username: acr.listCredentials().username
-          passwordSecretRef: 'acr-password'
         }
       ]
     }
@@ -91,29 +75,6 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// Let the backend pull its own image from ACR without storing admin credentials.
-resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(acr.id, backendApp.id, 'AcrPull')
-  scope: acr
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
-    principalId: backendApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Let the backend read/write the DEM/kernel cache container without a connection-string secret.
-resource blobDataContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccount.id, backendApp.id, 'StorageBlobDataContributor')
-  scope: storageAccount
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
-    principalId: backendApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
 output fqdn string = backendApp.properties.configuration.ingress.fqdn
 output id string = backendApp.id
 output name string = backendApp.name
-output principalId string = backendApp.identity.principalId

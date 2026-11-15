@@ -150,3 +150,17 @@ az ad app federated-credential create --id <lunarnav-github-deploy's app (client
 <app-id>` first — it may be faster to fix that one's subject than add a new one.) Once this is added,
 re-run the failed workflow (`gh run rerun <run-id>` or just push again) to get a real end-to-end deploy
 signal.
+
+### Express environment: image comes from GHCR (2026-11-15)
+
+The Students subscription's Container Apps environment is in **Express** mode (`environmentMode: Express`).
+Express rejects managed identities outright (`ExpressSystemAssignedIdentityNotSupported`), and every
+private-registry pull failed: ACR admin credentials and ACR repository-scoped tokens both returned
+"Authentication failed when pulling container image". So `azure-deploy.yml` now pushes the backend image to
+`ghcr.io/kyriosroboticsdev/lunar-navigator-api` and the Container App pulls it anonymously. **The GHCR package
+must be set to Public once** (GitHub -> the package -> Package settings -> Change visibility), after its first
+push. The ACR resource is left in place but unused.
+
+GitHub OIDC: GitHub now presents the subject with numeric IDs
+(`repo:kyriosroboticsdev@218849459/Nocoast-NasaSpaceHacks@1457942253:ref:refs/heads/<branch>`), so the Entra
+app has federated credentials in both that form and the plain-name form, for `main` and `preview`.

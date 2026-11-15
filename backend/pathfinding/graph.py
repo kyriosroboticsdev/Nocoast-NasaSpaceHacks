@@ -155,7 +155,7 @@ def shortest_path(nodes: dict[str, Node], edges: dict[str, list[str]], start: st
     sunlit_km = 0.0
     comm_km = 0.0
     obstacles_touched = 0
-    for a_id, b_id in zip(path, path[1:]):
+    for a_id, b_id in zip(path, path[1:], strict=False):
         a, b = nodes[a_id], nodes[b_id]
         seg_km = math.dist(a.position_km, b.position_km)
         sunlit_frac, comm_frac = _segment_lit_comm(a, b, lighting)

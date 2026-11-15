@@ -1,6 +1,6 @@
 /**
  * Plain-language Planner metric explanations — significance + how calculated.
- * Copy matches assess/windows.ts and assess/decision.ts (proxy power, unknown ≠ blackout).
+ * Copy matches assess/windows.ts and assess/decision.ts (direct-beam solar power, unknown ≠ blackout).
  */
 
 export type MetricHelpId =
@@ -24,14 +24,25 @@ export type MetricHelpId =
   | 'minEarthEl'
   | 'panelArea'
   | 'panelEff'
-  | 'panelTilt';
+  | 'panelTilt'
+  | 'panelAzimuth'
+  | 'totalEnergy'
+  | 'knownEnergy'
+  | 'solarCoverage'
+  | 'samplePower'
+  | 'irradiance'
+  | 'incidence'
+  | 'electricalAvailability'
+  | 'unservedEnergy'
+  | 'powerOutage'
+  | 'batteryWh'
+  | 'jointPoweredComms'
+  | 'missionScore';
 
 export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> = {
   sunlight: {
-    title: 'Sunlight availability',
-    body:
-      'Share of the mission start→end span when the Sun clears the local terrain horizon (clearance > 0°). ' +
-      'Counted from hourly samples; transitions count as half-on. Missing ephemeris or horizon bearings are unknown — they do not count as night.',
+    title: "Sunlight availability",
+    body: "Share of the mission when the Sun center clears the terrain horizon (>0\u00b0). The planner normally samples every 10 minutes; window transitions use the visibility module\u2019s midpoint approximation. Unknown is neither night nor sunlight. Solar energy separately holds each supplied mask over its following interval.",
   },
   earthLos: {
     title: 'Can see Earth (radio contact)',
@@ -46,15 +57,12 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
       'Outside those hours you may have sunlight but no Earth link (store data / wait for Earthrise) or Earth contact while in shadow (draw from battery). Percent is simultaneous hours ÷ mission length.',
   },
   meanPower: {
-    title: 'Average solar power',
-    body:
-      'Average of the rough panel power at each known sample (unknown hours excluded). When sunlit: 1361 W/m² × panel area × efficiency × max(0, sin(sun elevation + tilt)); otherwise 0 W. ' +
-      'This is a geometry proxy for comparing sites/dates — not a flight electrical model. GO also requires mean power ≥ battery floor.',
+    title: "Mean panel output",
+    body: "Duration-weighted generated solar energy divided by mission hours, before load and storage dispatch. It is not itself a survival test: inspect unserved load, electrical outages and battery energy. Unknown solar intervals make this mean unknown.",
   },
   peakPower: {
-    title: 'Peak solar power',
-    body:
-      'Highest sample power in the known window using the same proxy formula as mean power. Useful for sizing headroom; GO gates use the mean vs battery floor, not the peak.',
+    title: "Sampled peak panel output",
+    body: "Highest known sampled panel output inside the half-open mission window. The end-boundary sample adds no extra peak or duration. This is not a bound on unsampled peaks; consult solar coverage when data is incomplete.",
   },
   sunBlackout: {
     title: 'Longest darkness stretch',
@@ -69,7 +77,7 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
   unknownHours: {
     title: 'Unknown hours',
     body:
-      'Time lacking usable Sun/Earth ephemeris or horizon clearance (for example past bundled Horizons coverage). Unknown is not blackout and not availability — viability still requires enough known coverage (≥ ~50% for GO/RISKY).',
+      'Time lacking usable Sun/Earth ephemeris or horizon clearance (for example past bundled Horizons coverage). Unknown is not blackout and not availability — the full mission score requires complete relevant solar, battery and communication coverage.',
   },
   timeSunset: {
     title: 'Time to sunset',
@@ -102,11 +110,8 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
       'Earth elevation minus terrain horizon in that azimuth. LOS is true only when this clearance ≥ Min Earth elevation °.',
   },
   viability: {
-    title: 'Mission window grade',
-    body:
-      'GO: sunlight ≥ 40%, Earth LOS ≥ 40%, mean power ≥ battery floor, and ≥ ~50% of hours known. ' +
-      'RISKY: sunlight and Earth LOS each ≥ 20% with enough known coverage (storage/relay/date slip may still be needed). ' +
-      'NO-GO: below those bars (sphere-only sites may be labeled terrain-unknown). Grades the full start→end window — not the scrub chip.',
+    title: "Mission requirements",
+    body: "The mission model checks electrical availability, Earth contact fraction and longest communication blackout against the chosen requirements. Only complete, scientifically qualified inputs can receive GO/NO-GO. Preliminary inputs show a conditional result; missing data shows UNKNOWN.",
   },
   instant: {
     title: 'At slider time',
@@ -114,37 +119,46 @@ export const METRIC_HELP: Record<MetricHelpId, { title: string; body: string }> 
       'Status for the single moment the time slider points at: SUN + EARTH (both at once), SUN ONLY (power, no Earth link), EARTH ONLY (contact, in shadow), DARK (neither), or NO DATA (coverage gap). Independent of the window grade.',
   },
   batteryFloor: {
-    title: 'Battery floor',
-    body:
-      'Rough continuous-draw floor (W) used as a GO gate against mean power proxy. If mean power sits below this floor, the window cannot be GO even with decent sunlight % — framing battery risk during night / outage.',
+    title: "Equipment power demand",
+    body: "Constant electrical demand in W from lander, rover or crew equipment during the selected stay at the landing site. The historical URL field name is retained, but this value is now a real simulated load. It draws from PV and then the battery down to reserve.",
   },
   minEarthEl: {
     title: 'Min Earth elevation',
     body:
-      'Margin above the terrain horizon required before counting Earth LOS (degrees). Higher values demand clearer DTE geometry and usually lower Earth availability %.',
+      'Minimum absolute Earth elevation above local horizontal (degrees). Earth must be strictly above both this threshold and the terrain horizon. Higher values usually reduce direct contact availability.',
   },
   panelArea: {
-    title: 'Panel area',
-    body:
-      'Assumed array area (m²) in the power proxy. Scales mean/peak watts linearly when the site is sunlit.',
+    title: "Active panel area",
+    body: "Active collecting area in square meters. Power scales linearly with this area.",
   },
   panelEff: {
-    title: 'Panel efficiency',
-    body:
-      'Assumed conversion efficiency (0–1) in the power proxy. Multiplies with area and solar constant when sunlit.',
+    title: "Panel efficiency",
+    body: "Conversion efficiency as a ratio from 0 to 1, held constant in this P0 model. Temperature dependence and electrical losses are excluded.",
   },
   panelTilt: {
-    title: 'Panel tilt',
-    body:
-      'Degrees of tilt toward the Sun used in the incidence proxy: irradiance ∝ sin(sun elevation + tilt), clamped at ≥ 0. 0° = horizontal panel.',
+    title: "Tilt from horizontal",
+    body: "Fixed panel normal tilt from local up: 0\u00b0 is face-up horizontal, 90\u00b0 is vertical, 180\u00b0 faces down. Facing bearing chooses its direction. The model uses an ENU dot product with the true Sun direction, not terrain clearance.",
   },
+  panelAzimuth: { title: "Panel facing bearing", body: "Bearing of the fixed panel normal, clockwise from true local north: N=0\u00b0, E=90\u00b0, S=180\u00b0, W=270\u00b0. It does not change the horizon mask. Bearing has no effect when the panel is horizontal." },
+  totalEnergy: { title: "Total solar energy", body: "Estimated generated energy in Wh over physical mission time. Unobstructed endpoint watts are trapezoidally integrated; the left visibility mask is held on each interval. Unknown endpoints or gaps over 600 s make the total unknown." },
+  knownEnergy: { title: "Known energy subtotal", body: "Energy only from intervals with complete solar inputs. It remains a subtotal if coverage is below 100%; it is not the full-mission total." },
+  solarCoverage: { title: "Solar data coverage", body: "Percentage of mission duration with known solar interval energy. Unknown geometry, range, observer/frame mismatch, horizon gaps or missing endpoints reduce coverage. Complete coverage is not independent terrain validation." },
+  samplePower: { title: "Panel output at scrub sample", body: "Watts at the nearest stored sample to the scrubber. It consumes the upstream terrain mask once. Known blocked Sun or back-face incidence gives zero; missing required data gives unknown." },
+  irradiance: { title: "Direct normal irradiance", body: "Irradiance perpendicular to the incoming Sun direction: a nominal 1361 W/m\u00b2 at 1 AU scaled by inverse-square observer-to-Sun distance. Panel projection and terrain obstruction are applied separately." },
+  incidence: { title: "Panel incidence angle", body: "Angle between the panel normal and the direction toward the Sun. Zero is face-on. At or above 90\u00b0 the single-face panel receives no direct power. Terrain may block it at any incidence angle." },
+  electricalAvailability: { title: "Electrical power availability", body: "Fraction of mission time the full constant equipment demand is served by PV plus battery. Battery power limits and reserve cutoff apply. It differs from sunlight availability; missing data makes the full fraction unknown." },
+  unservedEnergy: { title: "Unserved load energy", body: "Demand minus power actually supplied to the load, integrated in Wh. The model uses constant equipment demand and resolves battery-empty times within intervals. Unknown battery history makes the full total unknown." },
+  powerOutage: { title: "Longest electrical outage", body: "Longest continuous period with any unmet equipment demand, including discharge-rate limits. This is an electrical outage, not a shadow duration. Unknown periods are not counted as a known outage or silently skipped from the full metric." },
+  batteryWh: { title: "Battery energy and losses", body: "Stored energy in Wh. Initial charge and reserve are fractions of capacity. Charge efficiency adds stored Wh; discharge draws output Wh divided by efficiency. Full storage curtails surplus, and power limits constrain bus flows. The chart is blank after unknown state." },
+  jointPoweredComms: { title: "Powered Earth contact", body: "Time when the full equipment demand is served and the visibility owner reports Earth contact. Battery can support contact in shadow. This is distinct from Sun \u2229 Earth; unknown inputs remain unknown." },
+  missionScore: { title: "Mission score", body: "Project policy: 100 \u00d7 capped power availability / required availability \u00d7 capped Earth contact / required contact \u00d7 capped allowed blackout / longest Earth blackout. All factors are capped at 1. Requirements pass/fail is separate from rounded score. Not a probability or NASA standard; preliminary inputs stay unqualified." },
 };
 
 /** Short power / comms primer for metric cards and Learn. */
 export const POWER_COMMS_PRIMER =
   'Communications: Earth LOS needs terrain clearance plus the min-elevation gate; availability % is DTE-up hours ÷ mission length; longest Earth blackout is the worst no-contact stretch; unknown hours are ephemeris/horizon gaps, not outages. ' +
-  'Power: sunlight needs sun clearance > 0°; mean watts use area × efficiency × tilt incidence when sunlit (else 0) and are compared to the battery floor for GO. ' +
-  '“Sun + Earth together” is when both are true — the window you can recharge while talking to Earth with no relay.';
+  'Power: fixed panel orientation, area, efficiency, Sun distance and terrain visibility determine watts; elapsed time determines watt-hours. Unknown intervals make the total and mean unknown. Battery and constant-load dispatch report unmet Wh and electrical outages. ' +
+  'Sun + Earth together is illumination and contact overlap; powered Earth contact also counts battery support while the equipment load is served.';
 
 export function attachMetricHelp(
   labelEl: HTMLElement,

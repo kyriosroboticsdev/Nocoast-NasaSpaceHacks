@@ -1,5 +1,5 @@
 import { assessMission, type MissionAssessment } from './windows';
-import { rankAssessments, scoreAssessment, type RankedSite } from './decision';
+import { rankAssessments, rankPlannerAssessments, scoreAssessment, type RankedSite } from './decision';
 import type { HorizonProfile } from '../horizon/types';
 import { createAnalyticProvider } from '../ephemeris/horizons';
 import type { ScenarioState } from '../scenario/types';
@@ -102,6 +102,8 @@ export async function rankSearchCandidates(options: {
   region: SearchRegion;
   topN: number;
   stepHours?: number;
+  /** Landing-page search: keep preliminary terrain and the caller's mission settings. */
+  planner?: boolean;
 }): Promise<{ hits: SearchHit[]; assessed: number; limitations: string }> {
   const { catalog, state, region, topN } = options;
   const spacing = catalog.method.azimuthSpacingDeg || 2;
@@ -153,6 +155,7 @@ export async function rankSearchCandidates(options: {
           durationHours: state.durationHours,
           scrubUtc: state.scrubUtc,
           thresholds: state.thresholds,
+          missionSettings: state.missionSettings,
           stepHours: options.stepHours ?? 2,
         });
         return {
@@ -171,7 +174,7 @@ export async function rankSearchCandidates(options: {
     await new Promise(r => setTimeout(r, 0));
   }
 
-  const ranked = rankAssessments(rows).slice(0, topN);
+  const ranked = (options.planner ? rankPlannerAssessments(rows) : rankAssessments(rows)).slice(0, topN);
   const hits: SearchHit[] = ranked.map(r => {
     const meta = rows.find(x => x.siteId === r.siteId)!;
     const elevBins = pool.find(c => c.id === r.siteId)?.elevBins ?? [];
@@ -187,7 +190,8 @@ export async function rankSearchCandidates(options: {
   return {
     hits,
     assessed: pool.length,
-    limitations: catalog.method.honesty,
+    limitations: catalog.method.honesty + (pool.length && !hits.length
+      ? ' No solar-qualified candidates: analytic search ephemerides and unvalidated coarse horizons cannot support power rankings.' : ''),
   };
 }
 

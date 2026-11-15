@@ -31,15 +31,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install ruff pytest
           for f in $(git ls-files '*requirements*.txt'); do pip install -r "$f"; done
-          if [ -f pyproject.toml ]; then pip install -e .; fi
 
       - name: Lint (ruff)
         if: hashFiles('**/*.py') != ''
         run: ruff check . --output-format=github
 
-      - name: Tests (pytest)
-        if: hashFiles('**/test_*.py', '**/*_test.py') != ''
-        run: pytest -q
+      # Official NASA data (LOLA DEMs, PGDA tiles, NAIF kernels) is never committed;
+      # fetch it with the repo script and cache it between runs.
+      - name: Cache NASA data
+        if: hashFiles('scripts/fetch_data.py') != ''
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: nasa-data-${{ hashFiles('backend/config.py', 'scripts/fetch_data.py') }}
+
+      - name: Fetch NASA data
+        if: hashFiles('scripts/fetch_data.py') != ''
+        run: python scripts/fetch_data.py
 
       # ---------- Frontend ----------
       - name: Set up Node
@@ -59,6 +67,10 @@ jobs:
               && npm run --if-present build) || exit 1
             echo "::endgroup::"
           done
+
+      - name: Tests (pytest)
+        if: hashFiles('**/test_*.py', '**/*_test.py') != ''
+        run: pytest -q
 
       - name: Guard against huge files (DEMs, kernels)
         run: |

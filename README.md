@@ -27,6 +27,10 @@ see the tradeoff immediately, grounded in the same kind of data NASA itself uses
   communications, or both.
 - **Learn mode** tells the same story in plain language for students and the public, with guided
   scenarios (e.g. Apollo 11 vs. a real south-pole candidate site).
+- **Screen terrain steepness.** Open **Terrain slopes and area comparison** below the 3D viewer
+  to compare estimated area within an adjustable slope limit around Site A and Site B, using
+  the same 1.24 km square window. Missing 5 m terrain is reported as unknown. This is preliminary
+  slope screening, not a landing-safety certification. See [terrain slope documentation](docs/TERRAIN_SLOPES.md).
 
 ## Why the data can be trusted
 
@@ -44,25 +48,40 @@ a live-computed backend, or a clearly-flagged simplified fallback — never sile
 
 ## Try it in under 2 minutes
 
-Requires Node.js 22.12+.
+Solar power is calculated on demand for every catalog site, saved custom spot,
+and unsaved map selection with usable terrain and Sun inputs. Panel area,
+efficiency and orientation changes recalculate watts and energy; battery and
+equipment changes rerun the stay simulation. There is no stored-wattage lookup.
+Missing source data stays unknown. Terrain estimates are preliminary until
+upstream validation is supplied.
 
-```bash
-npm ci
-npm run dev
+To verify a checkout, install `requirements-dev.txt`, then run `npm test`,
+`npm run build`, `python -m ruff check .` and `python -m pytest -q` in that order.
+The build must precede the API page tests.
+
+Requires Node.js 22.12+ and Python. On Windows, run:
+
+```powershell
+./run.ps1
 ```
 
-Open the printed local URL. The guided tour starts automatically and walks through four questions:
-**where, when, power, and can you phone home.**
+Open the printed local URL and choose a landing site. The site menu opens the mission outlook, dates, comparison, and lander settings one panel at a time. Drag the timeline or press Play to see how sunlight, Earth contact, and power change.
 
-1. Planner mode opens with **Connecting Ridge (CR1)** vs. **Shackleton Rim (SR1)**, mission week
-   starting **15 Jan 2027 UTC**.
-2. Read the plain-English verdict and the four big metric cards.
-3. Drag the time slider — watch the Sun/Earth markers move on the 360° skyline and the mission
-   timeline below.
-4. Switch to **Learn** for the plain-language story and guided scenarios, or flip on **Expert view**
-   for the full numeric breakdown judges and specialists want.
-5. **Copy shareable link** or **Export time series JSON** to hand the exact scenario to someone else
-   (shaped for downstream tools, including a Quest/VR viewer).
+**At the site** and **Above the site** move the camera within the same 3D scene. Use **South pole map** to pan and zoom a flat overview, then click a known site or explore an unsaved point. The map's coordinate form can save a custom spot for comparison.
+
+Scroll below the workspace, or use **More analysis tools**, for the terrain explorer (layers, markers, pick on map), slope screening, regional search and site ranking, launch-date suggestions, the relay path, panel and landing-delay tests, and the skyline and mission calendar.
+
+## Science data (bundled for offline)
+
+| Product | Path | Notes |
+| --- | --- | --- |
+| 360° LOLA horizons | `public/science/horizons/{site}.json` | CR1 / SR1 · 0.25° · 5 m near-field + 320 m overview |
+| Sun / Earth ephemeris | `public/science/ephemeris/{site}-{sun\|earth}.json` | Precomputed JPL Horizons az/el for Jan 2027 |
+| Study sites | `public/terrain/sites.json` | `horizonStatus: ready`, `horizonUrl` set |
+
+Regenerate with `npm run science` when that script is present. Custom lat/lon and non-study sites use an **optimistic sphere horizon**, labeled in the UI.
+
+The fullscreen workspace uses the science API for local terrain, the south-pole map, and the site assessments. The bundled assets remain available to the standalone terrain development tools.
 
 ## Architecture
 
@@ -71,10 +90,12 @@ src/scenario/     shared Planner <-> Learn state, catalog, URL sync
 src/horizon/       load / sphere fallback / elevation-at-azimuth
 src/ephemeris/     bundled Horizons + live API client + analytic fallback
 src/science/       client for the optional live Person 2 backend (see below)
-src/assess/        sunlight, Earth line-of-sight, blackouts, power proxy, viability
+src/assess/        sunlight, Earth line-of-sight, blackouts, viability
+src/power/         solar adapter, battery/load dispatch, panel and landing-delay planning
 src/ui/plain.ts     plain-English verdicts and the 4 simple metric cards
 src/viz/           360° skyline ribbon + mission timeline
-src/app.ts         mode shell + assessment orchestration
+src/app.ts         mode shell + assessment orchestration (navigator)
+src/dashboard/     fullscreen site workspace, mission panels, minimap, and Sun/Earth scene
 src/main.ts        3D Three.js lunar south-pole terrain viewer
 backend/           optional Python/FastAPI science service (real Skyfield + JPL DE421 + NASA DEMs)
 ```
@@ -112,3 +133,7 @@ back to the bundled/offline data otherwise, so the app always works without it. 
 | [docs/TERRAIN_PLAN.md](./docs/TERRAIN_PLAN.md) | The 3D terrain pipeline's build-out plan |
 | [docs/PERSON2_COMMS.md](./docs/PERSON2_COMMS.md) | The Python science backend: models, API, run instructions |
 | [docs/PERSON2_INTEGRATION_REPORT.md](./docs/PERSON2_INTEGRATION_REPORT.md) | Full record of how the backend was integrated into this app |
+| [docs/solar/README.md](./docs/solar/README.md) | Solar input contract, units, and limitations |
+| [docs/solar/MISSION_MODEL.md](./docs/solar/MISSION_MODEL.md) | Battery assumptions, score policy, and landing-delay analysis |
+
+Panel generation, battery dispatch, and landing-delay comparisons live in `src/power/`. Visibility owns terrain obstruction; solar consumes that mask once. Missing inputs stay unknown.

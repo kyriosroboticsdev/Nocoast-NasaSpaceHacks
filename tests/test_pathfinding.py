@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import pytest
-
 import numpy as np
+import pytest
 
 from backend.pathfinding import earth_moon
 from backend.pathfinding.graph import Node, NoPathError, Weights, shortest_path
@@ -206,7 +205,7 @@ def test_corridor_segment_obstacle_penalty_routes_around_between_layer_obstacle(
     def pierces_any_hop(result):
         return any(_segment_pierces_sphere(np.array(nodes[u].position_km), np.array(nodes[v].position_km),
                                            center, 500.0)
-                   for u, v in zip(result.node_ids, result.node_ids[1:]))
+                   for u, v in zip(result.node_ids, result.node_ids[1:], strict=False))
 
     # Without a segment-aware penalty the cheapest path is the straight center line, which pierces it.
     naive = shortest_path(nodes, edges, earth_moon.start_id(), earth_moon.goal_id(layers), weights)

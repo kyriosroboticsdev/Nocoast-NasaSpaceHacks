@@ -1,0 +1,43 @@
+{
+  "contract": "../SLOPE_UI_CONTRACT.md: integrate preliminary north-up slope screening into the current main Planner, with shared Site A/B state, equal comparison windows, explicit unknown coverage and unchanged mission grades.",
+  "targetViewports": ["1440x900", "390x844"],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "Visible associated labels, text legend, live numeric inspection and labeled comparison region. ArrowUp moved inspection 5 m north; canvas keyboard focus had a 2 px outline. No duplicate IDs. Native details and selector remain keyboard operable. Color is supplemented by degrees and area figures."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "At 1440x900, client and scroll widths were both 1425 px. At 390x844, both were 375 px. Phone comparison block measured 309 px and site labels wrapped. Restored explanatory text by overriding the Planner's absolute-positioned .hint rule within the slope section."
+  },
+  "contentStates": {
+    "loading": {
+      "status": "pass",
+      "evidence": "Loading comparison rows observed while changing Planner Site A to Peak Near Shackleton; previous location's area was not presented as the new result. The reused component's delayed-request and cancellation behavior was also verified in the original slope checkout."
+    },
+    "empty": {
+      "status": "pass",
+      "evidence": "Custom Site A at -80,0 displayed Unknown qualifying area and 1.538 km2 unknown. Apollo 11 displayed an unsupported-region explanation and Unknown, without a latitude-validation error."
+    },
+    "error": {
+      "status": "pass",
+      "evidence": "The reused component's failed API/Retry recovery was browser-tested in the original slope checkout (see ../TERRAIN_SLOPES.md for provenance). Current-main API error-path tests pass as part of the 86-test suite. Backend outage/recovery was not repeated in the current Planner browser session."
+    },
+    "partial": {
+      "status": "pass",
+      "evidence": "Current Planner SR1 map and comparison show incomplete coverage, gray unknowns and 0.025 km2 unknown. CR1 has 0.012 km2 unknown. Unknown area is separate from qualifying area."
+    },
+    "success": {
+      "status": "pass",
+      "evidence": "At 10 degrees, CR1 1.062 km2 and SR1 0.400 km2 matched the API and displayed comparison. Selecting Site B changed the map to SR1; changing Site A to Peak Near Shackleton yielded 1.346 km2. A 5-degree limit updated both badges/table; comparison off removed B and reset selection to A. All six polar study sites returned valid real-data grids (api.json). No console errors in the browser session."
+    },
+    "permission": {
+      "status": "not-applicable",
+      "reason": "Read-only local science API; no account, upload, access grant or external write."
+    }
+  },
+  "renderedEvidence": [
+    {"viewport": "1440x900", "artifact": "desktop.png", "observation": "Current main Planner with the slope map in its collapsible section below the 3D viewer; selected site, area, threshold and legend are visible."},
+    {"viewport": "390x844", "artifact": "mobile.png", "observation": "Phone map and site selector fit the existing Planner layout with a visible focus ring."},
+    {"viewport": "390x844", "artifact": "mobile-area.png", "observation": "Phone comparison table, unknown coverage, qualifying area and limit control remain readable with no horizontal page overflow."}
+  ]
+}

@@ -122,43 +122,53 @@ Student-subscription workarounds baked into the templates/workflow:
 Detailed polar terrain (`/api/terrain/window`, `backend/terrain_window.py`) is served by the backend in
 production; locally the Vite dev middleware still answers the same path.
 
-### Resolved: OIDC login on pushes to `preview`
+### Known blocker: OIDC login fails on pushes to `preview` (2026-11-15)
 
-Was failing with `AADSTS700213: No matching federated identity record found for presented assertion
-subject 'repo:...:ref:refs/heads/preview'` — fixed since (the federated credential now covers both
-`main` and `preview`). Login succeeds reliably as of 2026-11-15.
+The first real `azure-deploy.yml` run (triggered by merging PR #4 into `preview`) failed at the Azure
+login step, before touching any live resource — no partial/broken deploy state, it never got that far:
 
-### Resolved: Container App image pull auth failure on every deploy (2026-11-15)
+```
+AADSTS700213: No matching federated identity record found for presented assertion subject
+'repo:kyriosroboticsdev/Nocoast-NasaSpaceHacks:ref:refs/heads/preview'.
+```
 
-Every `az containerapp update --image ...` failed with `Authentication failed when pulling container
-image ... Provide 'registryCredentials' ...`, even right after a clean `az acr login` + push. Diagnosed
-via a temporary debug step in the workflow: ACR public network access is enabled, admin is enabled, the
-image tag exists, and the app's registry config is correct — but the credential takes a real,
-non-trivial amount of time (tens of seconds) to propagate to the Container Apps pull path on this
-Express/Consumption environment, and reconciling immediately after setting it reliably loses that race.
-Fixed by retrying the `registry set` + `update` pair up to 5 times with a 30s backoff
-(`.github/workflows/azure-deploy.yml`) — confirmed working on 2 consecutive runs since, both succeeding
-on the first attempt.
+Despite this doc saying the `lunarnav-github-deploy` Entra app has a federated credential "for pushes to
+`main` and `preview`," Azure AD only has one on file that doesn't match that exact subject string —
+most likely it was only ever added for `main`. Fixing this needs Entra ID admin access this session
+doesn't have:
 
-### Open: Static Web App linked-backend returns a genuine Azure-side 500
+```sh
+az ad app federated-credential create --id <lunarnav-github-deploy's app (client) ID> --parameters '{
+  "name": "github-preview-branch",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:kyriosroboticsdev/Nocoast-NasaSpaceHacks:ref:refs/heads/preview",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+```
 
-This is why `/api/*` 404s on the public SWA URL even though the Container App itself is healthy and
-directly reachable at its own FQDN. Root-caused, not a config problem on our end:
+(Confirm the existing credential's exact `subject` with `az ad app federated-credential list --id
+<app-id>` first — it may be faster to fix that one's subject than add a new one.) Once this is added,
+re-run the failed workflow (`gh run rerun <run-id>` or just push again) to get a real end-to-end deploy
+signal.
 
-- `azure-infra.yml` (which would apply `infra/modules/frontend.bicep`'s `linkedBackends` resource) has
-  never actually been run — this environment was hand-provisioned via `az` CLI during the
-  Azure-for-Students workarounds, so no backend was ever linked (`az staticwebapp backends show`
-  returns `[]`).
-- Tried linking it directly, including bypassing the CLI with a raw ARM REST `PUT` to the
-  `linkedBackends/api` sub-resource (the CLI's failsafe JSON deserialization was hiding the real error
-  body). The response is a bare `500` **served by Azure Static Web Apps itself**, not a generic ARM
-  error: `"Azure Static Web Apps - 500: Internal Server Error ... we're working on an unexpected error
-  right now."` SWA's sku (Standard, correctly) and the Container App's resource ID/region are both
-  verified correct going into this call.
-- `.github/workflows/azure-deploy.yml` now attempts this link on every deploy (`continue-on-error:
-  true` — never blocks a code deploy), so it'll self-heal the moment Azure's side recovers, with no
-  further action needed here.
-- If it's still failing when you read this: try the Azure Portal's **"Link already deployed backend"**
-  button on the Static Web App resource directly (may use a different code path than the CLI/REST call
-  that failed here), or open an Azure support ticket citing the 500 above. Workaround in the meantime:
-  hit the Container App's own FQDN directly for `/api/*` calls instead of going through the SWA.
+### Express environment: image comes from GHCR (2026-11-15)
+
+The Students subscription's Container Apps environment is in **Express** mode (`environmentMode: Express`).
+Express rejects managed identities outright (`ExpressSystemAssignedIdentityNotSupported`), and every
+private-registry pull failed: ACR admin credentials and ACR repository-scoped tokens both returned
+"Authentication failed when pulling container image". So `azure-deploy.yml` now pushes the backend image to
+`ghcr.io/kyriosroboticsdev/lunar-navigator-api` and the Container App pulls it anonymously. **The GHCR package
+must be set to Public once** (GitHub -> the package -> Package settings -> Change visibility), after its first
+push. The ACR resource is left in place but unused.
+
+GitHub OIDC: GitHub now presents the subject with numeric IDs
+(`repo:kyriosroboticsdev@218849459/Nocoast-NasaSpaceHacks@1457942253:ref:refs/heads/<branch>`), so the Entra
+app has federated credentials in both that form and the plain-name form, for `main` and `preview`.
+
+### No Static Web Apps linked backend (2026-11-15)
+
+Linking the Express-mode Container App as the Static Web App's `/api` backend never completes: the Bicep
+step sat in "Static Web Apps service is temporarily unavailable" retries for over an hour, and
+`az staticwebapp backends link` returns HTTP 500. So the Azure build sets `VITE_API_ORIGIN` to the Container
+App URL (`src/apiBase.ts`) and the frontend calls it cross-origin; FastAPI allows CORS for GETs. Local dev
+leaves `VITE_API_ORIGIN` unset, so `/api` stays same-origin through the Vite proxy and dev middleware.

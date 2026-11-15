@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "allowJs": true,
+    "outDir": ".cache/solar-tests",
+    "rootDir": "src"
+  },
+  "include": [
+    "src/power",
+    "src/assess",
+    "src/scenario",
+    "src/horizon",
+    "src/ephemeris",
+    "src/ui/format.ts",
+    "src/science"
+  ]
+}

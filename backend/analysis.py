@@ -16,9 +16,11 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
+from . import relay as relay_model
 from . import terrain
-from .config import CONTRACT, FRAME_ID, SCHEMA_VERSION, SUPPORTED_END, SUPPORTED_START, TIME, VISIBILITY, fmt_utc
+from .config import CONTRACT, FRAME_ID, SCHEMA_VERSION, SITES, SUPPORTED_END, SUPPORTED_START, TIME, VISIBILITY, fmt_utc
 from .ephem import sun_earth, time_grid
+from .relay import DEFAULT_RELAY, RelayConfig
 
 BASE_STEP_S = float(TIME["baseStepSeconds"])
 REFINE_STEP_S = float(TIME["eventRefinementStepSeconds"])
@@ -73,12 +75,19 @@ def _state(el: np.ndarray, threshold: np.ndarray) -> np.ndarray:
     return s
 
 
-def evaluate(lat: float, lon: float, times: list[datetime], profile: dict, antenna_min: float) -> dict:
+def evaluate(lat: float, lon: float, times: list[datetime], profile: dict, antenna_min: float,
+             relay_cfg: RelayConfig | None = None) -> dict:
     e = sun_earth(lat, lon, times)
     e["sun_hz"] = terrain.mask_at(profile["elevationDeg"], e["sun_az"])
     e["earth_hz"] = terrain.mask_at(profile["elevationDeg"], e["earth_az"])
     e["sun_vis"] = _state(e["sun_el"], e["sun_hz"] + MARGIN)
     e["earth_vis"] = _state(e["earth_el"], np.maximum(e["earth_hz"] + MARGIN, antenna_min))
+    if relay_cfg is not None:
+        linked = relay_model.relay_link(
+            lat, lon, times, lambda az: terrain.mask_at(profile["elevationDeg"], az), MARGIN, relay_cfg)
+        e["relay_vis"] = linked.astype(np.int8)
+        # A relay can only add a link. It never removes direct-to-Earth, including unknowns.
+        e["comm_vis"] = np.where(linked, np.int8(1), e["earth_vis"]).astype(np.int8)
     return e
 
 
@@ -129,28 +138,35 @@ def _summary(windows: list[dict], gaps: list[dict], unknown: list[dict], total_s
 # ----------------------------------------------------------------------------- main entry
 def analyze(lat: float, lon: float, start: datetime, end: datetime, antenna_min: float | None = None,
             profile: dict | None = None, antenna_boresight_az: float | None = None,
-            antenna_boresight_el: float | None = None, antenna_beamwidth_deg: float = DEFAULT_BEAMWIDTH_DEG) -> dict:
+            antenna_boresight_el: float | None = None, antenna_beamwidth_deg: float = DEFAULT_BEAMWIDTH_DEG,
+            relay_cfg: RelayConfig | None = DEFAULT_RELAY) -> dict:
     check_window(start, end)
     lon = lon % 360.0
     antenna_min = ANTENNA_MIN if antenna_min is None else float(antenna_min)
     profile = profile or terrain.horizon_profile(lat, lon)
 
     base_t = time_grid(start, end, BASE_STEP_S)
-    base = evaluate(lat, lon, base_t, profile, antenna_min)
+    base = evaluate(lat, lon, base_t, profile, antenna_min, relay_cfg)
 
-    # refine every base bracket in which either state changes
-    flips = np.nonzero((np.diff(base["sun_vis"]) != 0) | (np.diff(base["earth_vis"]) != 0))[0]
+    flip_flags = (np.diff(base["sun_vis"]) != 0) | (np.diff(base["earth_vis"]) != 0)
+    if relay_cfg is not None:
+        flip_flags |= np.diff(base["comm_vis"]) != 0
+    flips = np.nonzero(flip_flags)[0]
     k_per = int(BASE_STEP_S // REFINE_STEP_S)
     ref_t = [base_t[i] + timedelta(seconds=REFINE_STEP_S * k) for i in flips for k in range(1, k_per)]
+    keys = ["sun_vis", "earth_vis"] + (["relay_vis", "comm_vis"] if relay_cfg is not None else [])
     if ref_t:
-        ref = evaluate(lat, lon, ref_t, profile, antenna_min)
+        ref = evaluate(lat, lon, ref_t, profile, antenna_min, relay_cfg)
         order = np.argsort(np.array([t.timestamp() for t in base_t + ref_t]))
         all_t = [(base_t + ref_t)[i] for i in order]
-        sun_s = np.concatenate([base["sun_vis"], ref["sun_vis"]])[order]
-        earth_s = np.concatenate([base["earth_vis"], ref["earth_vis"]])[order]
+        merged = {key: np.concatenate([base[key], ref[key]])[order] for key in keys}
     else:
-        all_t, sun_s, earth_s = base_t, base["sun_vis"], base["earth_vis"]
+        all_t = base_t
+        merged = {key: base[key] for key in keys}
+    sun_s, earth_s = merged["sun_vis"], merged["earth_vis"]
+    comm_eff_s = merged["comm_vis"] if relay_cfg is not None else earth_s
     both_s = np.where((sun_s == UNKNOWN) | (earth_s == UNKNOWN), UNKNOWN, sun_s & earth_s).astype(np.int8)
+    both_eff_s = np.where((sun_s == UNKNOWN) | (comm_eff_s == UNKNOWN), UNKNOWN, sun_s & comm_eff_s).astype(np.int8)
 
     total_s = (end - start).total_seconds()
 
@@ -162,6 +178,9 @@ def analyze(lat: float, lon: float, start: datetime, end: datetime, antenna_min:
                 "events": _events(all_t, s, body) if body else []}
 
     sun, comm, both = block(sun_s, "sun"), block(earth_s, "earth"), block(both_s, None)
+    comm_eff = block(comm_eff_s, None) if relay_cfg is not None else comm
+    both_eff = block(both_eff_s, None) if relay_cfg is not None else both
+    relay_only = block(merged["relay_vis"].astype(np.int8), None) if relay_cfg is not None else None
     rankable = profile.get("terrainQuality") == "contract" or bool(VISIBILITY["allowFallbackInTerrainRanking"])
 
     def r(a, nd=5):
@@ -187,6 +206,8 @@ def analyze(lat: float, lon: float, start: datetime, end: datetime, antenna_min:
             "sunHorizonDeg": r(base["sun_hz"]), "sunVisible": vis(base["sun_vis"]),
             "earthAzimuthDeg": r(base["earth_az"]), "earthElevationDeg": r(base["earth_el"]),
             "earthHorizonDeg": r(base["earth_hz"]), "earthVisible": vis(base["earth_vis"]),
+            "relayVisible": vis(base["relay_vis"]) if relay_cfg is not None else None,
+            "earthOrRelayVisible": vis(base["comm_vis"]) if relay_cfg is not None else None,
             "sunAngularRadiusDeg": r(base["sun_r"]), "earthAngularRadiusDeg": r(base["earth_r"]),
             "sunEnu": [r(v, 6) for v in base["sun_enu"]], "earthEnu": [r(v, 6) for v in base["earth_enu"]],
             # extension (not in contract v0.1): Earth's north pole and prime meridian as ENU unit vectors
@@ -199,6 +220,20 @@ def analyze(lat: float, lon: float, start: datetime, end: datetime, antenna_min:
                           "summary": comm["summary"]},
         "sunAndCommunication": {"windows": both["windows"], "unknown": both["unknown"],
                                 "summary": both["summary"]},
+        "commsEffective": None if relay_cfg is None else {
+            "mode": "dte+relay", "windows": comm_eff["windows"], "blackouts": comm_eff["gaps"],
+            "unknown": comm_eff["unknown"], "summary": comm_eff["summary"]},
+        "sunAndCommunicationEffective": None if relay_cfg is None else {
+            "windows": both_eff["windows"], "unknown": both_eff["unknown"], "summary": both_eff["summary"]},
+        "relay": None if relay_cfg is None else {
+            "config": {"name": relay_cfg.name, "altitudeKm": relay_cfg.altitude_km,
+                       "inclinationDeg": relay_cfg.inclination_deg, "numSats": relay_cfg.num_sats,
+                       "minElevationDeg": relay_cfg.min_elevation_deg, "raanSpreadDeg": relay_cfg.raan_spread_deg},
+            "windows": relay_only["windows"], "blackouts": relay_only["gaps"], "summary": relay_only["summary"],
+            "addedCommsSeconds": (None if comm_eff["summary"]["totalSeconds"] is None
+                                  or comm["summary"]["totalSeconds"] is None
+                                  else comm_eff["summary"]["totalSeconds"] - comm["summary"]["totalSeconds"]),
+            "model": "circular-polar-constellation-v1 (simplified; see backend/relay.py)"},
         "events": sorted(sun["events"] + comm["events"], key=lambda ev: ev["timeUtc"]),
         "antenna": _antenna_block(base_t, base["earth_az"], base["earth_el"], base["earth_vis"],
                                   antenna_boresight_az, antenna_boresight_el, antenna_beamwidth_deg),
@@ -234,6 +269,25 @@ AU_KM = 149_597_870.7
 SOLAR_SCHEMA = "0.1.0"
 
 
+class SolarInputUnavailable(ValueError):
+    """A visibility result can exist without enough terrain geometry for power."""
+
+
+def solar_site(latitude_deg: float, longitude_east_deg: float) -> dict:
+    """Canonical six-decimal coordinates shared with the terrain cache and solar identity."""
+    lat, lon = float(latitude_deg), float(longitude_east_deg)
+    if not np.isfinite(lat) or not -90 <= lat <= 90 or not np.isfinite(lon):
+        raise WindowError("site coordinates must be finite lunar latitude/longitude degrees")
+    lat, lon = round(lat, 6), round(lon % 360, 6) % 360
+    lat = 0.0 if lat == 0 else lat
+    lon = 0.0 if lon == 0 else lon
+    for site in SITES:
+        if abs(site["latitudeDeg"] - lat) < 1e-9 and abs(site["longitudeEastDeg"] % 360 - lon) < 1e-9:
+            return {**site, "latitudeDeg": lat, "longitudeEastDeg": lon}
+    return {"siteId": f"moon-{lat:.6f}-{lon:.6f}", "latitudeDeg": lat, "longitudeEastDeg": lon,
+            "displayName": f"{lat:.6f} degrees latitude, {lon:.6f} degrees east"}
+
+
 def solar_input(site: dict, start: datetime, end: datetime, profile: dict | None = None) -> dict:
     """`solar-input` envelope for Person 3's power model (docs/solar/INPUT_CONTRACT.md on the solar branch).
 
@@ -242,8 +296,16 @@ def solar_input(site: dict, start: datetime, end: datetime, profile: dict | None
     topocentric az/el, observer-to-Sun range in AU, and the binary terrain visibility of the interval that follows.
     """
     check_window(start, end)
-    lat, lon = site["latitudeDeg"], site["longitudeEastDeg"] % 360.0
+    lat = round(float(site["latitudeDeg"]), 6)
+    lon = round(float(site["longitudeEastDeg"]) % 360, 6) % 360
     profile = profile or terrain.horizon_profile(lat, lon)
+    elevation = profile.get("siteElevationM")
+    if elevation is None or not np.isfinite(elevation) or not -15000 <= elevation <= 15000:
+        raise SolarInputUnavailable(
+            "Measured surface elevation is unavailable at this location; solar power is unknown.")
+    observer_height = profile.get("observerHeightAboveGroundM", CONTRACT["observerHeightAboveGroundM"])
+    if observer_height != CONTRACT["observerHeightAboveGroundM"]:
+        raise SolarInputUnavailable("Terrain observer height does not match the shared 2 m solar convention.")
     base_t = time_grid(start, end, BASE_STEP_S)
     base = evaluate(lat, lon, base_t, profile, ANTENNA_MIN)
     flips = np.nonzero(np.diff(base["sun_vis"]) != 0)[0]
@@ -270,8 +332,8 @@ def solar_input(site: dict, start: datetime, end: datetime, profile: dict | None
         "generatedAtUtc": fmt_utc(datetime.now(tz=start.tzinfo).replace(microsecond=0)),
         "label": f"{site.get('displayName', site['siteId'])} solar input (Person 2 backend)",
         "frameId": FRAME_ID, "siteId": site["siteId"],
-        "site": {"latitudeDeg": site["latitudeDeg"], "longitudeEastDeg": site["longitudeEastDeg"],
-                 "surfaceElevationM": profile.get("siteElevationM", site.get("surfaceElevationM")),
+        "site": {"latitudeDeg": lat, "longitudeEastDeg": lon,
+                 "surfaceElevationM": float(elevation),
                  "referenceRadiusM": int(CONTRACT["referenceRadiusM"])},
         "observerHeightAboveGroundM": 2,
         "time": {"startUtc": fmt_utc(start), "endUtc": fmt_utc(end), "baseStepSeconds": int(BASE_STEP_S),
@@ -279,11 +341,15 @@ def solar_input(site: dict, start: datetime, end: datetime, profile: dict | None
         "provenance": {
             "ephemeris": {"provider": "Skyfield + JPL DE421 (Person 2 backend)",
                           "kernels": ["de421.bsp", "moon_pa_de421_1900-2050.bpc", "moon_080317.tf", "pck00010.tpc"],
-                          "validation": "checked against JPL Horizons coord@301 (tests/test_ephemeris.py)"},
+                          "validation": "checked against JPL Horizons coord@301 (tests/test_ephemeris.py)",
+                          "observerModel": "Skyfield reference surface; terrain elevation is used by the horizon"},
             "visibility": {"provider": "Person 2 backend analysis.evaluate", "mode": "terrain",
                            "sunModel": "center-binary-v1", "horizonArtifactId": hz_id,
                            "horizonObserverHeightAboveGroundM": 2,
                            "terrainQuality": profile.get("terrainQuality"),
+                           "horizonSource": profile.get("source"),
+                           "surfaceElevationMethod": profile.get("siteElevationMethod"),
+                           "validation": profile.get("validation") or {"status": "pending"},
                            "timing": "600 s base samples; 60 s samples in every bracket where Sun visibility changes"},
         },
         "samples": samples,
@@ -299,8 +365,21 @@ def _longest(flag: np.ndarray) -> int:
     return best
 
 
+OBJECTIVE_WEIGHTS = {"sun": 1.0, "comm": 1.3, "both": 0.8}
+
+
+def objective_score(sun_pct: float, comm_pct: float, both_pct: float, weights: dict | None = None) -> float:
+    """0–100 score from sunlight, effective Earth contact, and the overlap of the two."""
+    w = weights or OBJECTIVE_WEIGHTS
+    denom = w["sun"] + w["comm"] + w["both"]
+    if denom <= 0:
+        raise WindowError("at least one objective weight must be positive")
+    return (w["sun"] * sun_pct + w["comm"] * comm_pct + w["both"] * both_pct) / denom
+
+
 def landing_sweep(lat: float, lon: float, first_day: datetime, sweep_days: int, mission_s: float,
-                  antenna_min: float | None = None) -> dict:
+                  antenna_min: float | None = None, relay_cfg: RelayConfig | None = DEFAULT_RELAY,
+                  weights: dict | None = None) -> dict:
     """Score each candidate landing day (00:00 UTC) over the mission window, from base-step samples only."""
     lon = lon % 360.0
     antenna_min = ANTENNA_MIN if antenna_min is None else float(antenna_min)
@@ -312,34 +391,87 @@ def landing_sweep(lat: float, lon: float, first_day: datetime, sweep_days: int, 
         raise WindowError("no landing day in range fits the supported window")
     profile = terrain.horizon_profile(lat, lon)
     times = time_grid(days[0], days[-1] + timedelta(seconds=mission_s), BASE_STEP_S)
-    e = evaluate(lat, lon, times, profile, antenna_min)
+    e = evaluate(lat, lon, times, profile, antenna_min, relay_cfg)
     per_day = int(86400 // BASE_STEP_S)
     win = int(np.ceil(mission_s / BASE_STEP_S))
     h = BASE_STEP_S / 3600.0
-    rows = []
+    rows, best = [], None
     for k, d in enumerate(days):
         i = k * per_day
         sv, ev = e["sun_vis"][i:i + win], e["earth_vis"][i:i + win]
-        if (sv == UNKNOWN).any() or (ev == UNKNOWN).any():
+        cv = e["comm_vis"][i:i + win] if relay_cfg is not None else ev
+        if (sv == UNKNOWN).any() or (ev == UNKNOWN).any() or (cv == UNKNOWN).any():
             rows.append({"dateUtc": fmt_utc(d), "missing": True})
             continue
         both = sv & ev
+        both_eff = sv & cv
+        sun_pct, comm_pct = 100.0 * sv.mean(), 100.0 * cv.mean()
+        both_pct = 100.0 * both_eff.mean()
         first_sun_change = np.nonzero(sv != sv[0])[0]
-        first_comm_change = np.nonzero(ev != ev[0])[0]
-        rows.append({
+        first_comm_change = np.nonzero(cv != cv[0])[0]
+        score = round(objective_score(sun_pct, comm_pct, both_pct, weights), 1)
+        row = {
             "dateUtc": fmt_utc(d), "missing": False,
             "commPercent": round(100.0 * ev.mean(), 1),
-            "sunlitPercent": round(100.0 * sv.mean(), 1),
+            "commWithRelayPercent": round(comm_pct, 1),
+            "sunlitPercent": round(sun_pct, 1),
             "sunAndCommPercent": round(100.0 * both.mean(), 1),
+            "sunAndCommWithRelayPercent": round(both_pct, 1),
+            "objectiveScore": score,
             "longestBlackoutHours": round(_longest(ev == 0) * h, 1),
+            "longestBlackoutWithRelayHours": round(_longest(cv == 0) * h, 1),
             "longestDarkHours": round(_longest(sv == 0) * h, 1),
             "sunVisibleAtLanding": bool(sv[0]), "earthVisibleAtLanding": bool(ev[0]),
             "hoursUntilSunChange": round(first_sun_change[0] * h, 1) if first_sun_change.size else None,
             "hoursUntilCommChange": round(first_comm_change[0] * h, 1) if first_comm_change.size else None,
-        })
+        }
+        rows.append(row)
+        if best is None or score > best[1]:
+            best = (fmt_utc(d), score)
     return {"schemaVersion": SCHEMA_VERSION, "latitudeDeg": lat, "longitudeEastDeg": lon,
             "missionSeconds": int(mission_s), "antennaMinElevationDeg": antenna_min,
             "sampling": f"base-step {int(BASE_STEP_S)} s, no event refinement",
+            "relay": None if relay_cfg is None else {"name": relay_cfg.name, "numSats": relay_cfg.num_sats,
+                                                     "altitudeKm": relay_cfg.altitude_km},
+            "objectiveWeights": weights or OBJECTIVE_WEIGHTS,
+            "bestDateUtc": best[0] if best else None, "bestScore": best[1] if best else None,
             "rankable": profile.get("terrainQuality") == "contract"
             or bool(CONTRACT["visibility"]["allowFallbackInTerrainRanking"]),
             "days": rows}
+
+
+def optimize(sites: list[dict], first_day: datetime, sweep_days: int, mission_s: float,
+             antenna_min: float | None = None, relay_cfg: RelayConfig | None = DEFAULT_RELAY,
+             weights: dict | None = None) -> dict:
+    """Rank sites and landing days by sunlight plus effective Earth contact."""
+    ranked = []
+    for site in sites:
+        try:
+            sweep = landing_sweep(site["lat"], site["lon"], first_day, sweep_days, mission_s,
+                                  antenna_min, relay_cfg, weights)
+        except WindowError as ex:
+            ranked.append({**_site_id(site), "error": str(ex)})
+            continue
+        best_day = next((d for d in sweep["days"] if not d.get("missing")
+                         and d["dateUtc"] == sweep["bestDateUtc"]), None)
+        ranked.append({
+            **_site_id(site), "rankable": sweep["rankable"],
+            "bestDateUtc": sweep["bestDateUtc"], "objectiveScore": sweep["bestScore"],
+            "commWithRelayPercent": best_day and best_day.get("commWithRelayPercent"),
+            "commPercent": best_day and best_day.get("commPercent"),
+            "sunlitPercent": best_day and best_day.get("sunlitPercent"),
+            "sunAndCommWithRelayPercent": best_day and best_day.get("sunAndCommWithRelayPercent"),
+            "longestBlackoutWithRelayHours": best_day and best_day.get("longestBlackoutWithRelayHours"),
+        })
+    scored = [r for r in ranked if r.get("objectiveScore") is not None]
+    scored.sort(key=lambda r: r["objectiveScore"], reverse=True)
+    ranked.sort(key=lambda r: (r.get("objectiveScore") is None, -(r.get("objectiveScore") or 0)))
+    return {"schemaVersion": SCHEMA_VERSION, "missionSeconds": int(mission_s),
+            "objectiveWeights": weights or OBJECTIVE_WEIGHTS,
+            "relay": None if relay_cfg is None else {"name": relay_cfg.name, "numSats": relay_cfg.num_sats},
+            "best": scored[0] if scored else None, "ranked": ranked}
+
+
+def _site_id(site: dict) -> dict:
+    return {"id": site.get("id"), "name": site.get("name"),
+            "latitudeDeg": round(float(site["lat"]), 6), "longitudeEastDeg": round(float(site["lon"]) % 360.0, 6)}

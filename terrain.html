@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a111a">
+  <title>Lunar Shadow Lab · Terrain explorer</title>
+</head>
+<body>
+  <main>
+    <header><p class="eyebrow">LUNAR SHADOW LAB / SOUTH POLE</p><h1>Terrain explorer</h1>
+      <p>Explore the Moon and zoom into the detailed south-pole terrain.</p></header>
+    <div class="layout">
+      <section id="viewport" aria-label="Interactive 3D lunar terrain">
+        <div class="badge" id="mode-label">87°S–90°S</div>
+        <div class="hint" id="hint">Click to fly to a spot · Drag to orbit · Middle-drag to pan · Scroll or pinch to zoom</div>
+      </section>
+      <aside>
+        <label for="site">Study point</label>
+        <select id="site" disabled></select>
+        <div class="buttons">
+          <button id="focus" disabled>Zoom to site</button>
+          <button id="reset" disabled>Full polar cap</button>
+          <button id="globe" disabled>Whole Moon</button>
+        </div>
+        <label for="layer">Terrain layer</label>
+        <select id="layer" disabled><option value="relief">Lunar surface</option><option value="elevation">Elevation</option><option value="mesh">Mesh wireframe</option></select>
+        <div id="legend" hidden><div class="ramp"></div><div class="range"><span>−8,000 m</span><span>7,000 m</span></div><small>Radial elevation above the reference sphere</small></div>
+        <p id="status" role="status">Loading terrain…</p>
+        <dl id="details"></dl>
+        <p class="source"><a href="https://pgda.gsfc.nasa.gov/products/81">NASA 5 m LOLA mosaic</a> · <a href="https://pgda.gsfc.nasa.gov/products/90">Polar overview</a> · <a href="https://svs.gsfc.nasa.gov/4720/">NASA SVS Moon imagery</a></p>
+        <div class="coverage"><strong>Science coverage</strong><p>Sun and Earth terrain visibility are unknown. The lunar surface layer uses NASA imagery and fixed display lighting.</p></div>
+      </aside>
+    </div>
+  </main>
+  <script type="module" src="/src/explorer/explorer.ts"></script>
+</body>
+</html>

@@ -7,4 +7,5 @@ select = ["E", "F", "W", "I", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = ["slow: horizon convergence checks (~20 s)"]

@@ -15,6 +15,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  packages: write   # push the backend image to GHCR
 
 env:
   RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'lunarnav-dev-rg' }}
@@ -41,75 +42,57 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # The registry's real name has a uniqueString() suffix from the bicep deploy (not predictable
-      # ahead of time), so look it up by resource group instead of requiring a hand-set repo variable
-      # — the same pattern already used below for the Static Web App deploy token.
-      - name: Resolve Container Registry name
+      # The image goes to GitHub Container Registry as a PUBLIC package, not ACR: the Azure for Students
+      # Container Apps environment is "Express" mode, which rejected every private-registry pull we tried
+      # (managed identity, ACR admin creds, ACR scoped tokens). A public image needs no credentials, and
+      # this repo is public anyway, so the image exposes nothing new.
+      - name: Build + push backend image (GHCR)
         run: |
-          acr_name=$(az acr list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
-          if [ -z "$acr_name" ]; then
-            echo "::error::No Container Registry found in resource group $RESOURCE_GROUP — run azure-infra.yml first."
-            exit 1
-          fi
-          echo "ACR_NAME=$acr_name" >> "$GITHUB_ENV"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/lunar-navigator-api"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}"             -t "$image:${{ github.sha }}" -t "$image:latest" .
+          docker push --all-tags "$image"
 
-      # Build on the runner and push: ACR Tasks (`az acr build`) is disabled on Azure for Students
-      # subscriptions (TasksOperationsNotAllowed).
-      - name: Build + push backend image
-        run: |
-          az acr login --name "$ACR_NAME"
-          docker build -t "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}" -t "$ACR_NAME.azurecr.io/lunar-navigator-api:latest" .
-          docker push --all-tags "$ACR_NAME.azurecr.io/lunar-navigator-api"
-
-      # Best-effort, non-blocking: linking the backend is what makes /api/* same-origin on the public
-      # SWA URL (see src/science/backend.ts — the frontend already calls relative `api/...` paths).
-      # Confirmed via a raw ARM REST PUT to the linkedBackends resource (bypassing the CLI, whose
-      # failsafe deserialization was hiding the real error): the failure is a genuine 500 from the
-      # Azure Static Web Apps service itself ("500: Internal Server Error ... we're working on an
-      # unexpected error right now"), not a credentials/config/region problem on our side — ACR,
-      # the container app, and the SWA's own sku/config all check out fine independently. This is
-      # outside what a deploy workflow can fix; retry occasionally, and if it keeps failing, use the
-      # Azure Portal's "Link already deployed backend" button on the Static Web App resource directly,
-      # or open an Azure support ticket. Not fatal to the deploy either way — the Container App is
-      # independently reachable at its own FQDN regardless of whether this link succeeds.
-      - name: Attempt to link Static Web App backend (best-effort, non-blocking)
-        continue-on-error: true
+      # The public site calls the Container App directly (VITE_API_ORIGIN). Also link it as the
+      # Static Web App backend so /api/* resolves. `backends show` 500s right after a link; retry
+      # verification instead of failing the deploy on that transient error.
+      - name: Ensure Static Web App linked backend exists
         run: |
           container_app_id=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" --query id -o tsv)
           az staticwebapp backends link \
             --name "$STATIC_WEB_APP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
             --backend-resource-id "$container_app_id" \
-            --backend-region westus2
+            --backend-region westus2 || echo "link call returned non-zero (may already be linked, or a transient API error — verifying below)"
+          echo "--- linked backends after link (retrying: this endpoint 500s immediately after a link/update) ---"
+          verified=0
+          for attempt in 1 2 3 4 5; do
+            if az staticwebapp backends show --name "$STATIC_WEB_APP_NAME" --resource-group "$RESOURCE_GROUP" -o json; then
+              verified=1
+              break
+            fi
+            echo "Verification attempt $attempt failed; waiting 20s..."
+            sleep 20
+          done
+          if [ "$verified" != 1 ]; then
+            echo "::warning::Could not verify the linked backend after 5 attempts, but the link call itself may still have succeeded. Direct Container App URL still deploys."
+          fi
 
-      # Diagnosed: ACR is fine (publicNetworkAccess enabled, admin enabled, image tag present, registry
-      # config on the app is correct) but `az containerapp registry set` triggers an immediate
-      # reconciliation that reliably fails with "Authentication failed ... Provide 'registryCredentials'"
-      # before the new/re-set credential has propagated to the Container Apps pull path — on Express/
-      # Consumption (Azure for Students) this propagation lag is consistently 30s+. `registry set`'s own
-      # reconciliation failure is not fatal (`|| true`); what matters is the credential being saved, which
-      # happens regardless of whether that immediate reconcile succeeds. Retry the real deploy step after
-      # giving it time, re-asserting the credential each attempt since it's idempotent.
-      - name: Deploy image to Container App (retry for credential-propagation lag)
+      # Express-mode Container Apps cannot pull a private ACR image, so the image above is the public
+      # GHCR tag. Retry the update itself: Container App reconciliation is often transient.
+      - name: Deploy image to Container App
         run: |
           for attempt in 1 2 3 4 5; do
-            echo "Attempt $attempt/5: refreshing registry credential..."
-            acr_password=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
-            az containerapp registry set \
-              --name "$CONTAINER_APP_NAME" \
-              --resource-group "$RESOURCE_GROUP" \
-              --server "$ACR_NAME.azurecr.io" \
-              --username "$ACR_NAME" \
-              --password "$acr_password" || true
             echo "Attempt $attempt/5: updating image..."
             if az containerapp update \
                  --name "$CONTAINER_APP_NAME" \
                  --resource-group "$RESOURCE_GROUP" \
-                 --image "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}"; then
+                 --image "$IMAGE:${{ github.sha }}"; then
               echo "Deploy succeeded on attempt $attempt."
               exit 0
             fi
-            echo "Attempt $attempt failed; waiting 30s for credential propagation..."
+            echo "Attempt $attempt failed; waiting 30s..."
             sleep 30
           done
           echo "::error::Container App update failed after 5 attempts."
@@ -146,6 +129,12 @@ jobs:
           node-version: "22"
 
       - run: npm ci
+
+      # Point the built site at the Container App directly (Static Web Apps can't link an Express-mode
+      # Container App as its /api backend; Azure returns 500 on the link).
+      - name: Resolve backend URL
+        run: echo "VITE_API_ORIGIN=https://$(az containerapp show -n "$CONTAINER_APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)" >> "$GITHUB_ENV"
+
       - run: npm run build
 
       - name: Deploy to Azure Static Web Apps

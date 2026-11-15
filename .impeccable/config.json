@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-11-15T00:28:03.073Z",
+        "reason": "Claude: flagged element is the .seg segmented control; its buttons fill the 2px-inset track by design (standard segmented-control pattern), text has 10px side padding"
+      }
+    ]
+  }
+}

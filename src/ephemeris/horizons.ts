@@ -127,9 +127,16 @@ export function interpolateSeries(series: EphemerisSeries, utcIso: string): Topo
   if (t < t0 - eps || t > t1 + eps) return null;
   if (t <= t0) return { ...samples[0], utc: utcIso };
   if (t >= t1) return { ...samples[samples.length - 1], utc: utcIso };
-  for (let i = 0; i < samples.length - 1; i++) {
-    const a = Date.parse(samples[i].utc);
-    const b = Date.parse(samples[i + 1].utc);
+  // Ten-minute playback uses logarithmic lookup.
+  let lo = 1, hi = samples.length - 1;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (Date.parse(samples[mid].utc) < t) lo = mid + 1;
+    else hi = mid;
+  }
+  {
+    const i = lo - 1;
+    const a = Date.parse(samples[i].utc), b = Date.parse(samples[i + 1].utc);
     if (t >= a && t <= b) {
       const u = (t - a) / (b - a);
       const a0 = samples[i].azimuthDeg;
@@ -140,6 +147,8 @@ export function interpolateSeries(series: EphemerisSeries, utcIso: string): Topo
         utc: utcIso,
         azimuthDeg: ((a0 + da * u) % 360 + 360) % 360,
         elevationDeg: samples[i].elevationDeg + (samples[i + 1].elevationDeg - samples[i].elevationDeg) * u,
+        rangeAu: samples[i].rangeAu != null && samples[i + 1].rangeAu != null
+          ? samples[i].rangeAu! + (samples[i + 1].rangeAu! - samples[i].rangeAu!) * u : undefined,
       };
     }
   }

@@ -2,15 +2,11 @@ import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createHeightField, parseGlobalLdem } from './terrain/heightField';
 import { createMoonMesh, MOON_MESH_MAX_LEVEL } from './terrain/moonMesh';
+import { apiUrl } from './apiBase';
 
 const radius = 1737400;
 const capRadius = 2 * radius * Math.tan(T.MathUtils.degToRad(1.5));
 const base = import.meta.env.BASE_URL;
-const element = <E extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as E;
-const status = element('status');
-const layer = element<HTMLSelectElement>('layer');
-const focus = element<HTMLButtonElement>('focus');
-const reset = element<HTMLButtonElement>('reset');
 const size = 257;
 const moonCenter = new T.Vector3(0,-radius,0);
 
@@ -150,7 +146,15 @@ async function fetchAsset(path: string) {
   return response;
 }
 
-export async function startTerrain(): Promise<TerrainApi> {
+export async function startTerrain(root: ParentNode = document): Promise<TerrainApi> {
+  const element = <E extends HTMLElement = HTMLElement>(id: string) => root.querySelector<E>(`#${id}`) as E;
+  const status = (root.querySelector<HTMLElement>('#terrain-status') ?? element('status'));
+  const layer = element<HTMLSelectElement>('layer');
+  const terrainSource = root.querySelector<HTMLSelectElement>('#terrain-source');
+  const lockResolution = root.querySelector<HTMLInputElement>('#lock-resolution');
+  const fpsReadout = root.querySelector('#fps');
+  const focus = element<HTMLButtonElement>('focus');
+  const reset = element<HTMLButtonElement>('reset');
   const renderer = new T.WebGLRenderer({antialias:true, logarithmicDepthBuffer:true});
   const viewport = element('viewport');
   viewport.append(renderer.domElement);
@@ -353,6 +357,7 @@ export async function startTerrain(): Promise<TerrainApi> {
 
   /** Relief/elevation: fine 5–20 m polar detail windows near the view centre. */
   function detailPolicy(distance: number): { maxDistance: number; stride: number } {
+    if (lockResolution?.checked) return { maxDistance: 6300, stride: 1 };
     if (distance < 1000) return { maxDistance: 6300, stride: 1 };
     if (distance < 2300) return { maxDistance: 6300, stride: 2 };
     return { maxDistance: 6300, stride: 4 };
@@ -408,6 +413,13 @@ export async function startTerrain(): Promise<TerrainApi> {
   }
   layer.onchange = setLayer;
   setLayer();
+  const reloadDetail = () => {
+    currentKey = '';
+    lastFailure = '';
+    nextUpdate = 0;
+  };
+  terrainSource?.addEventListener('change', reloadDetail);
+  lockResolution?.addEventListener('change', reloadDetail);
 
   function removeDetail() {
     if (detail) {
@@ -471,7 +483,8 @@ export async function startTerrain(): Promise<TerrainApi> {
     const span = 256 * stride, step = 64 * stride;
     const column = Math.round(((x+100000)/5-span/2)/step)*step;
     const row = Math.round(((100000-y)/5-span/2)/step)*step;
-    const key = `${column}/${row}/${stride}`;
+    const sourceMode = terrainSource?.value === 'stream' ? 'stream' : terrainSource?.value === 'local' ? 'local' : '';
+    const key = `${column}/${row}/${stride}/${sourceMode}`;
     if (key === currentKey) {
       request?.abort();
       status.textContent = '';
@@ -482,11 +495,12 @@ export async function startTerrain(): Promise<TerrainApi> {
     const controller = new AbortController();
     request = controller;
     pendingKey = key;
-    status.textContent = `Loading ${5*stride} m terrain…`;
+    status.textContent = `Loading ${5*stride} m terrain${sourceMode === 'stream' ? ' from NASA' : sourceMode === 'local' ? ' from disk' : ''}…`;
     const params = new URLSearchParams({column:String(column),row:String(row),stride:String(stride)});
+    if (sourceMode) params.set('source', sourceMode);
     const cachedSite = stride === 1 && (key === '17664/22272/1' || key === '19328/21120/1');
     const path = cachedSite ? `terrain/focus/${column}-${row}.bin` : `api/terrain/window?${params}`;
-    void fetch(base+path,{signal:controller.signal})
+    void fetch(cachedSite ? base+path : apiUrl(path, base),{signal:controller.signal})
       .then(async response => {
         if (!response.ok) throw new Error(String(response.status));
         const data = await response.arrayBuffer();
@@ -829,7 +843,15 @@ export async function startTerrain(): Promise<TerrainApi> {
   });
   focus.disabled = reset.disabled = layer.disabled = globeButton.disabled = false;
   showGlobe(false);
+  let fpsStamp = performance.now();
+  let fpsFrames = 0;
   renderer.setAnimationLoop(now => {
+    fpsFrames += 1;
+    if (fpsReadout && now - fpsStamp >= 500) {
+      fpsReadout.textContent = `${Math.round(fpsFrames * 1000 / (now - fpsStamp))} FPS`;
+      fpsStamp = now;
+      fpsFrames = 0;
+    }
     if (flight) {
       const t = T.MathUtils.clamp((now-flight.start)/1400,0,1);
       const pan = T.MathUtils.smoothstep(t,0,.52);

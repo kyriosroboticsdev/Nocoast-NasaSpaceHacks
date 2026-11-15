@@ -1,4 +1,5 @@
 /** Canonical scenario types shared by Planner and Learn modes. */
+import { DEFAULT_MISSION_SETTINGS, type MissionSettings } from '../power/mission';
 
 export type AppMode = 'planner' | 'learn';
 
@@ -33,13 +34,15 @@ export type SiteCatalogEntry = {
 export type ScenarioThresholds = {
   /** Minimum clear Earth elevation (deg) for usable antenna link. */
   minEarthElevationDeg: number;
-  /** Panel area (m²) for rough power proxy. */
+  /** Active panel area (m²). */
   panelAreaM2: number;
   /** Panel efficiency 0–1. */
   panelEfficiency: number;
-  /** Assumed panel tilt toward mean Sun (deg); 0 = horizontal. */
+  /** Panel normal tilt from local up (deg); 0 = face-up horizontal. */
   panelTiltDeg: number;
-  /** Rough continuous draw floor (W) for battery-risk framing. */
+  /** Bearing of panel normal, clockwise from true north (deg). */
+  panelAzimuthDeg: number;
+  /** Constant equipment consumption W during the site stay. Historical field name retained for URL compatibility. */
   batteryFloorW: number;
 };
 
@@ -64,16 +67,19 @@ export type ScenarioState = {
   primary: ScenarioSlot;
   secondary: ScenarioSlot;
   thresholds: ScenarioThresholds;
+  missionSettings: MissionSettings;
+  planning: { maxDelayHours: number; delayStepHours: number; orientationStepDeg: number; robustOptimization: boolean };
   showTechnicalDetails: boolean;
 };
 
-export type ViabilityGrade = 'GO' | 'RISKY' | 'NO-GO';
+export type ViabilityGrade = 'GO' | 'RISKY' | 'NO-GO' | 'UNKNOWN';
 
 export const DEFAULT_THRESHOLDS: ScenarioThresholds = {
   minEarthElevationDeg: 5,
   panelAreaM2: 2,
   panelEfficiency: 0.28,
   panelTiltDeg: 0,
+  panelAzimuthDeg: 0,
   batteryFloorW: 40,
 };
 
@@ -91,6 +97,8 @@ export function createDefaultScenario(): ScenarioState {
     primary: { id: 'A', siteId: 'connecting-ridge-cr1' },
     secondary: { id: 'B', siteId: 'shackleton-rim-sr1' },
     thresholds: { ...DEFAULT_THRESHOLDS },
+    missionSettings: structuredClone(DEFAULT_MISSION_SETTINGS),
+    planning: { maxDelayHours: 48, delayStepHours: 12, orientationStepDeg: 30, robustOptimization: false },
     showTechnicalDetails: false,
   };
 }

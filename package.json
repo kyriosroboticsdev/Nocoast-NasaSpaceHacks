@@ -2,6 +2,7 @@
   "name": "lunar-shadow-lab",
   "version": "1.0.0",
   "scripts": {
+    "test": "node --test test/*.test.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
@@ -10,7 +11,9 @@
     "science:horizons": "node scripts/compute-horizons.mjs",
     "science:ephemeris": "node scripts/fetch-horizons.mjs",
     "science:search": "node scripts/precompute-search-grid.mjs",
-    "science": "npm run science:horizons && npm run science:ephemeris && npm run science:search"
+    "science": "npm run science:horizons && npm run science:ephemeris && npm run science:search && npm run science:solar",
+    "test": "node scripts/test-solar.mjs",
+    "science:solar": "python scripts/fetch-solar-ephemeris.py"
   },
   "type": "module",
   "private": true,

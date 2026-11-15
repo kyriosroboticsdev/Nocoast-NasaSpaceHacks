@@ -4,6 +4,8 @@ export type TopocentricSample = {
   utc: string;
   azimuthDeg: number;
   elevationDeg: number;
+  /** Observer-to-body range, AU; required for solar power (Horizons quantity 20). */
+  rangeAu?: number;
 };
 
 export type EphemerisSeries = {
@@ -17,6 +19,10 @@ export type EphemerisSeries = {
   };
   stepHours: number;
   source: 'jpl_horizons' | 'analytic_fallback' | 'bundled';
+  origin?: 'jpl_horizons';
+  frameId?: string;
+  observerHeightAboveGroundM?: number;
+  request?: Record<string, string>;
   samples: TopocentricSample[];
   generatedAtUtc: string;
   notes: string[];

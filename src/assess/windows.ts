@@ -1,6 +1,10 @@
 import { horizonElevationAt, type HorizonProfile } from '../horizon/types';
 import type { EphemerisProvider } from '../ephemeris/horizons';
 import type { ScenarioThresholds, ViabilityGrade } from '../scenario/types';
+import { simulateMission, DEFAULT_MISSION_SETTINGS, type MissionSettings, type MissionResult, type StateSegment } from '../power/mission';
+import { communicationTimeline } from './visibility';
+import { adaptSolarSample, buildSolarInput, panelFromThresholds, STEP_SECONDS } from '../power/adapter';
+import { calculatePower, simulate, type PowerResult, type PowerSample, type SolarInput } from '../power/model.mjs';
 
 export type InstantAssessment = {
   utc: string;
@@ -14,8 +18,8 @@ export type InstantAssessment = {
   earthLos: boolean | null;
   /** True when Sun or Earth ephemeris was missing for this instant. */
   unknown: boolean;
-  irradianceProxy: number;
-  powerW: number;
+  solar: PowerSample;
+  powerW: number | null;
 };
 
 export type TimeWindow = { startUtc: string; endUtc: string; hours: number };
@@ -38,8 +42,13 @@ export type MissionAssessment = {
   simultaneousPct: number;
   longestSunBlackoutHours: number;
   longestEarthBlackoutHours: number;
-  meanPowerW: number;
-  peakPowerW: number;
+  meanPowerW: number | null;
+  peakPowerW: number | null;
+  solarInput: SolarInput | null;
+  solar: PowerResult | null;
+  powerWarning: string;
+  mission: MissionResult | null;
+  communication: StateSegment[];
   viability: ViabilityGrade;
   viabilityReason: string;
   hoursToSunset: number | null;
@@ -194,55 +203,21 @@ export function assessInstant(
 ): InstantAssessment {
   const sun = provider.get('sun', utc);
   const earth = provider.get('earth', utc);
-  if (!sun || !earth) {
-    return {
-      utc,
-      sunAz: sun?.azimuthDeg ?? NaN,
-      sunEl: sun?.elevationDeg ?? NaN,
-      earthAz: earth?.azimuthDeg ?? NaN,
-      earthEl: earth?.elevationDeg ?? NaN,
-      sunClearEl: null,
-      earthClearEl: null,
-      sunlit: null,
-      earthLos: null,
-      unknown: true,
-      irradianceProxy: 0,
-      powerW: 0,
-    };
-  }
-
-  const sunHorizon = horizonElevationAt(horizon, sun.azimuthDeg);
-  const earthHorizon = horizonElevationAt(horizon, earth.azimuthDeg);
-  const sunClear = sunHorizon == null ? null : sun.elevationDeg - sunHorizon;
-  const earthClear = earthHorizon == null ? null : earth.elevationDeg - earthHorizon;
+  const sunKnown = sun && Number.isFinite(sun.azimuthDeg) && Number.isFinite(sun.elevationDeg);
+  const earthKnown = earth && Number.isFinite(earth.azimuthDeg) && Number.isFinite(earth.elevationDeg);
+  const sunHorizon = sunKnown ? horizonElevationAt(horizon, sun.azimuthDeg) : null;
+  const earthHorizon = earthKnown ? horizonElevationAt(horizon, earth.azimuthDeg) : null;
+  const sunClear = sunHorizon == null || !sun ? null : sun.elevationDeg - sunHorizon;
+  const earthClear = earthHorizon == null || !earth ? null : earth.elevationDeg - earthHorizon;
   const sunlit = sunClear == null ? null : sunClear > 0;
-  const earthLos = earthClear == null ? null : earthClear >= thresholds.minEarthElevationDeg;
-
-  // Power only when sunlit; incidence from true sun elevation + panel tilt (not clearance hacks).
-  let irradianceProxy = 0;
-  let powerW = 0;
-  if (sunlit === true) {
-    const tilt = thresholds.panelTiltDeg;
-    // Effective incidence angle vs panel normal: sun elev toward tilt-facing panel.
-    const incidenceElev = sun.elevationDeg + tilt;
-    irradianceProxy = Math.max(0, Math.sin(incidenceElev * Math.PI / 180));
-    const solarConstant = 1361;
-    powerW = solarConstant * thresholds.panelAreaM2 * thresholds.panelEfficiency * irradianceProxy;
-  }
-
+  const earthLos = earthClear == null ? null : earth!.elevationDeg > Math.max(earthHorizon!, thresholds.minEarthElevationDeg);
+  // Earth coverage does not determine available solar power.
+  const solar = calculatePower(adaptSolarSample(utc, sunlit, provider, horizon), panelFromThresholds(thresholds));
   return {
-    utc,
-    sunAz: sun.azimuthDeg,
-    sunEl: sun.elevationDeg,
-    earthAz: earth.azimuthDeg,
-    earthEl: earth.elevationDeg,
-    sunClearEl: sunClear,
-    earthClearEl: earthClear,
-    sunlit,
-    earthLos,
-    unknown: false,
-    irradianceProxy,
-    powerW,
+    utc, sunAz: sun?.azimuthDeg ?? NaN, sunEl: sun?.elevationDeg ?? NaN,
+    earthAz: earth?.azimuthDeg ?? NaN, earthEl: earth?.elevationDeg ?? NaN,
+    sunClearEl: sunClear, earthClearEl: earthClear, sunlit, earthLos,
+    unknown: !sunKnown || !earthKnown, solar, powerW: solar.powerW,
   };
 }
 
@@ -257,10 +232,24 @@ export function assessMission(options: {
   scrubUtc: string;
   thresholds: ScenarioThresholds;
   stepHours?: number;
+  missionSettings?: MissionSettings;
 }): MissionAssessment {
-  const step = options.stepHours ?? 1;
+  const step = options.stepHours ?? STEP_SECONDS / 3600;
+  if (!Number.isFinite(step) || step <= 0 || !Number.isFinite(options.durationHours)
+    || options.durationHours <= 0 || options.durationHours > 1440) throw new Error('Mission duration must be >0 and <=60 days, with a positive sampling step.');
+  const start = Date.parse(options.startUtc), end = start + options.durationHours * 3600_000;
+  if (!Number.isFinite(start) || !Number.isInteger(end / 1000)
+    || Math.ceil((end - start) / (step * 3600_000)) > 100000) throw new Error('Use whole-second UTC times and at most 100000 samples.');
   const times = missionSampleTimes(options.startUtc, options.durationHours, step);
   const samples = times.map(utc => assessInstant(utc, options.provider, options.horizon, options.thresholds));
+  const solarInput = buildSolarInput({ ...options, endUtc: new Date(end).toISOString(), samples });
+  const solar = solarInput ? simulate(solarInput, panelFromThresholds(options.thresholds)) : null;
+  const powerWarning = !solar ? 'Solar unavailable: matching Sun and terrain inputs are required inside 2027.'
+    : !solar.summary.complete ? 'Incomplete solar data: total energy and mean power are unknown. See sample quality reasons.'
+    : options.horizon.model !== 'lola_terrain' ? 'Illustrative horizon power; study terrain is unavailable.'
+    : 'Direct-beam estimate; 10-minute sampled visibility. Battery/load effects are reported in the separate mission layer; thermal losses and eclipses are excluded.';
+
+  const mission = solar ? simulateMission(solar, options.thresholds.batteryFloorW, options.missionSettings ?? DEFAULT_MISSION_SETTINGS, communicationTimeline(samples)) : null;
 
   const sunInt = integrateFlag(samples, s => s.sunlit);
   const earthInt = integrateFlag(samples, s => s.earthLos);
@@ -272,36 +261,24 @@ export function assessMission(options: {
   const simultaneousHours = bothInt.onHours;
   const unknownHours = Math.max(sunInt.unknownHours, earthInt.unknownHours);
 
-  const powers = samples.filter(s => !s.unknown).map(s => s.powerW);
-  const meanPowerW = powers.length ? powers.reduce((a, b) => a + b, 0) / powers.length : 0;
-  const peakPowerW = powers.length ? Math.max(...powers) : 0;
+  const meanPowerW = solar?.summary.meanPowerW ?? null;
+  const peakPowerW = solar?.summary.sampledPeakPowerW ?? null;
 
   // Percent of mission duration (never inflate past 100 via overshoot).
   const sunlightPct = Math.min(100, (100 * sunlightHours) / span);
   const earthLosPct = Math.min(100, (100 * earthLosHours) / span);
   const simultaneousPct = Math.min(100, (100 * simultaneousHours) / span);
 
-  // Known-fraction viability: do not treat unknown as blackout, but require enough known coverage.
-  const knownFraction = Math.max(0, 1 - unknownHours / span);
-  let viability: ViabilityGrade = 'NO-GO';
-  let viabilityReason = 'Insufficient sunlight or Earth LOS for the selected thresholds.';
-
-  const sphereOnly = options.horizonModel === 'sphere_optimistic';
-  // Sphere alone must not get RISKY promotion without Earth LOS.
-  if (sunlightPct >= 40 && earthLosPct >= 40 && meanPowerW >= options.thresholds.batteryFloorW && knownFraction >= 0.5) {
-    viability = 'GO';
-    viabilityReason = 'Sunlight and Earth LOS both meet planning thresholds with margin.';
-  } else if (sunlightPct >= 20 && earthLosPct >= 20 && knownFraction >= 0.5) {
-    viability = 'RISKY';
-    viabilityReason = 'Partial coverage — feasible with storage/relay or schedule tuning.';
-  } else if (sphereOnly) {
-    viability = 'NO-GO';
-    viabilityReason = 'Sphere-horizon estimate only — insufficient Earth/sun coverage (terrain unknown).';
-  }
-
-  if (unknownHours > span * 0.25) {
-    viabilityReason += ` Ephemeris unknown for ~${unknownHours.toFixed(1)} h of the window.`;
-  }
+  let viability: ViabilityGrade = 'UNKNOWN';
+  let viabilityReason = powerWarning;
+  if (mission?.viability.qualifiedForMissionDecision) {
+    viability = mission.viability.requirementsMet ? 'GO' : 'NO-GO';
+    viabilityReason = mission.viability.requirementsMet
+      ? 'Electrical power and communication requirements are met in this model.'
+      : 'Electrical power or communication requirements are not met; inspect outages and unserved energy.';
+  } else if (mission?.viability.score != null) {
+    viabilityReason = 'Illustrative mission estimate; measured terrain inputs are unavailable.';
+  } else viabilityReason = 'Mission result unknown because solar or communication coverage is incomplete.';
 
   return {
     siteLabel: options.siteLabel,
@@ -323,6 +300,11 @@ export function assessMission(options: {
     longestEarthBlackoutHours: longestFalseRun(samples, s => s.earthLos),
     meanPowerW,
     peakPowerW,
+    solarInput,
+    solar,
+    powerWarning,
+    mission,
+    communication: communicationTimeline(samples),
     viability,
     viabilityReason,
     hoursToSunset: hoursUntilFalse(samples, options.scrubUtc, s => s.sunlit),

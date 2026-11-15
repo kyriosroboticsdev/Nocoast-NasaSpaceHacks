@@ -63,18 +63,26 @@ jobs:
       # Azure-for-Students workarounds. Confirmed via diagnostics: SWA sku is correctly Standard, but
       # `az staticwebapp backends show` returns `[]` — no backend was ever linked, hence /api/* 404s on
       # the public URL even though the Container App itself is healthy. Link it directly, idempotently.
-      # TEMPORARY: `az staticwebapp backends link` has failed 3 runs in a row with a bare 500 and no
-      # message (the CLI's failsafe deserialization swallows the real error body). Hit the ARM API
-      # directly with `az rest` to see the actual error instead of guessing further.
-      - name: DIAGNOSE linkedBackends via raw ARM REST call
+      # Best-effort, non-blocking: linking the backend is what makes /api/* same-origin on the public
+      # SWA URL (see src/science/backend.ts — the frontend already calls relative `api/...` paths).
+      # Confirmed via a raw ARM REST PUT to the linkedBackends resource (bypassing the CLI, whose
+      # failsafe deserialization was hiding the real error): the failure is a genuine 500 from the
+      # Azure Static Web Apps service itself ("500: Internal Server Error ... we're working on an
+      # unexpected error right now"), not a credentials/config/region problem on our side — ACR,
+      # the container app, and the SWA's own sku/config all check out fine independently. This is
+      # outside what a deploy workflow can fix; retry occasionally, and if it keeps failing, use the
+      # Azure Portal's "Link already deployed backend" button on the Static Web App resource directly,
+      # or open an Azure support ticket. Not fatal to the deploy either way — the Container App is
+      # independently reachable at its own FQDN regardless of whether this link succeeds.
+      - name: Attempt to link Static Web App backend (best-effort, non-blocking)
+        continue-on-error: true
         run: |
-          sub_id=$(az account show --query id -o tsv)
           container_app_id=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" --query id -o tsv)
-          url="https://management.azure.com/subscriptions/$sub_id/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/staticSites/$STATIC_WEB_APP_NAME/linkedBackends/api?api-version=2023-12-01"
-          echo "PUT $url"
-          az rest --method put --url "$url" --body "{\"properties\":{\"backendResourceId\":\"$container_app_id\",\"region\":\"westus2\"}}" --verbose 2>&1 || true
-          echo "--- GET to see current state ---"
-          az rest --method get --url "https://management.azure.com/subscriptions/$sub_id/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/staticSites/$STATIC_WEB_APP_NAME/linkedBackends?api-version=2023-12-01" 2>&1 || true
+          az staticwebapp backends link \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --backend-resource-id "$container_app_id" \
+            --backend-region westus2
 
       # Diagnosed: ACR is fine (publicNetworkAccess enabled, admin enabled, image tag present, registry
       # config on the app is correct) but `az containerapp registry set` triggers an immediate

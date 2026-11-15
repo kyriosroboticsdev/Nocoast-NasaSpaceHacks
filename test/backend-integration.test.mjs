@@ -47,8 +47,8 @@ test('backend refined contact agrees in metrics and mission, without midpoint re
   assert.equal(a.mission.summary.longestCommsBlackoutSeconds, 360);
   assert.equal(a.meanPowerW, 408.3);
   assert.equal(a.samples[0].powerW, 408.3);
-  assert.equal(a.viability, 'UNKNOWN');
-  assert.equal(a.mission.viability.qualifiedForMissionDecision, false);
+  assert.equal(a.viability, 'GO');
+  assert.equal(a.mission.viability.qualifiedForMissionDecision, true);
 });
 
 test('backend solar mask is applied once even when display horizon disagrees', () => {
@@ -85,9 +85,9 @@ test('uncovered communication remains unknown and cannot earn a score', () => {
   assert.equal(result.mission.summary.unservedEnergyWh, 0);
 });
 
-test('dashboard and Navigator share preliminary terrain qualification', () => {
+test('complete terrain-based missions are graded without a validation declaration', () => {
   const s = input(), comm = timelineFromWindows(start, 1200, [window(0, 1200)], [], []);
-  assert.equal(simulateStay(s, panel, 40, settings(), comm).mission.viability.qualifiedForMissionDecision, false);
+  assert.equal(simulateStay(s, panel, 40, settings(), comm).mission.viability.qualifiedForMissionDecision, true);
   s.provenance.visibility.validation = { status: 'validated', algorithmVersion: 'synthetic-test' };
   assert.equal(simulateStay(s, panel, 40, settings(), comm).mission.viability.qualifiedForMissionDecision, true);
 });
@@ -110,7 +110,7 @@ test('landing-day and site verdicts cannot promote rounded contact percentages t
   assert.equal(m.viability.requirementsMet, false);
   assert.equal(missionVerdict(m), 'caution');
   delete s.provenance.visibility.validation;
-  assert.equal(missionVerdict(simulateStay(s, panel, 40, settings(), contact).mission), 'preliminary');
+  assert.equal(missionVerdict(simulateStay(s, panel, 40, settings(), contact).mission), 'caution');
   assert.equal(missionVerdict(simulateStay(s, panel, 40, settings(), timelineFromWindows(start, 1200, [], [], [])).mission), 'unknown');
 });
 import { fetchBackendAnalysis } from '../.cache/solar-tests/science/backend.js';
@@ -135,4 +135,82 @@ test('backend requests recover after a transient failure and cache each API base
   assert.equal(calls.length, 2);
   assert.notDeepEqual(await get('/second/'), recovered);
   assert.equal(calls.length, 3);
+});
+
+function coordinateFixture() {
+  const f = fixture();
+  f.options.siteId = f.options.horizon.siteId = 'map-spot';
+  f.options.horizon.observer.latitudeDeg = -89.2;
+  f.options.horizon.observer.longitudeEastDeg = 123.4;
+  f.options.horizon.observer.surfaceElevationM = 2100;
+  f.backend.solarInput.siteId = 'moon-lat-89.200000-lon-123.400000';
+  Object.assign(f.backend.solarInput.site, { latitudeDeg: -89.2, longitudeEastDeg: 123.4, surfaceElevationM: 2100 });
+  return f;
+}
+
+test('coordinate-identified backend power matches a custom UI site by its actual observer', () => {
+  const { options, backend } = coordinateFixture();
+  const a = assessBackendMission(backend, options);
+  assert.equal(a.siteId, 'map-spot');
+  assert.equal(a.solarInput.siteId, 'moon-lat-89.200000-lon-123.400000');
+  assert.equal(a.meanPowerW, 408.3);
+  assert.equal(a.solar.summary.complete, true);
+  assert.equal(a.mission.summary.commsAvailabilityFraction, 0.7);
+});
+
+test('a reused custom UI identity cannot adopt another point or elevation from a stale response', () => {
+  for (const change of [
+    f => { f.backend.solarInput.site.latitudeDeg += 0.01; },
+    f => { f.backend.solarInput.site.longitudeEastDeg += 0.01; },
+    f => { f.backend.solarInput.site.surfaceElevationM += 5; },
+  ]) {
+    const f = coordinateFixture(); change(f);
+    assert.throws(() => assessBackendMission(f.backend, f.options), /mismatch/);
+  }
+});
+
+test('coordinate mission grading does not require pending terrain validation to change', () => {
+  const { options, backend } = coordinateFixture();
+  const preliminary = assessBackendMission(backend, options);
+  assert.equal(preliminary.mission.viability.requirementsMet, true);
+  assert.equal(preliminary.mission.viability.qualifiedForMissionDecision, true);
+  assert.equal(missionVerdict(preliminary.mission), 'go');
+  backend.solarInput.provenance.visibility.validation = { status: 'validated', algorithmVersion: 'synthetic-test' };
+  const qualified = assessBackendMission(backend, options);
+  assert.equal(qualified.mission.viability.qualifiedForMissionDecision, true);
+  assert.equal(missionVerdict(qualified.mission), 'go');
+});
+
+import { assertSolarContext } from '../.cache/solar-tests/power/stay.js';
+
+test('dashboard context checks accept canonical backend IDs and equivalent longitudes', () => {
+  const { backend } = coordinateFixture(), s = backend.solarInput;
+  const context = { ...s.site, startUtc: start, endUtc: end, frameId: s.frameId, observerHeightAboveGroundM: 2 };
+  assert.doesNotThrow(() => assertSolarContext(s, context));
+  assert.doesNotThrow(() => assertSolarContext(s, { ...context, longitudeEastDeg: -236.6 }));
+});
+
+test('dashboard context checks reject stale points, dates and mismatched observer metadata', () => {
+  const { backend } = coordinateFixture(), s = backend.solarInput;
+  const context = { ...s.site, startUtc: start, endUtc: end, frameId: s.frameId, observerHeightAboveGroundM: 2 };
+  for (const changes of [
+    { latitudeDeg: -89.3 }, { longitudeEastDeg: 124 }, { surfaceElevationM: 2200 },
+    { startUtc: '2027-01-02T00:00:00Z' }, { endUtc: '2027-01-01T00:30:00Z' },
+    { latitudeDeg: NaN }, { longitudeEastDeg: Infinity }, { surfaceElevationM: NaN },
+    { frameId: 'IAU_MOON' }, { observerHeightAboveGroundM: 0 },
+  ]) assert.throws(() => assertSolarContext(s, { ...context, ...changes }));
+});
+
+test('pending terrain validation does not override GO, CAUTION or NO-GO and missing data stays unknown', () => {
+  const s = input(); s.provenance.visibility.validation = { status: 'pending' };
+  const full = timelineFromWindows(start, 1200, [window(0, 1200)], [], []);
+  const limited = timelineFromWindows(start, 1200, [window(0, 300)], [window(300, 1200)], []);
+  assert.equal(missionVerdict(simulateStay(s, panel, 40, settings(), full).mission), 'go');
+  assert.equal(missionVerdict(simulateStay(s, panel, 40, settings(), limited).mission), 'caution');
+  assert.equal(missionVerdict(simulateStay(s, panel, 1000, settings({ capacityWh: 0 }), full).mission), 'nogo');
+  const missing = structuredClone(s);
+  missing.samples[0].solarVisibleFraction = null;
+  missing.samples[0].quality = { status: 'missing', reason: 'terrain_visibility_missing' };
+  assert.equal(missionVerdict(simulateStay(missing, panel, 40, settings(), full).mission), 'unknown');
+  assert.equal(s.provenance.visibility.validation.status, 'pending');
 });

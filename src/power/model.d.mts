@@ -8,6 +8,7 @@ export type SolarSample = {
 };
 export type SolarInput = {
   schemaVersion: '0.1.0'; artifactType: 'solar-input'; artifactId: string; scenarioId: string;
+  /** Stable catalog ID or coordinate-based ID; numeric coordinates identify the observer. */
   generatedAtUtc: string; label: string; frameId: string; siteId: string;
   site: { latitudeDeg: number; longitudeEastDeg: number; surfaceElevationM: number; referenceRadiusM: number };
   observerHeightAboveGroundM: number;
@@ -43,6 +44,7 @@ export const FRAME_ID: string;
 export const SITES: Readonly<Record<string, { latitudeDeg: number; longitudeEastDeg: number }>>;
 export function validatePanel(panel: Panel): Panel;
 export function validateScenario(input: SolarInput): SolarInput;
+export function validateSite(siteId: string, site: SolarInput['site']): SolarInput['site'];
 export function utcMilliseconds(value: string, name?: string): number;
 export function sunDirectionEnu(azimuthDeg: number, elevationDeg: number): number[];
 export function panelNormalEnu(tiltDeg: number, azimuthDeg: number): number[];

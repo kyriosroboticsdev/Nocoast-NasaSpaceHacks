@@ -28,6 +28,7 @@ type BackendWindow = { startUtc: string; endUtc: string; durationSeconds: number
 type BackendBlock = { windows: BackendWindow[]; blackouts: BackendWindow[]; unknown: BackendWindow[]; summary: BackendSummary };
 export type BackendAnalysis = {
   solarInput?: SolarInput | null;
+  solarInputUnavailableReason?: string | null;
   site: {
     latitudeDeg: number;
     longitudeEastDeg: number;
@@ -171,6 +172,7 @@ export function backendHorizonProfile(a: BackendAnalysis, siteId: string): Horiz
     distanceM: null,
     status: v == null ? 'gap' : 'ok',
   }));
+  if (a.site.surfaceElevationM == null) return null;
   const fiveMeter = a.site.terrainQuality === 'contract';
   return {
     schemaVersion: '1.0',
@@ -179,7 +181,7 @@ export function backendHorizonProfile(a: BackendAnalysis, siteId: string): Horiz
     observer: {
       latitudeDeg: a.site.latitudeDeg,
       longitudeEastDeg: a.site.longitudeEastDeg,
-      surfaceElevationM: a.site.surfaceElevationM ?? 0,
+      surfaceElevationM: a.site.surfaceElevationM,
       heightAboveGroundM: 2,
     },
     spacingDeg: azimuthStepDeg,

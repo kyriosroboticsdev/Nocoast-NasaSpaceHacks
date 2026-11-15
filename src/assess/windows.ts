@@ -244,14 +244,10 @@ export function assessMission(options: {
   const samples = times.map(utc => assessInstant(utc, options.provider, options.horizon, options.thresholds));
   const solarInput = buildSolarInput({ ...options, endUtc: new Date(end).toISOString(), samples });
   const solar = solarInput ? simulate(solarInput, panelFromThresholds(options.thresholds)) : null;
-  if (solar) solar.summary.eligibleForTerrainComparison = solar.summary.eligibleForTerrainComparison
-    && options.horizon.validation?.status === 'validated';
-  const powerWarning = !solar ? 'Solar unavailable: use CR1/SR1 with a mission inside 2027.'
+  const powerWarning = !solar ? 'Solar unavailable: matching Sun and terrain inputs are required inside 2027.'
     : !solar.summary.complete ? 'Incomplete solar data: total energy and mean power are unknown. See sample quality reasons.'
     : options.horizon.model !== 'lola_terrain' ? 'Illustrative horizon power; study terrain is unavailable.'
-    : options.horizon.validation?.status !== 'validated'
-      ? 'Preliminary power: upstream terrain validation has not been supplied.'
-      : 'Direct-beam estimate; 10-minute sampled visibility. Battery/load effects are reported in the separate mission layer; thermal losses and eclipses are excluded.';
+    : 'Direct-beam estimate; 10-minute sampled visibility. Battery/load effects are reported in the separate mission layer; thermal losses and eclipses are excluded.';
 
   const mission = solar ? simulateMission(solar, options.thresholds.batteryFloorW, options.missionSettings ?? DEFAULT_MISSION_SETTINGS, communicationTimeline(samples)) : null;
 
@@ -281,7 +277,7 @@ export function assessMission(options: {
       ? 'Electrical power and communication requirements are met in this model.'
       : 'Electrical power or communication requirements are not met; inspect outages and unserved energy.';
   } else if (mission?.viability.score != null) {
-    viabilityReason = 'Conditional mission estimate; upstream terrain validation has not been supplied.';
+    viabilityReason = 'Illustrative mission estimate; measured terrain inputs are unavailable.';
   } else viabilityReason = 'Mission result unknown because solar or communication coverage is incomplete.';
 
   return {

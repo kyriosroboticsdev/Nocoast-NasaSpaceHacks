@@ -136,7 +136,7 @@ test('unknown solar range is not silently replaced with 1 AU', () => {
 });
 test('source site, observer, frame, dates, and boundary samples are validated', () => {
   const mutations = [s => s.frameId = 'IAU_MOON', s => s.site.longitudeEastDeg = -137.3808,
-    s => s.observerHeightAboveGroundM = 0, s => s.siteId = 'somewhere', s => s.samples.pop(),
+    s => s.observerHeightAboveGroundM = 0, s => s.siteId = '', s => s.samples.pop(),
     s => s.samples.reverse(), s => s.time.startUtc = '2026-12-31T00:00:00Z',
     s => s.samples[1].timeUtc = s.samples[0].timeUtc, s => s.time.visibilityInterpolation = 'linear'];
   for (const mutate of mutations) { const input = scenario(); mutate(input); assert.throws(() => validateScenario(input)); }

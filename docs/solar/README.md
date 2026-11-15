@@ -13,6 +13,12 @@ landing-delay worst cases. The standalone P0 kernel remains in
 See [MISSION_MODEL.md](MISSION_MODEL.md) for the electrical equations, defaults,
 score, limitations, delay assumptions, resource limits and replay examples.
 
+Power now accepts every catalog location and custom coordinate with matching live
+Sun/terrain inputs. It is calculated for the requested stay and hardware, rather
+than read from a fixed-site power table. The original CR1/SR1 inputs remain
+reference fixtures and offline bundles. Real coverage and provenance checks still
+apply; missing data stays unknown and terrain validation metadata does not gate mission grades.
+
 ## Run and verify
 
 ```powershell
@@ -22,7 +28,9 @@ npm.cmd run build
 npm.cmd run dev
 ```
 
-Use CR1/SR1 and a mission from January 1 through the March 1, 2027 end boundary. Change active panel area (m²),
+The live backend supports stays up to 60 days within 2027 at coordinates with
+terrain data. Offline CR1/SR1 bundles cover January 1 through the March 1, 2027
+end boundary. Change active panel area (m²),
 efficiency (0–1), tilt from face-up horizontal (0–180°), and normal's bearing
 (0° true north, 90° east). A vertical panel has tilt 90°. These are fixed
 orientations in the site's local frame, not Sun tracking. Both comparison sites
@@ -34,10 +42,11 @@ first known power loss, powered Earth contact and an explicit policy score. The 
 an exact arbitrary-time solution. The final endpoint brackets the last interval
 and contributes no extra mission duration or sampled peak.
 
-Numerical results using existing horizons are **preliminary**. Terrain-owner
-validation has not been declared; the app does not rank those results or assign a mission
-GO grade. Complete data coverage means all required numeric inputs are present,
-not that the underlying terrain model has been independently validated.
+Mission grades use the calculated power, battery and communication requirements.
+An upstream terrain-validation declaration is not required for GO, CAUTION or
+NO-GO, or for comparisons using complete measured-terrain inputs. Validation
+metadata remains available in exports. Complete data coverage does not claim
+independent terrain validation; incomplete mission data remains unknown.
 
 ## Physics and conventions
 
@@ -51,7 +60,8 @@ Temperature, eclipses, dust, reflected light, wiring losses and self-shadowing
 are excluded and recorded in every power artifact.
 
 The [team specification](TEAM_SPEC.md), [machine defaults](TEAM_DEFAULTS.json)
-and [input contract](INPUT_CONTRACT.md) retain the agreed two site IDs,
+and [input contract](INPUT_CONTRACT.md) retain the original two reference IDs and
+now allow additional catalog and coordinate-defined sites, with
 `MOON_ME_DE421`, 1737400 m reference radius, true-north clockwise azimuth, ENU,
 2 m observer, UTC whole seconds, W/Wh and 600 s baseline. App-internal `.000Z`
 timestamps are normalized without rounding physical sample times. Supported
@@ -99,12 +109,12 @@ solar power. Communication-window calculations remain the visibility owner's
 implementation, including its midpoint approximation at sampled transitions.
 
 The integration includes `preview` through `6871774`, including regional search,
-science fixes, marker synchronization and mesh improvements. See [repo update](REPO_UPDATE.md). Those controls remain, but its arbitrary candidate
-IDs, analytic ephemerides and unvalidated overview horizons do not satisfy the
-P0 solar contract. Search therefore explains that no solar-qualified candidates
-exist rather than ranking fabricated power. Supporting those candidates needs
-real position/range and validated horizon data plus an agreed extension to the
-two-site contract; it is not implemented by silently accepting analytic data.
+science fixes, marker synchronization and mesh improvements. See [repo update](REPO_UPDATE.md).
+Arbitrary IDs no longer prevent power calculations. Regional-search candidates
+with analytic ephemerides still do not satisfy the solar input contract: they
+need real observer-specific Sun direction/range and matching terrain visibility.
+Complete measured-terrain cases can receive a model-based mission grade without
+an upstream validation declaration. Analytic or missing source inputs are still excluded.
 
 ## Data refresh and exports
 
@@ -119,9 +129,9 @@ fetcher cannot be the final Sun bundle. For solar-only work use `science:solar`.
 Export JSON contains the scenario/hardware plus each site's `solarInput` and
 `solar` artifacts. The input replays with `simulate(input,panel)`. The power
 artifact carries units, model exclusions, provenance, exact panel settings,
-sample quality, intervals and coverage. `eligibleForTerrainComparison` in the
-app additionally requires terrain validation; the generic kernel only checks
-completeness and declared terrain provenance.
+sample quality, intervals and coverage. `eligibleForTerrainComparison` requires
+complete inputs and declared measured-terrain provenance; an optional terrain
+validation status does not gate the mission grade.
 
 The regression suite also covers battery conservation, within-interval outages, reserve/rate limits,
 policy scoring, delay replay, complete-case grid selection and cancellation.

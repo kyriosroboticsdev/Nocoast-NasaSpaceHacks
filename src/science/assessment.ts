@@ -1,6 +1,7 @@
 import { assessMission, type TimeWindow } from '../assess/windows';
-import { simulateStay } from '../power/stay';
+import { simulateStay, assertSolarContext } from '../power/stay';
 import { panelFromThresholds } from '../power/adapter';
+import { SITES } from '../power/model.mjs';
 import { DEFAULT_MISSION_SETTINGS, type StateSegment } from '../power/mission';
 import type { BackendAnalysis } from './backend';
 
@@ -45,8 +46,15 @@ export function assessBackendMission(backend: BackendAnalysis, options: Paramete
   const sunlight = timelineFromWindows(options.startUtc, duration, backend.sun.sunlitWindows,
     backend.sun.darkPeriods, backend.sun.unknown);
   const input = backend.solarInput ?? null;
-  if (input && (input.siteId !== options.siteId || Date.parse(input.time.startUtc) !== start
-    || Date.parse(input.time.endUtc) !== start + duration * 1000)) throw new Error('Backend solar scenario mismatch.');
+  const observer = options.horizon.observer;
+  if (input) {
+    if (Object.hasOwn(SITES, options.siteId) && input.siteId !== options.siteId) throw new Error('Backend solar scenario mismatch.');
+    try {
+      assertSolarContext(input, { ...observer, observerHeightAboveGroundM: observer.heightAboveGroundM,
+        frameId: options.horizon.frameId, startUtc: options.startUtc,
+        endUtc: new Date(start + duration * 1000).toISOString() });
+    } catch { throw new Error('Backend solar scenario mismatch.'); }
+  }
   const result = input ? simulateStay(input, panelFromThresholds(options.thresholds), options.thresholds.batteryFloorW,
     options.missionSettings ?? DEFAULT_MISSION_SETTINGS, earth) : null;
   const power = result?.power ?? null, mission = result?.mission ?? null;
@@ -69,7 +77,10 @@ export function assessBackendMission(backend: BackendAnalysis, options: Paramete
     const source = input?.samples[pi];
     return { ...near, utc: new Date(t).toISOString(), sunlit, earthLos, unknown: sunlit == null || earthLos == null,
       sunAz: source?.sun.azimuthDeg ?? near.sunAz, sunEl: source?.sun.elevationDeg ?? near.sunEl,
-      solar: p ? { ...p, timeUtc: new Date(t).toISOString().replace('.000Z', 'Z'), powerW: watts } : near.solar,
+      solar: p ? { ...p, timeUtc: new Date(t).toISOString().replace('.000Z', 'Z'), powerW: watts }
+        : { ...near.solar, powerW: null, unobstructedPowerW: null, normalIrradianceWm2: null,
+          panelIrradianceWm2: null, incidenceCosine: null, incidenceAngleDeg: null,
+          sunDirectionEnu: null, solarVisibleFraction: null, quality: { status: 'missing' as const, reason: 'backend_solar_unavailable' } },
       powerW: watts };
   });
   const windows = (ws: Window[]): TimeWindow[] => ws.map(w => ({ ...w, hours: (Date.parse(w.endUtc) - Date.parse(w.startUtc)) / 3600000 }));
@@ -88,12 +99,11 @@ export function assessBackendMission(backend: BackendAnalysis, options: Paramete
   a.longestEarthBlackoutHours = (backend.communication.summary.longestGapSeconds ?? 0) / 3600;
   a.solarInput = input; a.solar = power; a.mission = mission; a.communication = earth;
   a.meanPowerW = power?.summary.meanPowerW ?? null; a.peakPowerW = power?.summary.sampledPeakPowerW ?? null;
-  a.powerWarning = !power ? 'Backend solar input unavailable for this site; power remains unknown.'
+  a.powerWarning = !power ? backend.solarInputUnavailableReason || 'Backend solar input unavailable here; power remains unknown.'
     : !power.summary.complete ? 'Incomplete solar data; totals remain unknown.'
-    : !validated ? 'Preliminary power: upstream terrain validation has not been supplied.'
     : 'Direct-beam model using backend visibility; thermal effects and eclipses excluded.';
   a.viability = mission?.viability.qualifiedForMissionDecision ? mission.viability.requirementsMet ? 'GO' : 'NO-GO' : 'UNKNOWN';
-  a.viabilityReason = mission?.viability.score != null && !validated ? 'Conditional mission estimate; terrain validation pending.' : a.powerWarning;
+  a.viabilityReason = mission?.viability.score != null && !validated ? 'Illustrative estimate; measured terrain inputs are unavailable.' : a.powerWarning;
   const untilFalse = (ss: StateSegment[]) => {
     const t = (Date.parse(options.scrubUtc) - start) / 1000;
     if (stateAt(ss, t) == null) return null;

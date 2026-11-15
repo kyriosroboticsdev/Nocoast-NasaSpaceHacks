@@ -150,3 +150,12 @@ test('context preparation rejects excessive or fractional-second requests before
   s.durationHours = 1440;
   await assert.rejects(studyContexts(s, delayOffsets(288, 12), '/'), /100000/);
 });
+
+test('landing-delay results do not require an upstream terrain validation declaration', () => {
+  const c = context();
+  c.input.provenance.visibility = { ...c.input.provenance.visibility, mode: 'terrain',
+    sunModel: 'center-binary-v1', horizonArtifactId: 'measured-test-profile', horizonObserverHeightAboveGroundM: 2 };
+  c.terrainValidated = false;
+  const result = analyzeDelays([c], panel, 0, settings());
+  assert.equal(result.cases[0].viability.qualifiedForMissionDecision, true);
+});

@@ -44,7 +44,6 @@ function evaluate(context: MissionContext, panel: Panel, baseLoadW: number, sett
     startUtc: null, endUtc: null, summary: null, viability: null,
     reason: context.unavailableReason ?? 'Solar input unavailable.' };
   const power = simulate(context.input, panel);
-  power.summary.eligibleForTerrainComparison &&= context.terrainValidated;
   const mission = simulateMission(power, baseLoadW, settings, context.communication);
   return { id: context.id, siteId: context.siteId, delayHours: context.delayHours,
     startUtc: context.input.time.startUtc, endUtc: context.input.time.endUtc,

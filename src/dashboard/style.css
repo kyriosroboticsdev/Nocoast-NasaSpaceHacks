@@ -326,5 +326,111 @@ table.days { border-collapse: separate; border-spacing: 3px; }
 body.landing-open { overflow: hidden; }
 body.pre-enter .app, body.pre-enter .bar { opacity: 0; }
 
-.v-preliminary { background: var(--caution); color: #1d1606; }
-.d-preliminary { background: var(--caution); color: #1d1606; }
+/* Fullscreen scene with the redesign's translucent mission sheet. */
+.mission-workspace {
+  display: block;
+  --panel: #141b24;
+  --panel-2: #202b39;
+  --line: #ffffff20;
+  --line-2: #ffffff36;
+  --accent: #badaf2;
+  --nasa-blue: #30475d;
+  --glass: rgba(14, 20, 29, .78);
+  --gutter: 22px;
+}
+.mission-workspace [hidden] { display: none !important; }
+/* The workspace fills exactly one viewport, so its panels sit flush with the bottom edge; main's Navigator sections follow below it. */
+.workspace-scene { position: relative; height: 100dvh; min-height: 0; overflow: hidden; }
+.mission-workspace .scene { position: absolute; inset: 0; min-height: 0; }
+.workspace-header {
+  position: absolute; z-index: 6; top: var(--gutter); left: var(--gutter);
+  display: flex; align-items: center; gap: 16px; max-width: min(520px,calc(100% - 44px));
+  pointer-events: none;
+}
+.workspace-header .brand { color: inherit; text-decoration: none; pointer-events: auto; text-shadow: 0 2px 10px #000; }
+.workspace-header .status:not(:empty) { padding: 4px 9px; border-radius: 6px; background: var(--glass); }
+.workspace-header .status[data-kind="err"] { color: #ffd1c8; }
+.mission-workspace .scene-tools { z-index: 4; top: var(--gutter); right: var(--gutter); }
+.mission-workspace .scene-now { top: 66px; left: var(--gutter); max-width: min(440px, calc(100vw - 44px)); }
+.mission-workspace:not(.advanced) .now span { display: none; }
+.mission-workspace .scene-now { flex-direction: row; flex-wrap: wrap; }
+.mission-workspace .now { background: var(--glass); padding: 5px 9px; }
+.mission-workspace .scene-hint { right: var(--gutter); bottom: var(--gutter); }
+.mission-workspace:not([data-panel="site"]) .scene-hint { bottom: 124px; }
+.more-tools { position: absolute; z-index: 2; right: var(--gutter); bottom: calc(var(--gutter) + 30px); gap: 6px; background: var(--glass); text-decoration: none; }
+.mission-workspace:not([data-panel="site"]) .more-tools { bottom: 154px; }
+.mission-sheet, .mission-dock, .mission-workspace .map-panel {
+  position: absolute;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: var(--glass);
+  backdrop-filter: blur(22px) saturate(.9);
+  -webkit-backdrop-filter: blur(22px) saturate(.9);
+}
+.mission-sheet {
+  z-index: 3; left: var(--gutter); bottom: 122px;
+  width: min(410px, calc(100vw - 44px));
+  max-height: calc(100dvh - 240px);
+  padding: 21px 23px;
+  overflow: auto; overscroll-behavior: contain;
+}
+[data-panel="site"] .mission-sheet { bottom: var(--gutter); max-height: calc(100dvh - 130px); }
+[data-panel="compare"] .mission-sheet { width: min(610px, calc(100vw - 44px)); }
+[data-panel="results"][data-date-grid="true"] .mission-sheet { width: min(850px, calc(100vw - 44px)); }
+.mission-sheet h1 { margin: 0 0 14px; font-size: 25px; line-height: 1.15; letter-spacing: -.025em; text-wrap: balance; }
+.sheet-nav { display: flex; justify-content: space-between; margin: -4px 0 14px; }
+.sheet-nav button, .sheet-link, .sheet-menu button {
+  border: 0; background: transparent; color: var(--accent); text-align: left;
+  padding: 0; min-height: 34px;
+}
+.sheet-menu { border-top: 1px solid var(--line); }
+.sheet-menu button {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; min-height: 42px; border-bottom: 1px solid var(--line); color: var(--text);
+}
+.sheet-menu button::after { content: ""; width: 6px; height: 6px; border: solid var(--accent); border-width: 1px 1px 0 0; rotate: 45deg; margin-right: 4px; }
+.sheet-menu button:hover, .sheet-nav button:hover, .sheet-link:hover { color: #fff; }
+.sheet-link { margin-top: 9px; }
+.mission-sheet .sheet-primary { width: 100%; height: 42px; margin-top: 8px; background: #dcebf6; color: #142433; font-weight: 700; }
+.mission-sheet .sheet-primary:hover { background: #fff; }
+.sheet-reopen { position: absolute; z-index: 3; left: var(--gutter); bottom: 122px; background: var(--glass); }
+.mission-dock { z-index: 3; left: var(--gutter); right: var(--gutter); bottom: var(--gutter); }
+.mission-dock .timebar { border: 0; grid-template-columns: 36px minmax(104px,145px) minmax(0,1fr); }
+.mission-dock .strip { grid-column: auto; }
+.mission-sheet .results { padding: 0; overflow: visible; }
+.mission-sheet .summary { padding: 0; }
+.mission-sheet .metric-readout { margin: 12px 0; }
+.mission-sheet .m { padding: 8px 0; }
+.compare-table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+.compare-table th, .compare-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.compare-table th { text-align: left; font-weight: 600; }
+.compare-table tbody th { color: var(--muted); }
+.compare-table th:nth-child(n+2), .compare-table td { width: 30%; text-align: right; }
+.mission-sheet .group { border-color: var(--line); margin-top: 10px; }
+.mission-sheet .mission-fields > h2 { display: none; }
+.mission-sheet .modes button { min-height: 34px; padding: 0; color: var(--accent); }
+body:not([data-panel="dates"]) .dates-only, body:not([data-panel="dates"]) .mission-fields,
+body[data-panel="dates"] :is(.equipment-only,#needs-box,#panel-box,#relay-box,.mission-sheet .sources) { display: none; }
+.mission-workspace .map-panel { right: var(--gutter); top: 67px; width: min(348px,calc(100% - 44px)); max-height: calc(100% - 192px); box-shadow: none; }
+.mission-workspace .map-head { gap: 7px; margin-bottom: 6px; }
+.map-instruction { font-size: 12px; color: var(--muted); margin: 4px 0 10px; }
+.map-coordinates { color: var(--muted); margin-bottom: 8px; font-size: 12px; }
+.map-coordinates summary { cursor: pointer; }
+.map-coordinates form { margin: 6px 0 0; }
+.map-wrap { touch-action: none; }
+.map-wrap:active { cursor: grabbing; }
+#map-content { position: absolute; inset: 0; transform-origin: 0 0; }
+.map-wrap text { font-size: 32px; }
+.map-wrap text.north { font-size: 29px; }
+.map-zoom { display: flex; gap: 6px; margin-top: 8px; }
+.map-zoom button { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 5px; padding: 4px 9px; }
+.map-zoom button:disabled { opacity: .45; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 850px) {
+  .mission-workspace { --gutter: 12px; }
+  .mission-workspace .scene-tools { top: 56px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 24px); }
+  .mission-workspace .map-panel { top: 100px; }
+  .mission-workspace .scene-now { top: 104px; }
+}
+
+.v-preliminary, .d-preliminary { background: var(--caution); color: #1d1606; }

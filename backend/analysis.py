@@ -18,7 +18,7 @@ import numpy as np
 
 from . import relay as relay_model
 from . import terrain
-from .config import CONTRACT, FRAME_ID, SCHEMA_VERSION, SUPPORTED_END, SUPPORTED_START, TIME, VISIBILITY, fmt_utc
+from .config import CONTRACT, FRAME_ID, SCHEMA_VERSION, SITES, SUPPORTED_END, SUPPORTED_START, TIME, VISIBILITY, fmt_utc
 from .ephem import sun_earth, time_grid
 from .relay import DEFAULT_RELAY, RelayConfig
 
@@ -269,6 +269,25 @@ AU_KM = 149_597_870.7
 SOLAR_SCHEMA = "0.1.0"
 
 
+class SolarInputUnavailable(ValueError):
+    """A visibility result can exist without enough terrain geometry for power."""
+
+
+def solar_site(latitude_deg: float, longitude_east_deg: float) -> dict:
+    """Canonical six-decimal coordinates shared with the terrain cache and solar identity."""
+    lat, lon = float(latitude_deg), float(longitude_east_deg)
+    if not np.isfinite(lat) or not -90 <= lat <= 90 or not np.isfinite(lon):
+        raise WindowError("site coordinates must be finite lunar latitude/longitude degrees")
+    lat, lon = round(lat, 6), round(lon % 360, 6) % 360
+    lat = 0.0 if lat == 0 else lat
+    lon = 0.0 if lon == 0 else lon
+    for site in SITES:
+        if abs(site["latitudeDeg"] - lat) < 1e-9 and abs(site["longitudeEastDeg"] % 360 - lon) < 1e-9:
+            return {**site, "latitudeDeg": lat, "longitudeEastDeg": lon}
+    return {"siteId": f"moon-{lat:.6f}-{lon:.6f}", "latitudeDeg": lat, "longitudeEastDeg": lon,
+            "displayName": f"{lat:.6f} degrees latitude, {lon:.6f} degrees east"}
+
+
 def solar_input(site: dict, start: datetime, end: datetime, profile: dict | None = None) -> dict:
     """`solar-input` envelope for Person 3's power model (docs/solar/INPUT_CONTRACT.md on the solar branch).
 
@@ -277,8 +296,16 @@ def solar_input(site: dict, start: datetime, end: datetime, profile: dict | None
     topocentric az/el, observer-to-Sun range in AU, and the binary terrain visibility of the interval that follows.
     """
     check_window(start, end)
-    lat, lon = site["latitudeDeg"], site["longitudeEastDeg"] % 360.0
+    lat = round(float(site["latitudeDeg"]), 6)
+    lon = round(float(site["longitudeEastDeg"]) % 360, 6) % 360
     profile = profile or terrain.horizon_profile(lat, lon)
+    elevation = profile.get("siteElevationM")
+    if elevation is None or not np.isfinite(elevation) or not -15000 <= elevation <= 15000:
+        raise SolarInputUnavailable(
+            "Measured surface elevation is unavailable at this location; solar power is unknown.")
+    observer_height = profile.get("observerHeightAboveGroundM", CONTRACT["observerHeightAboveGroundM"])
+    if observer_height != CONTRACT["observerHeightAboveGroundM"]:
+        raise SolarInputUnavailable("Terrain observer height does not match the shared 2 m solar convention.")
     base_t = time_grid(start, end, BASE_STEP_S)
     base = evaluate(lat, lon, base_t, profile, ANTENNA_MIN)
     flips = np.nonzero(np.diff(base["sun_vis"]) != 0)[0]
@@ -305,8 +332,8 @@ def solar_input(site: dict, start: datetime, end: datetime, profile: dict | None
         "generatedAtUtc": fmt_utc(datetime.now(tz=start.tzinfo).replace(microsecond=0)),
         "label": f"{site.get('displayName', site['siteId'])} solar input (Person 2 backend)",
         "frameId": FRAME_ID, "siteId": site["siteId"],
-        "site": {"latitudeDeg": site["latitudeDeg"], "longitudeEastDeg": site["longitudeEastDeg"],
-                 "surfaceElevationM": profile.get("siteElevationM", site.get("surfaceElevationM")),
+        "site": {"latitudeDeg": lat, "longitudeEastDeg": lon,
+                 "surfaceElevationM": float(elevation),
                  "referenceRadiusM": int(CONTRACT["referenceRadiusM"])},
         "observerHeightAboveGroundM": 2,
         "time": {"startUtc": fmt_utc(start), "endUtc": fmt_utc(end), "baseStepSeconds": int(BASE_STEP_S),
@@ -314,12 +341,15 @@ def solar_input(site: dict, start: datetime, end: datetime, profile: dict | None
         "provenance": {
             "ephemeris": {"provider": "Skyfield + JPL DE421 (Person 2 backend)",
                           "kernels": ["de421.bsp", "moon_pa_de421_1900-2050.bpc", "moon_080317.tf", "pck00010.tpc"],
-                          "validation": "checked against JPL Horizons coord@301 (tests/test_ephemeris.py)"},
+                          "validation": "checked against JPL Horizons coord@301 (tests/test_ephemeris.py)",
+                          "observerModel": "Skyfield reference surface; terrain elevation is used by the horizon"},
             "visibility": {"provider": "Person 2 backend analysis.evaluate", "mode": "terrain",
                            "sunModel": "center-binary-v1", "horizonArtifactId": hz_id,
                            "horizonObserverHeightAboveGroundM": 2,
                            "terrainQuality": profile.get("terrainQuality"),
-                           "validation": profile.get("validation", {"status": "pending"}),
+                           "horizonSource": profile.get("source"),
+                           "surfaceElevationMethod": profile.get("siteElevationMethod"),
+                           "validation": profile.get("validation") or {"status": "pending"},
                            "timing": "600 s base samples; 60 s samples in every bracket where Sun visibility changes"},
         },
         "samples": samples,

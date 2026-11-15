@@ -48,44 +48,28 @@ a live-computed backend, or a clearly-flagged simplified fallback — never sile
 
 ## Try it in under 2 minutes
 
-The latest combined dashboard opens at `/`; the detailed planner is at
-`/navigator.html` and the terrain explorer is at `/terrain.html`.
-Power and battery simulation cover equipment operating during a stay at CR1 or
-SR1. Terrain validation is pending, so those mission estimates are preliminary.
-Other catalog sites have visibility results but no qualified solar power model.
+Solar power is calculated on demand for every catalog site, saved custom spot,
+and unsaved map selection with usable terrain and Sun inputs. Panel area,
+efficiency and orientation changes recalculate watts and energy; battery and
+equipment changes rerun the stay simulation. There is no stored-wattage lookup.
+Missing source data stays unknown. Terrain estimates are preliminary until
+upstream validation is supplied.
 
-For the full app on Windows, use Python 3.12 and Node.js 22.12+, then run:
+To verify a checkout, install `requirements-dev.txt`, then run `npm test`,
+`npm run build`, `python -m ruff check .` and `python -m pytest -q` in that order.
+The build must precede the API page tests.
+
+Requires Node.js 22.12+ and Python. On Windows, run:
 
 ```powershell
-.\run.ps1
+./run.ps1
 ```
 
-This starts the science API and the website together. Open the URL printed by
-Vite. To verify a checkout, install `requirements-dev.txt`, run `npm test`,
-`npm run build`, `python -m ruff check .` and `python -m pytest -q` in that order.
-The build must precede the API page tests. See [integration notes](docs/SOLAR_FOLLOWUP.md).
+Open the printed local URL and choose a landing site. The site menu opens the mission outlook, dates, comparison, and lander settings one panel at a time. Drag the timeline or press Play to see how sunlight, Earth contact, and power change.
 
-For frontend development only, requires Node.js 22.12+ (the dashboard also needs
-the science API running):
+**At the site** and **Above the site** move the camera within the same 3D scene. Use **South pole map** to pan and zoom a flat overview, then click a known site or explore an unsaved point. The map's coordinate form can save a custom spot for comparison.
 
-```bash
-npm ci
-npm run dev
-```
-
-Open the printed local URL. The guided tour starts automatically and walks through four questions:
-**where, when, power, and can you phone home.**
-
-1. Planner mode opens with **Connecting Ridge (CR1)** vs. **Shackleton Rim (SR1)**, mission week
-   starting **15 Jan 2027 UTC**.
-2. Read the plain-English verdict and the four big metric cards. Expert view adds panel watts,
-   battery energy, unmet load, and coverage.
-3. Drag the time slider — watch the Sun/Earth markers move on the 360° skyline and the mission
-   timeline below.
-4. Switch to **Learn** for the plain-language story and guided scenarios, or flip on **Expert view**
-   for the full numeric breakdown judges and specialists want.
-5. **Copy shareable link** or **Export time series JSON** to hand the exact scenario to someone else
-   (shaped for downstream tools, including a Quest/VR viewer).
+Scroll below the workspace, or use **More analysis tools**, for the terrain explorer (layers, markers, pick on map), slope screening, regional search and site ranking, launch-date suggestions, the relay path, panel and landing-delay tests, and the skyline and mission calendar.
 
 ## Science data (bundled for offline)
 
@@ -97,7 +81,7 @@ Open the printed local URL. The guided tour starts automatically and walks throu
 
 Regenerate with `npm run science` when that script is present. Custom lat/lon and non-study sites use an **optimistic sphere horizon**, labeled in the UI.
 
-On the navigator, detailed terrain can come from the local `.cache/polar-full.tif` mosaic or be streamed from NASA. Lock to 5 m keeps the near view at native spacing, and the terrain view shows an FPS readout.
+The fullscreen workspace uses the science API for local terrain, the south-pole map, and the site assessments. The bundled assets remain available to the standalone terrain development tools.
 
 ## Architecture
 
@@ -111,7 +95,7 @@ src/power/         solar adapter, battery/load dispatch, panel and landing-delay
 src/ui/plain.ts     plain-English verdicts and the 4 simple metric cards
 src/viz/           360° skyline ribbon + mission timeline
 src/app.ts         mode shell + assessment orchestration (navigator)
-src/dashboard/     NoCoast front page
+src/dashboard/     fullscreen site workspace, mission panels, minimap, and Sun/Earth scene
 src/main.ts        3D Three.js lunar south-pole terrain viewer
 backend/           optional Python/FastAPI science service (real Skyfield + JPL DE421 + NASA DEMs)
 ```

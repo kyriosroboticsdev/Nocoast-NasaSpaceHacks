@@ -1,7 +1,12 @@
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
-import { readFile, writeFile, readdir, copyFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, writeFile, readdir, copyFile, rm } from 'node:fs/promises';
+import { join, resolve, relative } from 'node:path';
+
+// Compile a fresh tree so switching branches cannot leave stale bridge modules in tests.
+const compiledRoot = resolve('.cache/solar-tests');
+if (relative(resolve('.cache'), compiledRoot) !== 'solar-tests') throw new Error('Unexpected test output directory.');
+await rm(compiledRoot, { recursive: true, force: true });
 
 // Use the pinned compiler: no new dependencies or Node experimental TS APIs.
 const compiled = spawnSync(process.execPath, [join(createRequire(import.meta.url).resolve('typescript/package.json'), '..', 'bin', 'tsc'), '-p', 'tsconfig.test.json'], { stdio: 'inherit' });

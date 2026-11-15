@@ -128,13 +128,16 @@ A zero contact-fraction requirement contributes factor one. Zero actual
 blackout contributes factor one. Requirements pass/fail is checked separately
 from the score, so rounding a score never makes a failed requirement pass.
 It is a planning policy, not a probability of mission success or NASA standard.
-GO/NO-GO additionally requires the upstream terrain-validation declaration.
-Otherwise known estimates remain **PRELIMINARY**, or **UNKNOWN** when incomplete.
+GO/CAUTION/NO-GO reflects the calculated requirements using complete measured
+terrain inputs. An upstream terrain-validation declaration is not required.
+Missing solar or contact coverage remains UNKNOWN. Validation metadata is
+retained as provenance and does not alter the calculated grade.
 
 ## P2: tested choices and worst cases
 
-The supported sites remain CR1 and SR1. Arbitrary sites need the other owners'
-matching data and a contract extension. Tilt spans 0–180° and bearing 0–360°
+Power inputs now support coordinate-based locations when matching Sun and terrain
+metadata is available. The finite P2 study below retains CR1 and SR1 as reference
+comparison cases; it does not limit the dashboard location calculator. Tilt spans 0–180° and bearing 0–360°
 exclusive, with configurable 5/15/30/45/90° grid spacing. Duplicate horizontal
 normals are removed. The current orientation is always included, even off-grid.
 No automatic change to area, efficiency, battery or consumption is allowed.

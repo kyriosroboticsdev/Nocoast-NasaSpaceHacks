@@ -4,6 +4,7 @@
 export const MODEL_ID = 'direct-beam-constant-efficiency-v1';
 export const SOLAR_REFERENCE_W_M2 = 1361;
 export const FRAME_ID = 'MOON_ME_DE421';
+// Legacy identities remain fixed; other locations are identified by validated coordinates.
 export const SITES = Object.freeze({
   'connecting-ridge-cr1': Object.freeze({ latitudeDeg: -89.4555, longitudeEastDeg: 222.6192 }),
   'shackleton-rim-sr1': Object.freeze({ latitudeDeg: -89.7742, longitudeEastDeg: 203.4952 }),
@@ -109,21 +110,29 @@ export function calculatePower(sample, panel) {
     sunDirectionEnu: s, panelNormalEnu: n, quality: { status: 'valid', reason: null } };
 }
 
+/** Any coordinate may supply a solar scenario; legacy catalog labels cannot move. */
+export function validateSite(siteId, site) {
+  text(siteId, 'siteId');
+  if (!plain(site)) fail('Site metadata is required.');
+  number(site.latitudeDeg, 'site.latitudeDeg', -90, 90);
+  number(site.longitudeEastDeg, 'site.longitudeEastDeg', 0, 360);
+  if (site.longitudeEastDeg === 360) fail('site.longitudeEastDeg must be in [0,360); normalize 360 to 0.');
+  const expected = Object.hasOwn(SITES, siteId) ? SITES[siteId] : null;
+  if (expected) for (const field of ['latitudeDeg', 'longitudeEastDeg']) {
+    if (Math.abs(site[field] - expected[field]) > 1e-9) fail(`site.${field} does not match the fixed site ID.`);
+  }
+  number(site.surfaceElevationM, 'site.surfaceElevationM', -15000, 15000);
+  if (site.referenceRadiusM !== 1737400) fail('site.referenceRadiusM must be 1737400.');
+  return site;
+}
+
 export function validateScenario(input) {
   if (!plain(input)) fail('Import must be a JSON object.');
   if (input.schemaVersion !== '0.1.0' || input.artifactType !== 'solar-input') fail('Expected schemaVersion=0.1.0 and artifactType=solar-input.');
   for (const field of ['artifactId', 'scenarioId', 'label']) text(input[field], field);
   utcMilliseconds(input.generatedAtUtc, 'generatedAtUtc');
   if (input.frameId !== FRAME_ID) fail(`frameId must be ${FRAME_ID}.`);
-  if (!Object.hasOwn(SITES, input.siteId)) fail('P0 supports connecting-ridge-cr1 and shackleton-rim-sr1.');
-  if (!plain(input.site)) fail('Site metadata is required.');
-  const expected = SITES[input.siteId];
-  for (const field of ['latitudeDeg', 'longitudeEastDeg']) {
-    number(input.site[field], `site.${field}`);
-    if (Math.abs(input.site[field] - expected[field]) > 1e-9) fail(`site.${field} does not match the fixed site ID.`);
-  }
-  number(input.site.surfaceElevationM, 'site.surfaceElevationM', -15000, 15000);
-  if (input.site.referenceRadiusM !== 1737400) fail('site.referenceRadiusM must be 1737400.');
+  validateSite(input.siteId, input.site);
   if (input.observerHeightAboveGroundM !== 2) fail('P0 requires the shared 2 m observer height; regenerate matching inputs before changing it.');
   if (!plain(input.time)) fail('Time metadata is required.');
   const start = utcMilliseconds(input.time.startUtc, 'time.startUtc');

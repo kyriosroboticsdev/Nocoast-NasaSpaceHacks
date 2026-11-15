@@ -158,6 +158,7 @@ export function createSkyView(container) {
   const camera = new THREE.PerspectiveCamera(70, 1, 0.5, 30000);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true; controls.minDistance = 300; controls.maxDistance = 70000; controls.enabled = false;
+  controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
 
   // stars (decorative), always centred on the camera so they sit behind everything
   const stars = (() => {
@@ -222,7 +223,7 @@ export function createSkyView(container) {
   const pathGroup = new THREE.Group(); scene.add(pathGroup);
   const lineMats = [];
 
-  const st = { siteKey: null, r: null, i: 0, mode: "lander", yaw: 0, pitch: 4, fov: 70, texts: {}, visible: true,
+  const st = { siteKey: null, r: undefined, i: 0, mode: "lander", yaw: 0, pitch: 4, fov: 70, texts: {}, visible: true,
     labels: new Map(), aimed: false };
 
   // ---------------------------------------------------------------- terrain
@@ -278,21 +279,39 @@ export function createSkyView(container) {
   async function setSite(site) {
     const key = `${site.lat},${site.lon}`;
     if (key === st.siteKey) return;
+    const wasAtSite = Boolean(nearMesh);
     st.siteKey = key; st.aimed = false; st.far = null;
-    const get = (p) => fetch(apiUrl(`api/local_terrain?latitudeDeg=${site.lat}&longitudeEastDeg=${site.lon}&halfExtentM=${p.half}&n=${p.n}`)).then((x) => x.json());
-    const [near, far] = await Promise.all([get(NEAR), get(FAR)]);
+    const get = async (p) => {
+      const response = await fetch(apiUrl(`api/local_terrain?latitudeDeg=${site.lat}&longitudeEastDeg=${site.lon}&halfExtentM=${p.half}&n=${p.n}`));
+      if (!response.ok) throw new Error(`Terrain API returned ${response.status}`);
+      return response.json();
+    };
+    let near, far;
+    try { [near, far] = await Promise.all([get(NEAR), get(FAR)]); }
+    catch (error) {
+      if (key === st.siteKey) throw error;
+      return;
+    }
     if (key !== st.siteKey) return;
     for (const m of [nearMesh, farMesh]) if (m) { scene.remove(m); m.geometry.dispose(); }
     nearMesh = new THREE.Mesh(gridGeometry(near, 40), nearMat);
     farMesh = new THREE.Mesh(gridGeometry(far, 700, NEAR.half - 20, true), farMat);
     for (const m of [nearMesh, farMesh]) { m.receiveShadow = m.castShadow = true; scene.add(m); }
     st.far = far; buildWall();
+    if (wasAtSite && st.mode === "lander" && !flight) {
+      camera.position.set(0, 360, 180);
+      camera.lookAt(0, EYE, 0);
+      moveCamera("lander");
+    }
   }
   function buildWall() {
-    if (!st.r) return;
     if (wall) { scene.remove(wall); wall.geometry.dispose(); }
+    wall = null;
+    if (!st.r || !st.far) return;
     wall = new THREE.Mesh(horizonWall(st.r.horizon.elevationDeg, st.r.horizon.azimuthStepDeg, st.far), wallMat);
-    wall.castShadow = true; scene.add(wall);
+    wall.castShadow = true;
+    wall.visible = st.mode === "lander";
+    scene.add(wall);
   }
 
   // ---------------------------------------------------------------- data
@@ -301,7 +320,13 @@ export function createSkyView(container) {
     st.r = r; st.aimed = false;
     buildWall();
 
+    for (const line of pathGroup.children) { line.geometry.dispose(); line.material.dispose(); }
     pathGroup.clear(); lineMats.length = 0;
+    sun.visible = earth.visible = Boolean(r);
+    if (!r) {
+      for (const el of st.labels.values()) el.style.display = "none";
+      return;
+    }
     const s = r.series;
     for (const [body, color] of [["sun", SUN_C], ["earth", EARTH_C]]) {
       const enu = s[`${body}Enu`], vis = s[`${body}Visible`], seen = [], hidden = [];
@@ -347,7 +372,7 @@ export function createSkyView(container) {
     // the dish follows Earth
     const dish = landerModel.getObjectByName("dish");
     dish.lookAt(earth.position); dish.rotateX(Math.PI / 2);
-    if (!st.aimed && st.mode === "lander") { aim("earth", false); st.aimed = true; }
+    if (!st.aimed && st.mode === "lander" && !flight) { aim("earth", false); st.aimed = true; }
   }
 
   // ---------------------------------------------------------------- camera
@@ -356,22 +381,39 @@ export function createSkyView(container) {
     camera.position.set(0, EYE, 0); camera.fov = st.fov; camera.near = 0.5; camera.far = 30000;
     camera.lookAt(d.add(camera.position)); camera.updateProjectionMatrix();
   }
-  function setMode(mode) {
+  let flight = null;
+  function moveCamera(mode, animate = true) {
+    const from = camera.position.clone(), fromQ = camera.quaternion.clone(), fromFov = camera.fov;
     st.mode = mode;
-    controls.enabled = mode === "bird"; landerModel.visible = mode === "bird";
-    // bird's-eye: slope lighting only (a 1.5° Sun over 17 km is too grazing for a crisp shadow map)
-    sunLight.castShadow = mode === "lander";
-    scene.traverse((o) => { if (o.material?.isMeshStandardMaterial) o.material.needsUpdate = true; });
+    controls.enabled = false;
+    landerModel.visible = mode === "bird";
+    // The synthetic skyline is meaningful from the lander's eye height only.
+    if (wall) wall.visible = mode === "lander";
     if (mode === "bird") {
-      camera.fov = 45; camera.near = 5; camera.far = 250000; camera.updateProjectionMatrix();
-      camera.position.set(7000, 10000, 17000); controls.target.set(0, 0, 0); controls.update();
+      camera.fov = 55; camera.near = .5; camera.far = 100000; camera.updateProjectionMatrix();
+      camera.position.set(2200, 3600, 4600); controls.target.set(0, 0, 0); camera.lookAt(controls.target);
     } else applyLanderCamera();
     setTime(st.i);
+    if (!animate || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      flight = null;
+      controls.enabled = mode === "bird";
+      return;
+    }
+    flight = {start:performance.now(), from, fromQ, fromFov, to:camera.position.clone(), toQ:camera.quaternion.clone(), toFov:camera.fov};
+    camera.position.copy(from);
+    camera.quaternion.copy(fromQ);
+    camera.fov = fromFov;
+    camera.updateProjectionMatrix();
+  }
+  function setMode(mode) {
+    if (mode !== st.mode) moveCamera(mode);
   }
   function aim(body, zoom = true) {
     if (!st.r) return;
     const s = st.r.series, i = st.i;
-    if (st.mode !== "lander") setMode("lander");
+    flight = null;
+    if (st.mode !== "lander") moveCamera("lander", false);
+    controls.enabled = false;
     st.yaw = s[`${body}AzimuthDeg`][i]; st.pitch = s[`${body}ElevationDeg`][i];
     if (zoom) st.fov = body === "earth" ? Math.max(2.5, s.earthAngularRadiusDeg[i] * 5) : 20;
     else st.fov = 70;
@@ -380,7 +422,7 @@ export function createSkyView(container) {
   // drag to look around (lander view); wheel = zoom like binoculars
   let drag = null;
   renderer.domElement.addEventListener("pointerdown", (e) => {
-    if (st.mode !== "lander") return;
+    if (st.mode !== "lander" || flight) return;
     drag = { x: e.clientX, y: e.clientY, yaw: st.yaw, pitch: st.pitch };
     renderer.domElement.setPointerCapture(e.pointerId);
   });
@@ -393,7 +435,7 @@ export function createSkyView(container) {
   });
   renderer.domElement.addEventListener("pointerup", () => { drag = null; });
   renderer.domElement.addEventListener("wheel", (e) => {
-    if (st.mode !== "lander") return;
+    if (st.mode !== "lander" || flight) return;
     e.preventDefault();
     st.fov = Math.max(1.5, Math.min(100, st.fov * Math.exp(e.deltaY * 0.0012)));
     applyLanderCamera();
@@ -438,9 +480,17 @@ export function createSkyView(container) {
     for (const m of lineMats) m.resolution.set(W * renderer.getPixelRatio(), H * renderer.getPixelRatio());
   }
   new ResizeObserver(resize).observe(container);
-  renderer.setAnimationLoop(() => {
+  renderer.setAnimationLoop(now => {
     if (!container.offsetParent) return;          // tab hidden
-    if (st.mode === "bird") controls.update();
+    if (flight) {
+      const t = THREE.MathUtils.clamp((now-flight.start)/900,0,1);
+      const ease = THREE.MathUtils.smoothstep(t,0,1);
+      camera.position.lerpVectors(flight.from,flight.to,ease);
+      camera.quaternion.copy(flight.fromQ).slerp(flight.toQ,ease);
+      camera.fov = THREE.MathUtils.lerp(flight.fromFov,flight.toFov,ease);
+      camera.updateProjectionMatrix();
+      if (t === 1) { flight = null; controls.enabled = st.mode === "bird"; }
+    } else if (st.mode === "bird") controls.update();
     stars.position.copy(camera.position); stars.scale.setScalar(camera.far * 0.8);
     renderer.render(scene, camera);
     updateLabels();
@@ -451,6 +501,6 @@ export function createSkyView(container) {
     setSite, setResult, setTime, setMode, aim,
     setTexts(t) { st.texts = t; },
     get mode() { return st.mode; },
-    resetView() { if (st.mode === "bird") setMode("bird"); else { st.fov = 70; st.pitch = 4; applyLanderCamera(); } },
+    resetView() { st.fov = 70; st.pitch = 4; moveCamera(st.mode); },
   };
 }

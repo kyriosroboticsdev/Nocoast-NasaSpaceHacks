@@ -129,7 +129,6 @@ async function elevationWindow(req, res, next) {
 const api = {'/api': {target: process.env.SCIENCE_API ?? 'http://127.0.0.1:8765', changeOrigin: true}};
 
 export default defineConfig({
-  build: {rollupOptions: {input: {main: 'index.html', navigator: 'navigator.html', terrain: 'terrain.html'}}},
   server: {proxy: api},
   preview: {proxy: api},
   plugins: [{

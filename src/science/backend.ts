@@ -48,12 +48,31 @@ export type BackendAnalysis = {
   communication: { summary: BackendSummary };
   sun: { summary: BackendSummary };
   sunAndCommunication: { summary: BackendSummary };
+  /** Simplified fixed-mount directional antenna (extension, not in contract v0.1) — present only
+   * when the caller passes `antennaPointing`; otherwise `{modeled: false}`. See backend/analysis.py
+   * `antenna_link_quality()`: no gain pattern, multipath, or DSN scheduling, angles only. */
+  antenna: {
+    modeled: boolean;
+    boresightAzimuthDeg?: number;
+    boresightElevationDeg?: number;
+    beamwidthDeg?: number;
+    onBoresightFractionOfCommWindow?: number;
+    meanLinkQualityWhileVisible?: number | null;
+    note: string;
+  };
+};
+
+export type AntennaPointing = {
+  boresightAzimuthDeg: number;
+  boresightElevationDeg: number;
+  beamwidthDeg?: number;
 };
 
 const TIMEOUT_MS = 2500;
 const cache = new Map<string, Promise<BackendAnalysis | null>>();
 
-/** GET /api/analyze for an arbitrary (lat, lon, window) — cached per exact query within this session. */
+/** GET /api/analyze for an arbitrary (lat, lon, window) — cached per exact query within this session.
+ * `antennaPointing` is optional: omit it to get the default `antenna: {modeled: false}` block. */
 export function fetchBackendAnalysis(
   latDeg: number,
   lonEastDeg: number,
@@ -61,8 +80,12 @@ export function fetchBackendAnalysis(
   endUtc: string,
   antennaMinElevationDeg: number | undefined,
   baseUrl: string,
+  antennaPointing?: AntennaPointing,
 ): Promise<BackendAnalysis | null> {
-  const key = `${latDeg}:${lonEastDeg}:${startUtc}:${endUtc}:${antennaMinElevationDeg ?? ''}`;
+  const pointingKey = antennaPointing
+    ? `${antennaPointing.boresightAzimuthDeg}:${antennaPointing.boresightElevationDeg}:${antennaPointing.beamwidthDeg ?? ''}`
+    : '';
+  const key = `${latDeg}:${lonEastDeg}:${startUtc}:${endUtc}:${antennaMinElevationDeg ?? ''}:${pointingKey}`;
   const hit = cache.get(key);
   if (hit) return hit;
 
@@ -73,6 +96,11 @@ export function fetchBackendAnalysis(
     endUtc,
   });
   if (antennaMinElevationDeg != null) params.set('antennaMinElevationDeg', String(antennaMinElevationDeg));
+  if (antennaPointing) {
+    params.set('antennaBoresightAzimuthDeg', String(antennaPointing.boresightAzimuthDeg));
+    params.set('antennaBoresightElevationDeg', String(antennaPointing.boresightElevationDeg));
+    if (antennaPointing.beamwidthDeg != null) params.set('antennaBeamwidthDeg', String(antennaPointing.beamwidthDeg));
+  }
 
   const promise = (async () => {
     try {
@@ -88,6 +116,44 @@ export function fetchBackendAnalysis(
   })();
   cache.set(key, promise);
   return promise;
+}
+
+export type PathfindWaypoint = {
+  id: string;
+  positionKm: [number, number, number];
+  sunlit: boolean;
+  earthVisible: boolean;
+  blocked: boolean;
+};
+
+export type PathfindResult = {
+  epochUtc: string;
+  waypoints: PathfindWaypoint[];
+  totalDistanceKm: number;
+  sunlitFraction: number;
+  earthCommFraction: number;
+  obstaclesTouched: number;
+  cost: number;
+};
+
+// A* over a few-thousand-node Earth<->Moon corridor graph — slower than /api/analyze's single-point call.
+const PATHFIND_TIMEOUT_MS = 8000;
+
+/** GET /api/pathfind: best Earth<->Moon relay-satellite path at `epochUtc` (see backend/pathfinding/).
+ * Fails soft to `null` on timeout, network error, or backend-not-running — same contract as
+ * `fetchBackendAnalysis`, since this is also a local, optional dev process in the current deploy. */
+export async function fetchPathfind(epochUtc: string, baseUrl: string): Promise<PathfindResult | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PATHFIND_TIMEOUT_MS);
+    const params = new URLSearchParams({ epochUtc });
+    const res = await fetch(`${baseUrl}api/pathfind?${params}`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    return (await res.json()) as PathfindResult;
+  } catch {
+    return null;
+  }
 }
 
 /** Real NASA-DEM horizon from the backend, or null if it has no terrain coverage at this point. */

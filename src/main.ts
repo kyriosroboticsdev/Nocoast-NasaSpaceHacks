@@ -23,6 +23,9 @@ export type TerrainMarkerSpec = {
   latitudeDeg: number;
   longitudeEastDeg: number;
   label?: string;
+  /** Overrides the category palette for this one marker — used by the illumination overlay for a
+   * continuous sunlight-% color scale instead of the four fixed category colors. */
+  color?: number;
 };
 
 export type TerrainPickCallback = (latitudeDeg: number, longitudeEastDeg: number) => void;
@@ -571,7 +574,7 @@ export async function startTerrain(): Promise<TerrainApi> {
       const mesh = new T.Mesh(
         new T.CircleGeometry(0.6, 10),
         new T.MeshBasicMaterial({
-          color: markerColor(spec.category),
+          color: spec.color ?? markerColor(spec.category),
           depthTest: false,
           transparent: true,
           opacity: 0.6,

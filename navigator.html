@@ -114,6 +114,11 @@
             <input type="checkbox" id="toggle-search-markers" checked>
             Show search markers
           </label>
+          <label class="check">
+            <input type="checkbox" id="toggle-illumination-overlay">
+            Show sunlight overlay
+          </label>
+          <p class="control-hint" id="illumination-status" hidden></p>
           <div id="legend" hidden>
             <div class="ramp"></div>
             <div class="range"><span>−8,000 m</span><span>7,000 m</span></div>
@@ -200,6 +205,30 @@
         </div>
       </section>
 
+      <!-- Earth<->Moon relay-satellite path (backend/pathfinding/) -->
+      <section class="cluster pathfind-cluster" aria-label="Relay satellite path">
+        <div class="decision-panel" id="pathfind-panel">
+          <div class="decision-header">
+            <h2>Relay path · Earth ↔ Moon</h2>
+            <p class="decision-lead">Best route for a relay satellite between Earth and the Moon at your mission start time — trading off sunlit time (no battery reliance), Earth-comm time, obstacle avoidance, and distance. First-pass model: a straight-line corridor with lateral detours, not a propagated trajectory.</p>
+          </div>
+          <div class="decision-actions">
+            <button type="button" id="compute-pathfind">Compute relay path</button>
+          </div>
+          <p class="muted-inline" id="pathfind-status"></p>
+          <div id="pathfind-results" hidden>
+            <div class="pathfind-summary" id="pathfind-summary"></div>
+            <div class="pathfind-strip" id="pathfind-strip" role="img" aria-label="Relay path waypoints, colored by sunlight and Earth-comm status"></div>
+            <div class="pathfind-strip-legend">
+              <span style="color: var(--both)">■ Sun + Earth</span>
+              <span style="color: var(--sun)">■ Sun only</span>
+              <span style="color: var(--earth)">■ Earth only</span>
+              <span style="color: var(--muted)">■ Neither</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Metrics + thresholds stay together -->
       <section class="cluster assess-cluster" aria-label="Power and communications assessment">
         <div class="metrics" id="metrics-a" data-tour="viability">
@@ -261,6 +290,13 @@
             <input id="panel-tilt" type="number" min="0" max="60" step="1" value="0">
             <label for="battery-floor" class="has-metric-help" id="help-battery-floor">Battery floor W</label>
             <input id="battery-floor" type="number" min="0" max="500" step="5" value="40">
+            <label for="antenna-boresight-az" title="Fixed-mount directional antenna pointing (optional) — leave both angles blank to turn this off.">Antenna boresight az °</label>
+            <input id="antenna-boresight-az" type="number" min="0" max="360" step="1" placeholder="off">
+            <label for="antenna-boresight-el" title="Fixed-mount directional antenna pointing (optional) — leave both angles blank to turn this off.">Antenna boresight el °</label>
+            <input id="antenna-boresight-el" type="number" min="-90" max="90" step="1" placeholder="off">
+            <label for="antenna-beamwidth" title="Half-power beamwidth of the fixed antenna.">Antenna beamwidth °</label>
+            <input id="antenna-beamwidth" type="number" min="1" max="180" step="1" value="20">
+            <p class="control-hint" id="antenna-link-quality" hidden></p>
           </details>
         </aside>
       </section>

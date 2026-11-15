@@ -20,8 +20,10 @@ const GRID_DAYS = 35;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const icon = (name) => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
-function load(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
-function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } }
+// The walkthrough (presentation.html) opens this page with ?present: it starts from defaults and saves nothing.
+const PRESENT = new URLSearchParams(location.search).has("present");
+function load(k, d) { if (PRESENT) return d; try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
+function save(k, v) { if (PRESENT) return; try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
 // ============================================================ state
 const D = DEFAULT_MISSION_SETTINGS;
@@ -1054,13 +1056,14 @@ function onNavigatorScenario(s) {
   if (best !== state.tIdx) { state.tIdx = best; renderNow(); }
 }
 // presentation.html drives this page in a frame; it gets a small handle on the scene and the clock.
-if (new URLSearchParams(location.search).has("present")) {
+if (PRESENT) {
   window.nocoastDemo = {
     get result() { return state.results.get(state.focus) ?? null; },
     get loading() { return state.loading; },
     get index() { return state.tIdx; },
     setTime(i) { const r = state.results.get(state.focus); if (r) { state.tIdx = Math.max(0, Math.min(r._t.length - 1, Math.round(i))); renderNow(); } },
     look(view) { if (sky3d) sky3d.look(view); },
+    setNightLight(v) { if (sky3d) sky3d.setNightLight(v); },
     get view() { return sky3d ? sky3d.view : null; },
     mapPoint: (lat, lon) => state.mapMeta ? latLonToMap(lat, lon) : null,
   };

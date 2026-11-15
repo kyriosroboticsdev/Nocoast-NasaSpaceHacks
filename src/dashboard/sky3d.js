@@ -224,7 +224,7 @@ export function createSkyView(container) {
   const lineMats = [];
 
   const st = { siteKey: null, r: undefined, i: 0, mode: "lander", yaw: 0, pitch: 4, fov: 70, texts: {}, visible: true,
-    labels: new Map(), aimed: false, lift: 0 };
+    labels: new Map(), aimed: false, lift: 0, night: 1.6, shine: 0.16 };
 
   // ---------------------------------------------------------------- terrain
   function gridGeometry(grid, tileM, skipInside, round) {
@@ -368,7 +368,7 @@ export function createSkyView(container) {
       earth.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(P, N, Z));
     }
     sunLight.position.copy(sunDir).multiplyScalar(20000); sunLight.target.position.set(0, 0, 0);
-    earthshine.intensity = s.sunVisible[i] ? (st.mode === "bird" ? 0.3 : 0.14) : 0.8;     // night: brightened so the ground stays readable
+    st.shine = s.sunVisible[i] ? (st.mode === "bird" ? 0.3 : 0.14) : st.night;     // night: brightened so the ground stays readable
     // the dish follows Earth
     const dish = landerModel.getObjectByName("dish");
     dish.lookAt(earth.position); dish.rotateX(Math.PI / 2);
@@ -491,6 +491,7 @@ export function createSkyView(container) {
       camera.updateProjectionMatrix();
       if (t === 1) { flight = null; controls.enabled = st.mode === "bird"; }
     } else if (st.mode === "bird") controls.update();
+    earthshine.intensity += (st.shine - earthshine.intensity) * 0.1;      // ease between day and night fill light
     stars.position.copy(camera.position); stars.scale.setScalar(camera.far * 0.8);
     renderer.render(scene, camera);
     updateLabels();
@@ -510,5 +511,7 @@ export function createSkyView(container) {
       applyLanderCamera();
     },
     get view() { return { yaw: st.yaw, pitch: st.pitch, fov: st.fov, lift: st.lift }; },
+    // Fill light used while the Sun is behind terrain (0.8 by default).
+    setNightLight(v) { st.night = v; setTime(st.i); },
   };
 }

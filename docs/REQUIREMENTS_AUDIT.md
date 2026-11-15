@@ -7,9 +7,25 @@
 
 ## Executive verdict
 
-The app now supports an interactive **find / compare / decide** loop: **Find best location** on a coarse LOLA-overview polar grid, rank catalog sites for the selected UTC window, suggest nearby launch-slip dates, highlight the best sun ∩ Earth stretch on the timeline, and keep **mission window grade** separate from **at-scrub-time** ops status. Adopt/Site A changes sync the 3D chosen marker + camera. Default terrain layer is mesh/wireframe. Core science (LOLA horizons for CR1/SR1, bundled Horizons, assessMission) is unchanged. Meter-perfect on-demand 5 m LOLA for every point and Quest VR runtime remain deferred with honest UI labels.
+The app now supports an interactive **find / compare / decide** loop: **Find best location** on a coarse LOLA-overview polar grid, rank catalog sites for the selected UTC window, suggest nearby launch-slip dates, highlight the best sun + Earth stretch on the timeline, and keep **mission window grade** separate from **at-scrub-time** ops status. Adopt/Site A changes sync the 3D chosen marker + camera. Default terrain layer is the realistic lunar-surface relief (was mesh/wireframe at the time this doc was first written). Core science (LOLA horizons for CR1/SR1 bundled offline, live for any south-polar point when the Person 2 backend is running, bundled Horizons, assessMission) is unchanged in its offline form. Meter-perfect on-demand 5 m LOLA for every point is live-backend-only (no change to the static build); Quest VR runtime remains deferred with honest UI labels.
 
 **Coverage counts (matrix below):** **Implemented 27 · Partial 6 · Missing / deferred 2** (35 rows). Challenge “may include” language means Partial/deferred is expected for true stretch science.
+
+> **Update 2026-11-15 — this matrix is now stale on a few specific rows, left below for history.**
+> Since this was written: a live Python science backend (Skyfield + JPL DE421, real PGDA/LOLA DEMs) was
+> integrated and wired in as a fail-soft top tier (`src/science/backend.ts`, `computeSlot()` in
+> `src/app.ts`) — when it's running, **any south-polar point gets a real measured terrain horizon and
+> live ephemeris, not just CR1/SR1**, including custom/pick-on-map coordinates. The site catalog grew
+> from 2 to 6 real-DEM sites (`docs/PERSON2_INTEGRATION_REPORT.md`). A plain-language layer
+> (`src/ui/plain.ts`) replaced jargon like "Sun ∩ Earth" by default, with an Expert-view toggle for the
+> full technical grid (`docs/NEXT_LEVEL_PLAN.md`, Phases 1–2). The default terrain layer is now the
+> realistic lunar-surface relief, not mesh/wireframe. The timeline was redesigned as a mission-week
+> calendar (Phase 3). None of this changes the **static/offline build** — that path is unchanged and
+> still matches the rows below exactly — only the live-backend-running case improves on them. Specific
+> rows this affects: "Lunar topography (LOLA) for surface + horizons" and "Account for real topography
+> affecting horizons" (both still accurately **Partial** for the offline build, but the "deferred"
+> reasoning no longer applies to the live-backend case); "Curated notable landing sites" (now includes
+> confirmed real mission coordinates for IM-1/IM-2, not just approximate ones).
 
 ---
 

@@ -79,6 +79,8 @@ Open the printed local URL. The guided tour starts automatically and walks throu
 
 Regenerate with `npm run science` when that script is present. Custom lat/lon and non-study sites use an **optimistic sphere horizon**, labeled in the UI.
 
+On the navigator, detailed terrain can come from the local `.cache/polar-full.tif` mosaic or be streamed from NASA. Lock to 5 m keeps the near view at native spacing, and the terrain view shows an FPS readout.
+
 ## Architecture
 
 ```

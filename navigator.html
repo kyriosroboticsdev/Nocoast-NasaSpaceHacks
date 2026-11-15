@@ -100,6 +100,12 @@
             <option value="elevation">Elevation</option>
             <option value="mesh">Mesh wireframe</option>
           </select>
+          <label for="terrain-source">Detailed terrain source</label>
+          <select id="terrain-source">
+            <option value="local" selected>Local LOLA file</option>
+            <option value="stream">Stream from NASA</option>
+          </select>
+          <p class="resolution-control"><label><input type="checkbox" id="lock-resolution" aria-describedby="resolution-hint"> Lock to 5 m</label><small id="resolution-hint">Keeps the near-view window at native 5 m spacing. The wide overview is unchanged.</small></p>
           <div class="marker-legend" id="marker-legend" aria-label="Map marker categories">
             <span class="mk mk-chosen" title="Adopted Site A">■ Chosen</span>
             <span class="mk mk-search" title="Regional search hits">◆ Search</span>
@@ -137,6 +143,7 @@
 
         <section id="viewport" aria-label="Interactive 3D lunar terrain" data-tour="map">
           <div class="badge" id="mode-label">POLAR LOLA · GLOBAL LDEM · LOD</div>
+          <div class="fps" id="fps">— FPS</div>
           <div class="hint" id="hint">Click to fly · Drag to orbit · Middle-drag to pan · Scroll or pinch to zoom</div>
         </section>
       </section>

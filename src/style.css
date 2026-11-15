@@ -778,6 +778,15 @@ body.show-tech .provenance-plain { display: none; }
 .mission-results h2:not(:first-child) { margin-top: 24px; }
 .mission-actions { display: grid; gap: 8px; margin-top: 12px; }
 .mission-actions button, .mission-results button { min-height: 44px; }
+.resolution-control { margin-top: 12px; }
+.resolution-control label { display: flex; align-items: center; gap: 8px; }
+.resolution-control small { display: block; color: var(--muted); margin-top: 4px; }
+.fps {
+  position: absolute; z-index: 2; top: 12px; right: 12px;
+  padding: 0.35rem 0.6rem; border: 1px solid var(--line); border-radius: 8px;
+  background: #0b131ee8; color: var(--muted); font: 0.75rem/1.4 ui-monospace, monospace;
+  pointer-events: none;
+}
 .mission-table-scroll { max-width: 100%; overflow-x: auto; margin: 12px 0; }
 .mission-table-scroll table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 0.8rem; }
 .mission-table-scroll th, .mission-table-scroll td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--line); }

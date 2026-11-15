@@ -4,6 +4,9 @@
 import { createSkyView } from "./sky3d.js";
 import { simulate, resultCsv, MODEL_ID } from "../power/model.mjs";
 import { simulateMission, DEFAULT_MISSION_SETTINGS } from "../power/mission.ts";
+import { initTour } from "./tour.js";
+import { downloadCard, CARD_COLORS } from "./card.js";
+import { gameScore, scoreGrade, scoreTip, GAME } from "./game.js";
 
 const DAY = 86400;
 const GRID_DAYS = 35;
@@ -628,8 +631,39 @@ function renderDays() {
     <div class="legend">${["go", "caution", "nogo", "unknown"].map((v) => `<span><i class="d-${v}"></i>${VERDICT[v]}</span>`).join("")}<span><i class="planned-key"></i>Current landing day</span></div>`;
 }
 function renderResults() {
-  $("results").innerHTML = state.mode === "days" ? renderDays() : renderSummary();
+  $("results").innerHTML = state.mode === "days" ? renderDays() : state.mode === "game" ? renderGame() : renderSummary();
   renderCompare();
+}
+// ---- Mission Designer game mode: score the current site/date/battery pick 0-100 and show how to raise it.
+function scoreBar(label, value, max, tier) {
+  return `<div class="gb"><span class="gb-l">${label}</span>
+    <span class="gb-track"><span class="gb-fill t-${tier}" style="width:${Math.round(100 * value / max)}%"></span></span>
+    <span class="gb-v">${value}<i>/${max}</i></span></div>`;
+}
+function renderGame() {
+  const id = state.focus, s = siteById(id), v = verdictFor(id);
+  if (!s) return `<p class="hint">${state.loading ? "Loading sites…" : "Pick a site to start a mission."}</p>`;
+  const result = gameScore({ mission: state.mission.get(id), verdict: v, capacityWh: state.needs.capacityWh });
+  const g = scoreGrade(result.total), tip = scoreTip(result, { capacityWh: state.needs.capacityWh });
+  const dateLabel = `${state.start.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })} · ${Math.round((state.end - state.start) / 1000 / DAY)}-day stay`;
+  return `<div class="game">
+    <div class="game-head">
+      <div><p class="game-kicker">Mission Designer · battery budget ${GAME.batteryBudgetWh.toLocaleString()} Wh</p>
+        <h2 class="game-title">${esc(s.name)}</h2><p class="game-date">${dateLabel}</p></div>
+      <div class="game-score t-${g.tier}"><b>${result.total ?? "—"}</b><small>/ 100</small>
+        <span class="game-grade">${g.grade} · ${g.label}</span></div>
+    </div>
+    ${state.loading ? `<p class="hint">Scoring…</p>` : `
+      <div class="game-bars">
+        ${scoreBar(advanced ? "Reliability (power · comms · blackout)" : "Does it survive?", result.reliability ?? 0, GAME.reliabilityMax, result.verdict === "nogo" ? "nogo" : result.verdict === "caution" ? "caution" : "go")}
+        ${scoreBar(advanced ? "Efficiency (battery under budget)" : "Does it do it cheaply?", result.efficiency ?? 0, GAME.efficiencyMax, "go")}
+      </div>
+      <p class="game-tip">${icon("warn")}${esc(tip)}</p>
+      <div class="game-actions">
+        <button class="btn primary" id="game-card">${icon("down")}Download result card</button>
+        <span class="hint">Change the site, date, panel and battery on the left — the score updates live.</span>
+      </div>`}
+  </div>`;
 }
 $("results").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
@@ -638,6 +672,7 @@ $("results").addEventListener("click", (e) => {
     state.start = new Date(b.dataset.day + "T00:00:00Z"); state.end = new Date(state.start.getTime() + len);
     state.focus = b.dataset.site; state.tIdx = 0; syncInputs(); setMode("check"); refresh();
   } else if (b.id === "open-compare") setPane("compare");
+  else if (b.id === "game-card") shareCard({ withScore: true });
 });
 function selectSite(id) { if (id && id !== state.focus) { state.focus = id; syncInputs(); renderAll(); } }
 $("pane-compare").addEventListener("click", (e) => {
@@ -662,7 +697,7 @@ function renderAll() {
   renderResults(); renderNow(); renderPanelBox(); renderMap();
 }
 function setMode(mode) {
-  state.mode = mode === "days" ? "days" : "check";
+  state.mode = mode === "days" || mode === "game" ? mode : "check";
   document.querySelectorAll(".modes button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.mode === state.mode)));
   if (location.hash.slice(1) !== state.mode) history.replaceState(null, "", `${location.search}#${state.mode}`);
   if (state.mode === "days" && !state.days.size) refreshDays();
@@ -721,6 +756,68 @@ $("p-csv").addEventListener("click", () => {
   a.download = `${state.focus}_power_${toDate(state.start)}_${toDate(state.end)}.csv`; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
+// ============================================================ hero "day at the pole" + share card + tour
+// One press: show the lander's-eye sky, face the Sun, and start playback so the Sun visibly circles the
+// horizon. Reuses the existing play loop (sky3d.setTime moves the Sun marker every frame).
+function watchDayAtThePole() {
+  if (state.mode === "days") setMode("check");
+  setView("site");
+  if (!state.playing) $("play").click();
+  // Let the scene build/draw a frame, then frame the Sun.
+  setTimeout(() => sky3d?.aim?.("sun"), 120);
+  setStatus("Watch the Sun crawl around the horizon — that's a day at the pole.", "");
+  setTimeout(() => { if ($("status").textContent.startsWith("Watch the Sun")) setStatus(""); }, 6000);
+}
+
+// Spans (start,end) in ms -> [frac,frac] of the mission window, for the card's mini-timeline.
+function cardBands(id) {
+  const r = state.results.get(id), m = state.mission.get(id);
+  if (!r) return [];
+  const t0 = state.start.getTime(), t1 = state.end.getTime(), span = Math.max(1, t1 - t0);
+  const fr = (ms) => Math.max(0, Math.min(1, (ms - t0) / span));
+  const C = CARD_COLORS;
+  const win = (list, col) => list.map((w) => [fr(Date.parse(w.startUtc)), fr(Date.parse(w.endUtc)), col]);
+  const bands = [
+    { label: "Sunlight", spans: win(r.sun.sunlitWindows, C.sun) },
+    { label: "Earth contact", spans: win(r.communication.windows, C.earth) },
+  ];
+  if (m?.segments) bands.push({ label: "Power OK", spans: m.segments.map((g) =>
+    [fr(t0 + g.startOffsetSeconds * 1000), fr(t0 + g.endOffsetSeconds * 1000), g.available == null ? C.gap : g.available ? C.ok : C.bad]) });
+  return bands;
+}
+function buildCardData(id, opts = {}) {
+  const s = siteById(id), v = verdictFor(id);
+  const checks = siteChecks(s) || [];
+  const pick = (k) => checks.find((c) => c.k === k);
+  const LABELS = { power: "Power", comms: "Earth contact", gap: "Longest silence", sun: "Sunlight" };
+  const metrics = ["power", "comms", "gap", "sun"].map((k) => pick(k)).filter(Boolean)
+    .map((c) => ({ label: LABELS[c.k], value: c.value, sub: c.sub, status: c.status }));
+  if (opts.withScore) {
+    const result = gameScore({ mission: state.mission.get(id), verdict: v, capacityWh: state.needs.capacityWh });
+    const g = scoreGrade(result.total);
+    metrics.unshift({ label: "Mission score", value: result.total == null ? "—" : String(result.total),
+      sub: `${g.grade} · ${g.label}`, status: g.tier === "nogo" ? "fail" : g.tier === "go" ? "pass" : "info" });
+  }
+  const months = { month: "short", day: "numeric", timeZone: "UTC" };
+  const dateLabel = `${state.start.toLocaleDateString("en-US", months)} – ${state.end.toLocaleDateString("en-US", { ...months, year: "numeric" })}`;
+  return {
+    site: s.name, where: where(s), dateLabel, stayLabel: `${Math.round((state.end - state.start) / 1000 / DAY)}-day stay`,
+    verdict: v, verdictLabel: VERDICT[v], reason: reason(id, v), metrics, bands: cardBands(id),
+    footer: "NASA LOLA terrain · JPL DE421 Sun/Earth · team power & battery model · nocoast",
+  };
+}
+function shareCard(opts = {}) {
+  const id = state.focus, s = siteById(id);
+  if (!s || state.loading) { setStatus("Give it a moment to finish calculating, then try the share card again.", "busy"); return; }
+  const ok = downloadCard(buildCardData(id, opts), `nocoast_${s.id}_${toDate(state.start)}.png`);
+  setStatus(ok ? "Saved a share card (PNG) to your downloads." : "Couldn't make the card in this browser.", ok ? "" : "err");
+  if (ok) setTimeout(() => { if ($("status").textContent.startsWith("Saved a share")) setStatus(""); }, 5000);
+}
+$("watch-day").addEventListener("click", watchDayAtThePole);
+$("share-card").addEventListener("click", shareCard);
+const tour = initTour({ onWatchDay: watchDayAtThePole });
+$("help-btn").addEventListener("click", () => tour.open(0));
+
 function tooltip(html, ev) {
   const t = $("tooltip");
   if (!html) { t.style.display = "none"; return; }
@@ -734,6 +831,9 @@ window.addEventListener("resize", () => drawStrip());
 
 (async function init() {
   renderSources(); renderNeedsBox();
+  // Welcome tutorial opens on every load (dismissible; reopen via the header "?"). Shown before data
+  // loads so it appears even if the science server is still starting. Skip with ?tour=0 for shared links.
+  if (new URLSearchParams(location.search).get("tour") !== "0") tour.open(0);
   try { [state.contract, state.mapMeta] = await Promise.all([api("contract"), api("polar_map/meta").catch(() => null)]); }
   catch (e) { setStatus(`Can't reach the science server (${e.message}). Start it with ./run.ps1.`, "err"); $("results").innerHTML = ""; return; }
   const c = state.contract, qs = new URLSearchParams(location.search);

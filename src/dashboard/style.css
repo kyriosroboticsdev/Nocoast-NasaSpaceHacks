@@ -207,12 +207,15 @@ body.advanced .actions.adv-only { display: flex; }
 
 /* ---------- results drawer */
 .drawer { background: var(--panel); border-top: 1px solid var(--line); max-height: 46vh; display: flex; flex-direction: column; min-height: 0; }
-.timebar { display: grid; grid-template-columns: 36px 180px 1fr; align-items: center; gap: 14px; padding: 12px 20px 10px; border-bottom: 1px solid var(--line); }
+.timebar { display: grid; grid-template-columns: 36px auto 1fr auto; align-items: center; gap: 10px 12px; padding: 12px 20px 10px; border-bottom: 1px solid var(--line); }
 .play { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--nasa-blue); color: #fff; display: grid; place-items: center; transition: background .15s; }
 .play:hover { background: #1550b8; }
 .t-label { font-size: 13px; color: var(--muted); line-height: 1.3; }
 .t-label b { display: block; color: var(--text); font-size: 14px; font-weight: 600; }
-.strip { width: 100%; height: 64px; cursor: ew-resize; touch-action: none; }
+.hero-btn, .share-btn { white-space: nowrap; }
+.hero-btn { border-color: var(--sun); color: var(--sun); }
+.hero-btn:hover { background: rgba(242, 201, 76, .12); }
+.strip { grid-column: 1 / -1; width: 100%; height: 64px; cursor: ew-resize; touch-action: none; }
 .results { overflow: auto; padding: 4px 20px 16px; }
 .del { background: none; border: 1px solid transparent; color: var(--faint); width: 26px; height: 26px; border-radius: var(--r); display: grid; place-items: center; }
 .del:hover { color: var(--text); border-color: var(--line-2); }
@@ -256,6 +259,63 @@ table.days { border-collapse: separate; border-spacing: 3px; }
   box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
 }
 
+/* ---------- welcome tutorial overlay */
+.tour { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; }
+.tour[hidden] { display: none; }
+.tour-scrim { position: absolute; inset: 0; background: rgba(3, 7, 18, .72); backdrop-filter: blur(2px); }
+.tour-card {
+  position: relative; width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 28px 28px 22px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55); animation: tour-in .18s ease;
+}
+@keyframes tour-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+.tour-x { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border: 0; background: none; color: var(--faint); border-radius: 6px; display: grid; place-items: center; }
+.tour-x:hover { background: var(--panel-2); color: var(--text); }
+.tour-badge { width: 46px; height: 46px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); display: grid; place-items: center; color: var(--accent); margin-bottom: 14px; }
+.tour-ic { width: 22px; height: 22px; }
+.tour-card h2 { font-size: 22px; font-weight: 700; margin: 0 0 10px; color: var(--text); }
+.tour-card p { font-size: 15px; line-height: 1.55; color: var(--muted); margin: 0 0 18px; }
+.tour-card p b { color: var(--text); font-weight: 600; }
+.tour .tour-cta { width: 100%; justify-content: center; margin-bottom: 14px; background: var(--sun); color: #231a04; height: 40px; font-weight: 600; }
+.tour .tour-cta:hover { background: #f7d873; }
+.tour-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tour-dots { display: flex; gap: 8px; }
+.tour-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); }
+.tour-dot.on { background: var(--accent); }
+.tour-nav { display: flex; gap: 8px; }
+.tour-skip { display: inline-block; margin-top: 14px; font-size: 13px; }
+body.tour-open { overflow: hidden; }
+
+/* ---------- accessibility: visible keyboard focus everywhere (a canvas + buttons sweep) */
+:where(button, a, [role="button"], [tabindex="0"], input, select):focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px;
+}
+.strip:focus-visible, .sky3d:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ---------- Mission Designer game mode */
+.game { padding: 4px 2px 12px; }
+.game-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.game-kicker { margin: 0 0 4px; font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; }
+.game-title { margin: 0; font-size: 20px; font-weight: 700; color: var(--text); }
+.game-date { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.game-score { text-align: right; display: grid; justify-items: end; line-height: 1; }
+.game-score b { font-size: 46px; font-weight: 800; color: var(--text); }
+.game-score small { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.game-score.t-go b { color: var(--go); } .game-score.t-caution b { color: var(--caution); } .game-score.t-nogo b { color: var(--nogo); }
+.game-grade { margin-top: 8px; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 4px; color: #fff; background: var(--unknown); }
+.game-score.t-go .game-grade { background: var(--go); } .game-score.t-caution .game-grade { background: var(--caution); color: #1d1606; } .game-score.t-nogo .game-grade { background: var(--nogo); }
+.game-bars { margin: 18px 0 14px; display: grid; gap: 10px; }
+.gb { display: grid; grid-template-columns: 1fr 120px 56px; align-items: center; gap: 10px; font-size: 13px; }
+.gb-l { color: var(--muted); min-width: 0; }
+.gb-track { height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
+.gb-fill { display: block; height: 100%; border-radius: 4px; background: var(--accent); transition: width .25s ease; }
+.gb-fill.t-go { background: var(--go); } .gb-fill.t-caution { background: var(--caution); } .gb-fill.t-nogo { background: var(--nogo); }
+.gb-v { text-align: right; font-weight: 600; color: var(--text); } .gb-v i { color: var(--faint); font-style: normal; font-weight: 400; }
+.game-tip { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin: 0 0 14px; }
+.game-tip svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--caution); }
+.game-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+@media (max-width: 560px) { .gb { grid-template-columns: 1fr 72px 48px; } .game-score b { font-size: 38px; } }
+
 @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
 
 /* ---------- narrow screens: scene, results, then settings */
@@ -270,8 +330,17 @@ table.days { border-collapse: separate; border-spacing: 3px; }
   .scene-now { max-width: calc(100% - 28px); top: 56px; }
   .scene-hint { display: none; }
   .drawer { max-height: none; }
-  .timebar { grid-template-columns: 36px 1fr; padding: 12px 16px; }
+  .timebar { grid-template-columns: 36px auto 1fr; padding: 12px 16px; }
+  .t-label { grid-column: 2 / -1; grid-row: 2; }
+  .share-btn { grid-column: 3; grid-row: 1; }
   .strip { grid-column: 1 / -1; }
   .results { padding: 4px 16px 16px; }
   .side { order: 2; border-right: 0; border-top: 1px solid var(--line); overflow: visible; padding: 4px 16px 24px; }
+}
+
+/* ---------- phones: collapse the hero/share labels to icons so the controls fit */
+@media (max-width: 560px) {
+  .hero-btn, .share-btn { padding: 0 10px; font-size: 0; gap: 0; }
+  .hero-btn svg, .share-btn svg { font-size: 14px; }
+  .tour-card { padding: 22px 20px 18px; }
 }

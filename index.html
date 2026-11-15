@@ -31,8 +31,10 @@
   <nav class="modes" role="tablist" aria-label="Mode">
     <button role="tab" data-mode="check" aria-selected="true">Check sites</button>
     <button role="tab" data-mode="days" aria-selected="false">Find a landing day</button>
+    <button role="tab" data-mode="game" aria-selected="false">Mission game</button>
   </nav>
   <div id="status" class="status" role="status" aria-live="polite"></div>
+  <button class="tool icon" id="help-btn" title="How this works" aria-label="How this works"><svg><use href="#i-q"/></svg></button>
   <label class="switch" title="Show technical terms, angles, sources and extra settings">
     <input type="checkbox" id="advanced"><span class="track" aria-hidden="true"></span>Advanced
   </label>
@@ -80,9 +82,9 @@
 
   <main class="work">
     <div class="scene" id="scene">
-      <div id="sky3d" class="sky3d"></div>
+      <div id="sky3d" class="sky3d" role="img" aria-label="Lander's-eye 3D sky showing the Sun and Earth above the horizon. The panel at top-left gives the same information as text."></div>
       <iframe id="terrain-frame" class="terrain-frame" title="3D polar terrain explorer" loading="lazy"></iframe>
-      <div class="scene-now" id="scene-now"></div>
+      <div class="scene-now" id="scene-now" role="status" aria-live="polite"></div>
       <div class="scene-tools">
         <div class="seg" id="view-seg" role="group" aria-label="Scene view">
           <button data-view="site" aria-pressed="true">At the site</button>
@@ -113,7 +115,9 @@
     <section class="drawer" aria-label="Results">
       <div class="timebar">
         <button class="play" id="play" aria-label="Play"><svg><use href="#i-play"/></svg></button>
+        <button class="btn ghost hero-btn" id="watch-day" title="Watch the Sun circle the horizon"><svg><use href="#i-sun"/></svg>Watch a day</button>
         <div class="t-label" id="t-label"></div>
+        <button class="btn ghost share-btn" id="share-card" title="Download a shareable result card (PNG)"><svg><use href="#i-down"/></svg>Share card</button>
         <canvas id="strip" class="strip" aria-label="Mission timeline: drag to move through time"></canvas>
       </div>
       <div id="results" class="results"></div>

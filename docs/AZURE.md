@@ -121,3 +121,32 @@ Student-subscription workarounds baked into the templates/workflow:
 
 Detailed polar terrain (`/api/terrain/window`, `backend/terrain_window.py`) is served by the backend in
 production; locally the Vite dev middleware still answers the same path.
+
+### Known blocker: OIDC login fails on pushes to `preview` (2026-11-15)
+
+The first real `azure-deploy.yml` run (triggered by merging PR #4 into `preview`) failed at the Azure
+login step, before touching any live resource — no partial/broken deploy state, it never got that far:
+
+```
+AADSTS700213: No matching federated identity record found for presented assertion subject
+'repo:kyriosroboticsdev/Nocoast-NasaSpaceHacks:ref:refs/heads/preview'.
+```
+
+Despite this doc saying the `lunarnav-github-deploy` Entra app has a federated credential "for pushes to
+`main` and `preview`," Azure AD only has one on file that doesn't match that exact subject string —
+most likely it was only ever added for `main`. Fixing this needs Entra ID admin access this session
+doesn't have:
+
+```sh
+az ad app federated-credential create --id <lunarnav-github-deploy's app (client) ID> --parameters '{
+  "name": "github-preview-branch",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:kyriosroboticsdev/Nocoast-NasaSpaceHacks:ref:refs/heads/preview",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+```
+
+(Confirm the existing credential's exact `subject` with `az ad app federated-credential list --id
+<app-id>` first — it may be faster to fix that one's subject than add a new one.) Once this is added,
+re-run the failed workflow (`gh run rerun <run-id>` or just push again) to get a real end-to-end deploy
+signal.

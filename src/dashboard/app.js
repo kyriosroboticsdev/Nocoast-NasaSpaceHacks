@@ -1069,7 +1069,10 @@ if (PRESENT) {
     get index() { return state.tIdx; },
     setTime(i) { const r = state.results.get(state.focus); if (r) { state.tIdx = Math.max(0, Math.min(r._t.length - 1, Math.round(i))); renderNow(); } },
     look(view) { if (sky3d) sky3d.look(view); },
-    setNightLight(v) { if (sky3d) sky3d.setNightLight(v); },
+    setNightLight(v) { if (sky3d) { sky3d.setNightLight(v); sky3d.forceMotion(); } },
+    orbitBy(rad) { sky3d?.orbitBy(rad); },
+    pick(lat, lon) { addSpot(lat, lon, false); },
+    startTerrain: () => ensureLandingTerrain().then(() => pushLanding()),
     get view() { return sky3d ? sky3d.view : null; },
     mapPoint: (lat, lon) => state.mapMeta ? latLonToMap(lat, lon) : null,
   };

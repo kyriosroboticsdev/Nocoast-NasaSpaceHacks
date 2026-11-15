@@ -36,6 +36,14 @@ async function openMosaic(mode) {
   }
 }
 
+// geotiff reads a window as several parallel range requests. When NASA's server refuses one, the read
+// rejects on the first failure and the others reject later with nobody listening, which would otherwise
+// stop the dev server (as a geotiff error or as a bare "fetch failed" when the connection resets).
+// Log them and keep serving.
+process.on('unhandledRejection', error => {
+  console.error('Unhandled rejection (dev server keeps running):', error?.cause?.code ?? error?.message ?? error);
+});
+
 let running = 0;
 async function elevationWindow(req, res, next) {
   const url = new URL(req.url, 'http://localhost');

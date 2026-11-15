@@ -529,7 +529,7 @@ export function createSkyView(container) {
       camera.position.set(1400, 5400, 1700); controls.target.set(0, 0, 0); camera.lookAt(controls.target);
     } else applyLanderCamera();
     setTime(st.i);
-    if (!animate || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (!animate || (!st.forceMotion && matchMedia("(prefers-reduced-motion: reduce)").matches)) {
       flight = null;
       controls.enabled = mode !== "lander";
       return;
@@ -672,5 +672,11 @@ export function createSkyView(container) {
     get view() { return { yaw: st.yaw, pitch: st.pitch, fov: st.fov, lift: st.lift }; },
     // Fill light used while the Sun is behind terrain (0.8 by default).
     setNightLight(v) { st.night = v; setTime(st.i); },
+    forceMotion() { st.forceMotion = true; },
+    /** Turn the orbiting camera about the vertical axis through its target (bird and globe views). */
+    orbitBy(rad) {
+      if (st.mode === "lander" || flight) return;
+      camera.position.sub(controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), rad).add(controls.target);
+    },
   };
 }

@@ -650,7 +650,9 @@ export async function startTerrain(root: ParentNode = document): Promise<Terrain
     target: T.Vector3; offset: T.Vector3; up: T.Vector3;
   };
   let flight: Flight | undefined;
-  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const presenting = new URLSearchParams(location.search).has('present');
+  // The guided walkthrough always animates: its camera moves are the demonstration.
+  const reducedMotion = presenting ? { matches: false } : matchMedia('(prefers-reduced-motion: reduce)');
   function flyTo(target: T.Vector3, offset: T.Vector3, up: T.Vector3) {
     if (reducedMotion.matches) {
       flight = undefined;
@@ -919,6 +921,9 @@ export async function startTerrain(root: ParentNode = document): Promise<Terrain
       ray,
     }});
   }
+
+  // presentation.html drives this view in a frame and needs the camera for its zoom and orbit moves.
+  if (presenting) Object.assign(window, { nocoastTerrain: { camera, controls: () => controls, busy: () => Boolean(flight) } });
 
   return {
     focusLatLon,

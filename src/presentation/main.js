@@ -10,6 +10,7 @@ const easeOut = (t) => 1 - (1 - t) ** 3;
 const MOVE = 1100;          // every transition between tools stays under 1.5 s
 const NIGHT_LIGHT = 3.4;    // fill light while the Sun is behind terrain (the planner's own value is 0.8)
 const PLANNER = "./";
+const PICK = [-89.45, 222.6];   // the point the walkthrough clicks on the south pole map
 
 let win, doc, demo;
 const q = (sel) => doc.querySelector(sel);
@@ -61,6 +62,12 @@ const FRAME_CSS = `
   .present-sky.show { opacity: 1; translate: -50% 0; scale: 1; }
   .present-sky h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: #b9c3d6; }
   .present-sky canvas { display: block; width: 100%; border-radius: 8px; }
+  .present-pick {
+    position: absolute; z-index: 3; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+    border: 3px solid #ffd166; box-shadow: 0 0 0 6px #ffd16640, 0 0 18px #ffd166; pointer-events: none;
+    animation: present-pick 1s cubic-bezier(.45,0,.2,1) both;
+  }
+  @keyframes present-pick { from { scale: 3; opacity: 0; } to { scale: 1; opacity: 1; } }
 `;
 function focusOn(sel) {
   doc.querySelectorAll(".present-focus").forEach((e) => e.classList.remove("present-focus"));
@@ -183,6 +190,40 @@ function startSky() {
   })(t0);
 }
 
+// Engine exhaust for the landing: two plumes rising from under the camera, drawn over the scene.
+function startFlames() {
+  const cv = $("fx"), ctx = cv.getContext("2d"), parts = [];
+  const fx = { level: 0, done: false };
+  let W = 0, H = 0, last = performance.now();
+  const size = () => { W = cv.width = cv.clientWidth; H = cv.height = cv.clientHeight; };
+  size(); addEventListener("resize", size);
+  cv.style.opacity = 1;
+  (function draw(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    ctx.clearRect(0, 0, W, H);
+    if (fx.done && !parts.length) { removeEventListener("resize", size); cv.style.opacity = 0; return; }
+    if (!fx.done) for (const cx of [.36, .64]) for (let k = 0; k < Math.round(7 * fx.level + Math.random()); k++) {
+      const life = .32 + Math.random() * .42;
+      parts.push({ x: W * cx + (Math.random() - .5) * W * .05, y: H + 30, vx: (Math.random() - .5) * 90 + (cx - .5) * 260,
+        vy: -(H * (.5 + Math.random() * .75)) * (.45 + .55 * fx.level), r: (.045 + Math.random() * .05) * H, life, age: 0 });
+    }
+    ctx.globalCompositeOperation = "lighter";
+    for (let k = parts.length - 1; k >= 0; k--) {
+      const q = parts[k]; q.age += dt;
+      if (q.age >= q.life) { parts.splice(k, 1); continue; }
+      const u = q.age / q.life; q.x += q.vx * dt; q.y += q.vy * dt;
+      const r = q.r * (1 - u * .55), g = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, r), a = (1 - u) * .24;
+      g.addColorStop(0, `rgba(255,${Math.round(246 - 70 * u)},${Math.round(214 - 190 * u)},${a})`);
+      g.addColorStop(.45, `rgba(255,${Math.round(150 - 80 * u)},32,${a * .55})`);
+      g.addColorStop(1, "rgba(200,40,0,0)");
+      ctx.fillStyle = g; ctx.fillRect(q.x - r, q.y - r, r * 2, r * 2);
+    }
+    ctx.globalCompositeOperation = "source-over";
+    requestAnimationFrame(draw);
+  })(last);
+  return fx;
+}
+
 const WELCOME = `<div class="welcome">
   <img src="/branding/nocoast-icon.png" alt="" width="60" height="52">
   <h1 style="--i:1">NoCoast</h1>
@@ -191,7 +232,7 @@ const WELCOME = `<div class="welcome">
     <div class="card rise" style="--i:4"><h2>The problem</h2><p>At the pole the Sun skims the horizon and Earth drops behind ridges. A lander can lose power and contact for days.</p></div>
     <div class="card rise" style="--i:5"><h2>What it works out</h2><p>Sunlight, solar power, battery charge and Earth contact for every hour of the stay, then a grade for the mission.</p></div>
     <div class="card rise" style="--i:6"><h2>The data</h2><p>NASA LOLA elevation maps for the terrain. JPL's DE421 ephemeris for where the Sun and Earth are.</p></div>
-    <div class="card rise" style="--i:7"><h2>This walkthrough</h2><p>Twelve short stops on the live app, starting with a landing. Press space to move on from each.</p></div>
+    <div class="card rise" style="--i:7"><h2>This walkthrough</h2><p>Short stops on the live app, starting with a landing. Press space to move on from each.</p></div>
   </div>
   <p class="team" style="--i:9">Built for NASA Space Apps by <span>Alex</span><span>Randy</span><span>Sonit</span><span>Abhi</span></p>
   <p class="loading" id="loading" style="--i:10">Loading terrain and Sun and Earth positions…</p>
@@ -251,10 +292,14 @@ const steps = [
       demo.look({ yaw: yaw0 - 70, pitch: -62, fov: 78, lift: 460 });
       await caption("float", n, `Landing at ${siteName()}`,
         `<p>This is the view from the lander's camera on the way down. The ground and the ridges are built from NASA's LOLA elevation data for this spot.</p>
-         <p>The Sun is still behind the terrain here. The scene is brightened so you can see the surface.</p>`);
+         <p>The descent engines burn until the legs touch. The Sun is still behind the terrain here, so the scene is brightened to show the surface.</p>`);
       $("veil").classList.add("gone");
-      await tween(7600, (e, t) => demo.look({
-        lift: 460 * (1 - t) ** 2.3, pitch: lerp(-62, 3, easeInOut(t)), yaw: yaw0 - 70 * (1 - easeOut(t)), fov: lerp(78, 70, t) }), (t) => t);
+      const flames = startFlames();
+      await tween(7600, (e, t) => {
+        flames.level = clamp(t / .08, 0, 1) * (t < .93 ? 1 : (1 - t) / .07);      // throttle up, then cut just before touchdown
+        demo.look({ lift: 460 * (1 - t) ** 2.3, pitch: lerp(-62, 3, easeInOut(t)), yaw: yaw0 - 70 * (1 - easeOut(t)), fov: lerp(78, 70, t) });
+      }, (t) => t);
+      flames.done = true;
       // touchdown: the camera settles on its legs
       await tween(900, (_, t) => demo.look({ lift: 0, pitch: 3 - 2.2 * Math.exp(-5 * t) * Math.cos(16 * t) * (1 - t) }), (t) => t);
     },
@@ -308,31 +353,112 @@ const steps = [
       markRow(2, "#2fa36b");
     },
   },
-  { // 4
+  { // above the site
     async run(n) {
       markRow(null); showSkyline(false);
+      const button = '#view-seg [data-view="terrain"]';
+      await caption("right", n, "Above the site",
+        `<p>"Above the site" lifts the camera off the lander and orbits the ground around it.</p>
+         <p>It is the same LOLA terrain, lit from where the Sun is at this moment, with the lander on its spot.</p>`);
+      focusOn(button);
+      await sleep(700);
+      press(button);
+      await sleep(1100);
+      let turned = 0;
+      await tween(7000, (e) => { demo.orbitBy((e - turned) * 1.9); turned = e; });
+    },
+  },
+  { // compare
+    async run(n) {
+      focusOn('#view-seg [data-view="site"]');
+      press('#view-seg [data-view="site"]');
+      demo.startTerrain().catch(() => {});      // the terrain explorer further down loads while this step is up
       await caption("right", n, "Compare two sites",
         `<p>Pick a second site and the planner puts both in one table, for the same dates and the same lander.</p>
          <p>The rows are the mission outlook, solar output, power, battery low point, Earth contact and the longest silence. "Visit this site" switches the scene to the other one.</p>`);
       press('[data-open="compare"]');
-      await sleep(300);
+      await sleep(900);
       focusOn("#mission-sheet");
       await waitFor(() => !/Calculating/.test(q("#pane-compare").textContent), 25000);
     },
   },
-  { // 5
+  { // pick a point
+    async run(n) {
+      focusOn(null);
+      await caption("right", n, "Pick any point",
+        `<p>Any point on the south pole map can be tested, not only the named sites.</p>
+         <p>One click and the planner works out the hills around that point, then sunlight, power and Earth contact for the stay.</p>`);
+      focusOn("#map-toggle");
+      await sleep(600);
+      if (q("#map-panel").hidden) press("#map-toggle");
+      await sleep(800);
+      focusOn(null);
+      const at = demo.mapPoint(...PICK);
+      let ring = null;
+      if (at) {
+        ring = doc.createElement("div"); ring.className = "present-pick";
+        ring.style.left = `${at[0] / 10}%`; ring.style.top = `${at[1] / 10}%`;
+        q("#map-content").append(ring);
+        await sleep(1300);
+      }
+      demo.pick(...PICK);
+      await settled();
+      ring?.remove();
+      await waitFor(() => q("#results .v"), 20000);
+      focusOn("#mission-sheet");
+      const grade = q("#results .v")?.textContent.trim();
+      $("cap-body").insertAdjacentHTML("beforeend", `<p>${grade ? `This point comes out <b>${grade}</b>. ` : ""}The mission outlook on the left gives the reason and the numbers behind it.</p>`);
+    },
+  },
+  { // terrain explorer: the whole run stays under 20 s once the terrain has loaded
+    async run(n) {
+      focusOn(null);
+      if (!q("#map-panel").hidden) press("#map-close");
+      await caption("left", n, "Terrain explorer",
+        `<p>Below the workspace is the whole Moon as one terrain model, with the landing site marked.</p>
+         <p>The buttons jump to the site, the whole Moon and the polar cap. The layer menu swaps the surface for the mesh it is built from.</p>`);
+      demo.startTerrain().catch(() => {});
+      await scrollToEl(".terrain-block", 10);
+      const ready = await waitFor(() => win.nocoastTerrain && !q("#focus").disabled, 30000);
+      if (!ready) { $("cap-body").insertAdjacentHTML("beforeend", `<p>The terrain view did not load on this machine.</p>`); return; }
+      const view = win.nocoastTerrain;
+      const move = (ms, zoom, deg) => {
+        let last = 0;
+        return tween(ms, (e) => {
+          const target = view.controls().target, d = e - last; last = e;
+          const off = view.camera.position.clone().sub(target).multiplyScalar(zoom ** d).applyAxisAngle(view.camera.up, deg * Math.PI / 180 * d);
+          view.camera.position.copy(target).add(off);
+        });
+      };
+      await move(3000, 60, 70);                                    // pull back from the site and turn
+      for (const button of ["#focus", "#globe", "#reset"]) {         // zoom to site, whole Moon, full polar cap
+        focusOn(button);
+        await sleep(450);
+        press(button);
+        await sleep(200); await waitFor(() => !view.busy(), 4000);
+        await sleep(900);
+      }
+      focusOn(null);
+      await move(2000, .42, 25);                                   // zoom in a little
+      focusOn("#layer");
+      await sleep(450);
+      setField("#layer", "mesh");
+      await sleep(2000);
+    },
+  },
+  { // find a better location
     async run(n) {
       focusOn(null);
       await caption("left", n, "Find a better location",
-        `<p>The search scores a grid of points within 40 km of the current site for the same mission window and lists the best of them.</p>`);
-      setField("#search-region", "around"); setField("#search-radius", "40");
+        `<p>The search scores a grid of points within 40 km of the current site for the same mission window. It then rechecks the best few against the live terrain and lists them.</p>`);
+      setField("#search-region", "around"); setField("#search-radius", "40"); setField("#search-topn", "4");
       await scrollToEl(".decision-cluster");
       const img = q("#map-img");
       if (img) { $("pmap-img").src = img.src; $("pmap").hidden = false; requestAnimationFrame(() => $("pmap").classList.add("show")); }
       $("pmap-marks").innerHTML = ""; $("pmap-note").textContent = "Scoring candidate points…";
       focusOn("#search-list");
       press("#find-best-location");
-      await waitFor(() => doc.querySelectorAll("#search-list .rank-item").length > 0, 40000);
+      await waitFor(() => doc.querySelectorAll("#search-list .rank-item").length > 0, 150000);
       const rows = [...doc.querySelectorAll("#search-list .rank-item")];
       const hits = rows.map((el) => {
         const m = /([\d.]+)°S\s+([\d.]+)°E/.exec(el.textContent);
@@ -425,8 +551,8 @@ const steps = [
       <div class="cols" style="--i:2">
         <div><h2>Mission workspace</h2><ul>${items([
           "<b>At the site:</b> the lander's view of the sky and terrain",
-          "<b>Above the site:</b> orbit the ground around the lander",
-          "<b>South pole map:</b> click a point or type coordinates",
+          "<b>Above the site and Whole Moon:</b> orbit the ground or the globe",
+          "<b>South pole map:</b> click any point to grade it",
           "<b>Custom spots:</b> save up to four of your own",
           "<b>Timeline:</b> sunlight, Earth contact and power by hour",
           "<b>Mission outlook:</b> the grade and the numbers behind it",
@@ -453,34 +579,33 @@ const steps = [
         ], 9)}</ul></div>
       </div>`),
   },
-  { // 11
-    run: (n) => slide(`<p class="kicker">${n} of ${total}</p><h1 style="--i:1">The maths and science underneath</h1>
-      <ul class="wide">${items([
-        "<b>Horizon.</b> For every compass bearing the planner finds the highest terrain angle seen from the site, and subtracts the drop from the Moon's curvature, <code>d² / 2R</code> with <code>R = 1737.4 km</code>.",
-        "<b>Sun and Earth.</b> Positions come from JPL's DE421 ephemeris through Skyfield, in the Moon-fixed frame, and are turned into a bearing and a height above level ground at the site.",
-        "<b>Visibility.</b> A body is up when its height is above the horizon at its bearing. The Sun is about 0.53° wide and Earth about 1.9°, so both are treated as discs.",
-        "<b>Solar power.</b> <code>P = 1361 W/m² ÷ r² × area × efficiency × cos θ × visible fraction</code>, where <code>r</code> is the Sun's distance in AU and <code>θ</code> is the angle between the Sun and the panel.",
-        "<b>Battery.</b> Charge and discharge are added up across the stay with efficiency losses and a reserve floor. Hours at the floor count as outages, and the grade checks them against the requirements.",
-        "<b>Location search.</b> A coarse grid of candidate points is scored with 320 m LOLA horizons for the same mission window, then ranked.",
-        "<b>Relay path.</b> Waypoints between Earth and the Moon form a graph. Each edge costs its length plus penalties for darkness, lost Earth contact and obstacles. Dijkstra's algorithm finds the cheapest route. A* finds the same route while visiting fewer nodes, using straight-line distance to the goal as a lower bound.",
-      ], 2)}</ul>`),
+  { // maths and science
+    run: (n) => slide(`<p class="kicker">${n} of ${total}</p><h1 class="big" style="--i:1">The maths and science</h1>
+      <div class="tiles" style="--i:2">${[
+        ["Horizon mask", "<code>d² / 2R</code> curvature drop, <code>R = 1737.4 km</code>"],
+        ["Sun and Earth positions", "JPL DE421 ephemeris"],
+        ["Visibility", "discs: Sun 0.53°, Earth 1.9°"],
+        ["Solar power", "<code>P = 1361 W/m² ÷ r² × A × η × cos θ</code>"],
+        ["Battery", "charge in, load out, reserve floor"],
+        ["Site search", "320 m LOLA grid, live rescoring"],
+        ["Relay path", "Dijkstra and A* on a waypoint graph"],
+        ["Mission grade", "power, sunlight and contact against the requirements"],
+      ].map(([h, p], k) => `<div class="tile rise" style="--i:${k + 3}"><h2>${h}</h2><p>${p}</p></div>`).join("")}</div>`),
   },
-  { // 12
-    run: (n) => slide(`<p class="kicker">${n} of ${total}</p><h1 style="--i:1">How it runs on Azure</h1>
+  { // Azure
+    run: (n) => slide(`<p class="kicker">${n} of ${total}</p><h1 class="big" style="--i:1">Running on Azure</h1>
       <div class="flow" style="--i:2">
         <div class="rise" style="--i:3"><b>Browser</b>3D scene and power model</div><i class="rise" style="--i:3">→</i>
-        <div class="rise" style="--i:4"><b>Static Web Apps</b>serves the built site</div><i class="rise" style="--i:4">→</i>
-        <div class="rise" style="--i:5"><b>Container Apps</b>Python science API</div><i class="rise" style="--i:5">→</i>
-        <div class="rise" style="--i:6"><b>Blob Storage</b>terrain and kernel cache</div>
+        <div class="rise" style="--i:4"><b>Static Web Apps</b>the built site</div><i class="rise" style="--i:4">→</i>
+        <div class="rise" style="--i:5"><b>Container Apps</b>FastAPI science API, 1 to 3 replicas, one always warm</div><i class="rise" style="--i:5">→</i>
+        <div class="rise" style="--i:6"><b>Blob Storage</b>240 MB of LOLA terrain and SPICE kernels</div>
       </div>
-      <ul class="wide">${items([
-        "<b>Static Web Apps</b> hosts the site that Vite builds from this repository.",
-        "<b>Container Apps</b> runs the FastAPI backend from a Docker image. It does the heavy work: terrain horizons, Sun and Earth analysis, and the relay path search.",
-        "<b>Blob Storage</b> keeps about 240 MB of LOLA elevation files and SPICE kernels, so a cold start does not download them from NASA again.",
-        "<b>Managed identity</b> gives the API its access to storage, so no storage key is kept in the repository or the app.",
-        "<b>Bicep and GitHub Actions</b> define the resources and deploy the site and the API on each push to main.",
-        "<b>Log Analytics and Application Insights</b> collect the API's logs and metrics.",
-      ], 7)}</ul>`),
+      <div class="tiles" style="--i:7">${[
+        ["GitHub Actions", "push to main → image on GHCR → live"],
+        ["OIDC sign-in", "no Azure password in the repository"],
+        ["Bicep", "every resource as code, West US 2"],
+        ["Log Analytics + App Insights", "logs and metrics"],
+      ].map(([h, p], k) => `<div class="tile rise" style="--i:${k + 8}"><h2>${h}</h2><p>${p}</p></div>`).join("")}</div>`),
   },
 ];
 total = steps.length;

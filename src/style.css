@@ -56,6 +56,19 @@ h3 { font-size: 0.9rem; color: var(--muted); margin-bottom: 8px; font-weight: 60
 }
 @media (min-width: 640px) { .app-header { margin: -24px -24px 24px; padding: 24px 32px; } }
 .app-header h1, .app-header .tagline { color: #fff; }
+.brand-row { display: flex; align-items: flex-start; gap: 14px; }
+.brand-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px; height: 52px;
+  margin-top: 2px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.45);
+}
+.brand-badge img { width: 36px; height: auto; display: block; }
 .app-header .eyebrow {
   color: #ffd9cf;
   display: inline-flex;

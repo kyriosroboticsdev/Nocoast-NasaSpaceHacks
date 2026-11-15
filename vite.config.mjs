@@ -38,7 +38,9 @@ async function openMosaic() {
 let running = 0;
 async function elevationWindow(req, res, next) {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname !== '/terrain/window') return next();
+  // /api/terrain/window is what the app requests (so Azure SWA forwards it to the backend in production);
+  // this plugin middleware runs before Vite's /api proxy, so locally it is still served here.
+  if (url.pathname !== '/terrain/window' && url.pathname !== '/api/terrain/window') return next();
   const numbers = ['column', 'row', 'stride'].map(name => {
     const value = url.searchParams.get(name);
     return value !== null && /^\d+$/.test(value) ? Number(value) : NaN;

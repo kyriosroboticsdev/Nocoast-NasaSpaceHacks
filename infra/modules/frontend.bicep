@@ -1,4 +1,5 @@
-// Static Web App for the Vite/Three.js frontend. Deployment content comes from CI
+// Static Web App for the Vite/Three.js frontend. Standard SKU: linkedBackends is not available on Free.
+// Deployment content comes from CI
 // (.github/workflows/azure-deploy.yml), not from this template — this just provisions the resource.
 //
 // The frontend already calls the backend with relative paths (`${import.meta.env.BASE_URL}api/analyze`,
@@ -14,8 +15,8 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
   name: staticWebAppName
   location: location
   sku: {
-    name: 'Free'
-    tier: 'Free'
+    name: 'Standard'
+    tier: 'Standard'
   }
   properties: {
     buildProperties: {

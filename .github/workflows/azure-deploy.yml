@@ -7,7 +7,7 @@ name: Azure deploy (app)
 on:
   workflow_dispatch: {}
   push:
-    branches: [infra/azure]   # change to `main` once this branch is merged
+    branches: [main, preview]
 
 permissions:
   id-token: write
@@ -15,8 +15,8 @@ permissions:
 
 env:
   RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'lunarnav-dev-rg' }}
-  ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
   CONTAINER_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_NAME || 'lunarnavdev-api' }}
+  STATIC_WEB_APP_NAME: ${{ vars.AZURE_STATIC_WEB_APP_NAME || 'lunarnavdev-web' }}
 
 jobs:
   backend:
@@ -28,7 +28,7 @@ jobs:
         if: ${{ vars.AZURE_CLIENT_ID != '' }}
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -38,15 +38,25 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # az acr build builds the image inside ACR itself and pushes it — no local Docker daemon or
-      # registry login needed on the runner.
+      # The registry's real name has a uniqueString() suffix from the bicep deploy (not predictable
+      # ahead of time), so look it up by resource group instead of requiring a hand-set repo variable
+      # — the same pattern already used below for the Static Web App deploy token.
+      - name: Resolve Container Registry name
+        run: |
+          acr_name=$(az acr list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+          if [ -z "$acr_name" ]; then
+            echo "::error::No Container Registry found in resource group $RESOURCE_GROUP — run azure-infra.yml first."
+            exit 1
+          fi
+          echo "ACR_NAME=$acr_name" >> "$GITHUB_ENV"
+
+      # Build on the runner and push: ACR Tasks (`az acr build`) is disabled on Azure for Students
+      # subscriptions (TasksOperationsNotAllowed).
       - name: Build + push backend image
         run: |
-          az acr build \
-            --registry "$ACR_NAME" \
-            --image "lunar-navigator-api:${{ github.sha }}" \
-            --image "lunar-navigator-api:latest" \
-            .
+          az acr login --name "$ACR_NAME"
+          docker build -t "$ACR_NAME.azurecr.io/lunar-navigator-api:${{ github.sha }}" -t "$ACR_NAME.azurecr.io/lunar-navigator-api:latest" .
+          docker push --all-tags "$ACR_NAME.azurecr.io/lunar-navigator-api"
 
       - name: Deploy image to Container App
         run: |
@@ -60,6 +70,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Azure login (OIDC)
+        if: ${{ vars.AZURE_CLIENT_ID != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure login (service principal)
+        if: ${{ vars.AZURE_CLIENT_ID == '' }}
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Fetch the Static Web App deploy token at run time instead of storing it as a repo secret.
+      - name: Get Static Web App deploy token
+        run: |
+          token=$(az staticwebapp secrets list --name "$STATIC_WEB_APP_NAME" -g "$RESOURCE_GROUP" --query properties.apiKey -o tsv)
+          echo "::add-mask::$token"
+          echo "SWA_TOKEN=$token" >> "$GITHUB_ENV"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -70,7 +101,7 @@ jobs:
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          azure_static_web_apps_api_token: ${{ env.SWA_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: "dist"

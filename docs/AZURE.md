@@ -12,7 +12,7 @@ GitHub (this repo)
   |-- .github/workflows/azure-infra.yml    (manual) --> provisions everything below via infra/main.bicep
   |-- .github/workflows/azure-deploy.yml   (on push) --> builds + ships app code to it
   v
-Azure resource group (lunarnav-dev-rg by default)
+Azure resource group (lunarnav-dev-rg, westus2 — Azure for Students only allows westus2/westus/northcentralus/canadacentral/francecentral)
   |-- Storage Account / "science-data" blob container
   |       <- backend/azure_cache.py: caches the ~240MB of LOLA DEMs + SPICE kernels that
   |          scripts/fetch_data.py downloads from PDS/NAIF/JPL, so repeat cold starts don't re-fetch.
@@ -102,3 +102,51 @@ new (`infra/`, `Dockerfile`, `.dockerignore`, `entrypoint.sh`, `.github/workflow
 `backend/pathfinding/`, `backend/azure_cache.py`, `docs/AZURE.md`) or a small, additive diff to a
 shared file (`requirements.txt`: two new deps; `scripts/fetch_data.py`: one cache-check call;
 `backend/app.py`: one new route) — chosen to keep the merge back into `preview`/`main` low-risk.
+
+## Live setup (2026-11-14)
+
+Provisioned in the **Azure for Students** subscription (University of Illinois tenant), region `westus2`.
+
+- GitHub -> Azure auth: OIDC. Entra app `lunarnav-github-deploy` with federated credentials for pushes to
+  `main` and `preview`; repo variable `AZURE_CLIENT_ID`, secrets `AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID`.
+  Roles: Contributor on the subscription, User Access Administrator on `lunarnav-dev-rg`.
+- `azure-deploy.yml` runs on every push to `main` or `preview`. It looks up the registry name and the Static
+  Web App deploy token itself, so no other secrets are needed.
+
+Student-subscription workarounds baked into the templates/workflow:
+- **No ACR Tasks** (`TasksOperationsNotAllowed`): the image is built with Docker on the GitHub runner and pushed.
+- **Express Container Apps environment**: managed-identity registry pulls are rejected, so the app uses the ACR
+  admin password and a storage connection string, both held as Container App secrets.
+- Storage account names are capped at 24 chars (`take(..., 24)` in `main.bicep`).
+
+Detailed polar terrain (`/api/terrain/window`, `backend/terrain_window.py`) is served by the backend in
+production; locally the Vite dev middleware still answers the same path.
+
+### Known blocker: OIDC login fails on pushes to `preview` (2026-11-15)
+
+The first real `azure-deploy.yml` run (triggered by merging PR #4 into `preview`) failed at the Azure
+login step, before touching any live resource — no partial/broken deploy state, it never got that far:
+
+```
+AADSTS700213: No matching federated identity record found for presented assertion subject
+'repo:kyriosroboticsdev/Nocoast-NasaSpaceHacks:ref:refs/heads/preview'.
+```
+
+Despite this doc saying the `lunarnav-github-deploy` Entra app has a federated credential "for pushes to
+`main` and `preview`," Azure AD only has one on file that doesn't match that exact subject string —
+most likely it was only ever added for `main`. Fixing this needs Entra ID admin access this session
+doesn't have:
+
+```sh
+az ad app federated-credential create --id <lunarnav-github-deploy's app (client) ID> --parameters '{
+  "name": "github-preview-branch",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:kyriosroboticsdev/Nocoast-NasaSpaceHacks:ref:refs/heads/preview",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+```
+
+(Confirm the existing credential's exact `subject` with `az ad app federated-credential list --id
+<app-id>` first — it may be faster to fix that one's subject than add a new one.) Once this is added,
+re-run the failed workflow (`gh run rerun <run-id>` or just push again) to get a real end-to-end deploy
+signal.

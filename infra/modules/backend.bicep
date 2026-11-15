@@ -1,6 +1,7 @@
 // Container Apps environment + the backend API app (FastAPI: terrain horizon, ephemeris, pathfinding).
-// Auth to ACR and Blob Storage is via the app's system-assigned managed identity (AcrPull + Storage Blob
-// Data Contributor role assignments below) — no registry or storage secrets are stored on the app.
+// Auth to ACR and Blob Storage uses Container App secrets (ACR admin password + storage connection string):
+// Azure for Students subscriptions get "express" Container Apps environments, which reject managed-identity
+// registry pulls. The role assignments below are kept so switching back to identity auth is a small change.
 param location string
 param namePrefix string
 param registryLoginServer string
@@ -52,10 +53,18 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 8765
         transport: 'auto'
       }
+      secrets: [
+        { name: 'acr-password', value: acr.listCredentials().passwords[0].value }
+        {
+          name: 'storage-connection'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+        }
+      ]
       registries: [
         {
           server: registryLoginServer
-          identity: 'system'
+          username: acr.listCredentials().username
+          passwordSecretRef: 'acr-password'
         }
       ]
     }
@@ -69,7 +78,7 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
             memory: '2Gi'
           }
           env: [
-            { name: 'AZURE_STORAGE_ACCOUNT_URL', value: 'https://${storageAccountName}.blob.core.windows.net' }
+            { name: 'AZURE_STORAGE_CONNECTION_STRING', secretRef: 'storage-connection' }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
           ]
         }

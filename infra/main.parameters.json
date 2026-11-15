@@ -4,7 +4,7 @@
   "parameters": {
     "projectName": { "value": "lunarnav" },
     "envName": { "value": "dev" },
-    "location": { "value": "eastus2" },
+    "location": { "value": "westus2" },
     "resourceGroupName": { "value": "lunarnav-dev-rg" }
   }
 }

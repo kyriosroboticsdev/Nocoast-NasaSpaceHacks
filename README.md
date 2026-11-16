@@ -1,4 +1,10 @@
-# Lunar Landing Site Navigator
+# LunarNav by NoCoast
+
+## [Open LunarNav on Azure](https://salmon-moss-05338201e.3.azurestaticapps.net/)
+
+**[Launch the live mission planner](https://salmon-moss-05338201e.3.azurestaticapps.net/)** · **[Explore the guided walkthrough](https://salmon-moss-05338201e.3.azurestaticapps.net/presentation.html)**
+
+Compare lunar landing sites and dates, explore sunlight and Earth contact, and test your lander’s power needs directly in your browser.
 
 **Pick a landing spot and a date on the Moon's south pole — and find out, in plain English, whether
 your lander will have power and a line home.** Built for NASA's Space Apps Challenge, on real NASA

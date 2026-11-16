@@ -22,3 +22,7 @@ __pycache__/
 
 # Local verification logs and scratch scripts
 work/
+
+# Editor / tooling / OS cruft
+.DS_Store
+.impeccable/

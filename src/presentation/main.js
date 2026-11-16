@@ -253,7 +253,7 @@ const WELCOME = `<div class="welcome">
     <div class="card rise" style="--i:6"><h2>The data</h2><p>NASA LOLA elevation maps for the terrain. JPL's DE421 ephemeris for where the Sun and Earth are.</p></div>
     <div class="card rise" style="--i:7"><h2>This walkthrough</h2><p>Short stops on the live app, starting with a landing. Press space to move on from each.</p></div>
   </div>
-  <p class="team" style="--i:9">Built for NASA Space Apps by <span>Alex</span><span>Randy</span><span>Sonit</span><span>Abhi</span></p>
+  <p class="team" style="--i:9">Built for NASA Space Apps by <span>Abhi</span><span>Alex</span><span>Randy</span><span>Sonit</span><span>Kailash</span></p>
   <p class="loading" id="loading" style="--i:10">Loading terrain and Sun and Earth positions…</p>
 </div>`;
 

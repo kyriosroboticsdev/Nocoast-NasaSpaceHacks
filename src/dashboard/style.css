@@ -19,6 +19,10 @@
   --sun: #f2c94c;
   --earth: #4f8fe8;
   --r: 6px;
+  /* Scrollbar: visible on the dark surface, brighter on hover. */
+  --scroll-track: #0c1631;
+  --scroll-thumb: #3b5591;
+  --scroll-thumb-hover: #5b9bff;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -34,7 +38,23 @@ body {
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 svg { width: 16px; height: 16px; flex: none; }
-* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+/* Wide, always-visible scrollbars.
+   WebKit (Chrome/Edge/Safari) honours the ::-webkit-scrollbar pseudo-elements only when the
+   standard scrollbar-width/scrollbar-color are NOT also set on the element, so the standard
+   properties live in a Firefox-only @supports block below. */
+::-webkit-scrollbar { width: 14px; height: 14px; }
+::-webkit-scrollbar-track { background: var(--scroll-track); }
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 8px;
+  border: 3px solid var(--scroll-track);
+  min-height: 48px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+::-webkit-scrollbar-corner { background: var(--scroll-track); }
+@supports (-moz-appearance: none) {
+  * { scrollbar-width: auto; scrollbar-color: var(--scroll-thumb) var(--scroll-track); }
+}
 h2 { margin: 0; }
 
 /* ---------- top bar (NASA blue) */
